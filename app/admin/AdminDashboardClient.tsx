@@ -65,6 +65,7 @@ import Testing from "./sections/Testing";
 import SchemaValidation from "./sections/SchemaValidation";
 import SitemapManagement from "./sections/SitemapManagement";
 import ErrorMonitoring from "./sections/ErrorMonitoring";
+import FeatureFlags from "./sections/FeatureFlags";
 
 const sections = [
   { id: "overview", icon: BarChart3, label: "Overview", path: "/admin" },
@@ -79,6 +80,7 @@ const sections = [
   { id: "ai-automation", icon: Bot, label: "AI & Automation", path: "/admin/ai-automation" },
   { id: "gamification", icon: Trophy, label: "Gamification", path: "/admin/gamification" },
   { id: "seo-marketing", icon: Search, label: "SEO & Marketing", path: "/admin/seo-marketing" },
+  { id: "feature-flags", icon: Flag, label: "Feature Flags", path: "/admin/feature-flags" },
   { id: "sitemap", icon: FileText, label: "Sitemap", path: "/admin/sitemap" },
   { id: "schema-validation", icon: Code, label: "Schema Validation", path: "/admin/schema-validation" },
   { id: "integrations", icon: Zap, label: "API & Integrations", path: "/admin/integrations" },
@@ -152,6 +154,8 @@ export function AdminDashboardClient() {
         return <Gamification />;
       case "/admin/seo-marketing":
         return <SEOMarketing />;
+      case "/admin/feature-flags":
+        return <FeatureFlags />;
       case "/admin/sitemap":
         return <SitemapManagement />;
       case "/admin/schema-validation":

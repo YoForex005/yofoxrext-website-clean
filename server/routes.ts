@@ -27,6 +27,7 @@ import {
   insertBotActionSchema,
   insertBotRefundSchema,
   insertBotAuditLogSchema,
+  insertFeatureFlagSchema,
   BADGE_METADATA,
   type BadgeType,
   type User,
@@ -116,6 +117,7 @@ import {
   scanNewContent
 } from './services/botBehaviorEngine.js';
 import { seoFixOrchestrator } from './services/seo-fixer.js';
+import { featureFlagService } from './services/featureFlagService.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -7027,6 +7029,112 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('Error creating template:', error);
       res.status(500).json({ message: 'Failed to create template' });
+    }
+  });
+
+  // ============================================================================
+  // FEATURE FLAGS API ENDPOINTS
+  // ============================================================================
+  
+  // Admin: List all feature flags
+  app.get('/api/admin/feature-flags', isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const flags = await storage.listFeatureFlags();
+      res.json(flags);
+    } catch (error) {
+      console.error('Error listing feature flags:', error);
+      res.status(500).json({ error: 'Failed to list feature flags' });
+    }
+  });
+
+  // Admin: Get single feature flag by slug
+  app.get('/api/admin/feature-flags/:slug', isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const flag = await storage.getFeatureFlagBySlug(req.params.slug);
+      if (!flag) {
+        return res.status(404).json({ error: 'Feature flag not found' });
+      }
+      res.json(flag);
+    } catch (error) {
+      console.error('Error getting feature flag:', error);
+      res.status(500).json({ error: 'Failed to get feature flag' });
+    }
+  });
+
+  // Admin: Create or update feature flag
+  app.post('/api/admin/feature-flags', isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const parsed = insertFeatureFlagSchema.parse(req.body);
+      const flag = await storage.upsertFeatureFlag(parsed);
+      featureFlagService.invalidateCache(); // Invalidate cache on update
+      res.json(flag);
+    } catch (error) {
+      console.error('Error creating feature flag:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid input' });
+    }
+  });
+
+  // Admin: Update feature flag (PATCH for partial updates)
+  app.patch('/api/admin/feature-flags/:slug', isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const existing = await storage.getFeatureFlagBySlug(req.params.slug);
+      if (!existing) {
+        return res.status(404).json({ error: 'Feature flag not found' });
+      }
+      
+      // Merge existing with updates
+      const updated = await storage.upsertFeatureFlag({
+        ...existing,
+        ...req.body,
+        slug: req.params.slug, // Ensure slug doesn't change
+      });
+      
+      featureFlagService.invalidateCache(); // Invalidate cache on update
+      res.json(updated);
+    } catch (error) {
+      console.error('Error updating feature flag:', error);
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid input' });
+    }
+  });
+
+  // Admin: Delete feature flag
+  app.delete('/api/admin/feature-flags/:slug', isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      await storage.deleteFeatureFlag(req.params.slug);
+      featureFlagService.invalidateCache(); // Invalidate cache on delete
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting feature flag:', error);
+      res.status(500).json({ error: 'Failed to delete feature flag' });
+    }
+  });
+
+  // Public: Get feature flag status (with caching)
+  app.get('/api/feature-flags', async (req, res) => {
+    try {
+      const slug = req.query.slug as string;
+      
+      if (!slug) {
+        return res.status(400).json({ error: 'slug query parameter is required' });
+      }
+
+      const flag = await featureFlagService.getFlag(slug);
+      
+      if (!flag) {
+        return res.status(404).json({ error: 'Feature flag not found' });
+      }
+
+      // Return only public information
+      res.json({
+        slug: flag.slug,
+        status: flag.status,
+        seoTitle: flag.seoTitle,
+        seoDescription: flag.seoDescription,
+        ogImage: flag.ogImage,
+      });
+    } catch (error) {
+      console.error('Error getting feature flag:', error);
+      res.status(500).json({ error: 'Failed to get feature flag' });
     }
   });
 

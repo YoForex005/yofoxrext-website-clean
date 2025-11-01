@@ -1284,22 +1284,24 @@ export const abTests = pgTable("ab_tests", {
   endDateIdx: index("idx_ab_tests_end_date").on(table.endDate),
 }));
 
-// 13. Feature Flags - Feature toggle system
+// 13. Feature Flags - Feature toggle system with Coming Soon support
 export const featureFlags = pgTable("feature_flags", {
-  id: serial("id").primaryKey(),
-  flagKey: varchar("flag_key").notNull().unique(),
-  name: varchar("name").notNull(),
-  description: text("description").notNull(),
-  isEnabled: boolean("is_enabled").notNull().default(false),
-  rolloutPercentage: integer("rollout_percentage").notNull().default(0),
-  targetUsers: text("target_users").array().default(sql`'{}'::text[]`),
-  targetSegments: integer("target_segments").array().default(sql`'{}'::integer[]`),
-  createdBy: varchar("created_by").notNull().references(() => users.id),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  slug: varchar("slug").notNull().unique(),
+  scope: varchar("scope").notNull().default("page"),
+  targetPath: varchar("target_path").notNull(),
+  status: varchar("status").notNull().default("disabled"),
+  rolloutType: varchar("rollout_type"),
+  rolloutConfig: jsonb("rollout_config"),
+  seoTitle: text("seo_title"),
+  seoDescription: text("seo_description"),
+  ogImage: varchar("og_image"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
-  flagKeyIdx: index("idx_feature_flags_flag_key").on(table.flagKey),
-  isEnabledIdx: index("idx_feature_flags_is_enabled").on(table.isEnabled),
+  slugIdx: index("idx_feature_flags_slug").on(table.slug),
+  statusIdx: index("idx_feature_flags_status").on(table.status),
+  targetPathIdx: index("idx_feature_flags_target_path").on(table.targetPath),
 }));
 
 // 14. API Keys - API key management

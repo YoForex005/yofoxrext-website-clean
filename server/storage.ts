@@ -704,6 +704,31 @@ export interface IStorage {
   deleteUserSegment(segmentId: number): Promise<void>;
   
   /**
+   * List all feature flags
+   */
+  listFeatureFlags(): Promise<FeatureFlag[]>;
+  
+  /**
+   * Get feature flag by slug
+   */
+  getFeatureFlagBySlug(slug: string): Promise<FeatureFlag | null>;
+  
+  /**
+   * Upsert feature flag (create or update)
+   */
+  upsertFeatureFlag(data: InsertFeatureFlag): Promise<FeatureFlag>;
+  
+  /**
+   * Toggle feature flag status
+   */
+  toggleFeatureFlag(slug: string, status: 'enabled' | 'disabled' | 'coming_soon'): Promise<FeatureFlag>;
+  
+  /**
+   * Delete feature flag
+   */
+  deleteFeatureFlag(slug: string): Promise<void>;
+  
+  /**
    * Get user activity log
    */
   getUserActivityLog(userId: string, limit?: number): Promise<any[]>;
@@ -10407,6 +10432,77 @@ export class DrizzleStorage implements IStorage {
       await db.delete(userSegments).where(eq(userSegments.id, segmentId));
     } catch (error) {
       console.error("Error deleting user segment:", error);
+      throw error;
+    }
+  }
+
+  async listFeatureFlags(): Promise<FeatureFlag[]> {
+    try {
+      return await db.select().from(featureFlags).orderBy(desc(featureFlags.updatedAt));
+    } catch (error) {
+      console.error("Error listing feature flags:", error);
+      throw error;
+    }
+  }
+
+  async getFeatureFlagBySlug(slug: string): Promise<FeatureFlag | null> {
+    try {
+      const flags = await db.select().from(featureFlags).where(eq(featureFlags.slug, slug)).limit(1);
+      return flags.length > 0 ? flags[0] : null;
+    } catch (error) {
+      console.error("Error getting feature flag by slug:", error);
+      throw error;
+    }
+  }
+
+  async upsertFeatureFlag(data: InsertFeatureFlag): Promise<FeatureFlag> {
+    try {
+      // Check if flag exists
+      const existing = await this.getFeatureFlagBySlug(data.slug);
+      
+      if (existing) {
+        // Update existing flag
+        const updated = await db
+          .update(featureFlags)
+          .set({ ...data, updatedAt: new Date() })
+          .where(eq(featureFlags.slug, data.slug))
+          .returning();
+        return updated[0];
+      } else {
+        // Insert new flag
+        const inserted = await db.insert(featureFlags).values(data).returning();
+        return inserted[0];
+      }
+    } catch (error) {
+      console.error("Error upserting feature flag:", error);
+      throw error;
+    }
+  }
+
+  async toggleFeatureFlag(slug: string, status: 'enabled' | 'disabled' | 'coming_soon'): Promise<FeatureFlag> {
+    try {
+      const updated = await db
+        .update(featureFlags)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(featureFlags.slug, slug))
+        .returning();
+      
+      if (updated.length === 0) {
+        throw new Error(`Feature flag with slug "${slug}" not found`);
+      }
+      
+      return updated[0];
+    } catch (error) {
+      console.error("Error toggling feature flag:", error);
+      throw error;
+    }
+  }
+
+  async deleteFeatureFlag(slug: string): Promise<void> {
+    try {
+      await db.delete(featureFlags).where(eq(featureFlags.slug, slug));
+    } catch (error) {
+      console.error("Error deleting feature flag:", error);
       throw error;
     }
   }
