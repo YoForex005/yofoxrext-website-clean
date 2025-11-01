@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import Header from "@/components/Header";
-import StatsBar from "@/components/StatsBar";
+import StatsBar from "@/components/StatsBarWrapper";
 import { CategoryTree } from "@/components/CategoryTree";
 import ForumThreadCard from "@/components/ForumThreadCard";
 import CoinBalance from "@/components/CoinBalance";
