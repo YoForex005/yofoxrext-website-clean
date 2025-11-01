@@ -30,19 +30,19 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
   const stats = [
     { 
       label: "Forum Threads", 
-      value: data?.totalThreads?.toLocaleString() || "0", 
+      value: data?.totalThreads?.toLocaleString('en-US') || "0", 
       icon: MessageSquare, 
       key: "threads" 
     },
     { 
       label: "Community Members", 
-      value: data?.totalMembers?.toLocaleString() || "0", 
+      value: data?.totalMembers?.toLocaleString('en-US') || "0", 
       icon: Users, 
       key: "members" 
     },
     { 
       label: "Total Replies", 
-      value: data?.totalPosts?.toLocaleString() || "0", 
+      value: data?.totalPosts?.toLocaleString('en-US') || "0", 
       icon: MessagesSquare, 
       key: "replies" 
     },

@@ -7,6 +7,9 @@ export const metadata: Metadata = {
   description: 'Learn how YoForex collects, uses, and protects your personal data',
 };
 
+// Fixed date to avoid hydration mismatch
+const LAST_UPDATED = "November 1, 2025";
+
 export default function PrivacyPage() {
   return (
     <div className="min-h-screen bg-background">
@@ -14,7 +17,7 @@ export default function PrivacyPage() {
       <main className="container max-w-4xl mx-auto px-4 py-12">
         <h1 className="text-4xl font-bold mb-8">Privacy Policy</h1>
         <div className="prose prose-lg dark:prose-invert max-w-none space-y-6">
-          <p className="text-muted-foreground">Last updated: {new Date().toLocaleDateString()}</p>
+          <p className="text-muted-foreground">Last updated: {LAST_UPDATED}</p>
           
           <section>
             <h2>1. Introduction</h2>
