@@ -1090,12 +1090,16 @@ export const adminActions = pgTable("admin_actions", {
   details: jsonb("details"),
   ipAddress: varchar("ip_address"),
   userAgent: varchar("user_agent"),
+  isUndone: boolean("is_undone").notNull().default(false),
+  undoneAt: timestamp("undone_at"),
+  undoneBy: varchar("undone_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   adminIdIdx: index("idx_admin_actions_admin_id").on(table.adminId),
   actionTypeIdx: index("idx_admin_actions_action_type").on(table.actionType),
   targetTypeIdx: index("idx_admin_actions_target_type").on(table.targetType),
   createdAtIdx: index("idx_admin_actions_created_at").on(table.createdAt),
+  isUndoneIdx: index("idx_admin_actions_is_undone").on(table.isUndone),
 }));
 
 // 2. Moderation Queue - Content pending review
@@ -2368,7 +2372,7 @@ export type UserSettings = typeof userSettings.$inferSelect;
 // ============================================================================
 
 // 1. Admin Actions
-export const insertAdminActionSchema = createInsertSchema(adminActions).omit({ id: true, createdAt: true });
+export const insertAdminActionSchema = createInsertSchema(adminActions).omit({ id: true, createdAt: true, undoneAt: true });
 export type InsertAdminAction = z.infer<typeof insertAdminActionSchema>;
 export type AdminAction = typeof adminActions.$inferSelect;
 
@@ -3666,7 +3670,6 @@ export const insertSeoFixJobSchema = createInsertSchema(seoFixJobs).omit({
   id: true,
   createdAt: true,
   completedAt: true,
-  updatedAt: true,
 }).extend({
   issueId: z.string().uuid().optional(),
   fixType: z.string().min(1).max(100),
@@ -3759,6 +3762,12 @@ export const bots = pgTable("bots", {
   trustLevel: integer("trust_level").notNull().default(3), // 2-5 to match real users
   timezone: varchar("timezone", { length: 50 }).default('UTC'),
   favoritePairs: text("favorite_pairs").array(), // ["EUR/USD", "XAU/USD", etc.]
+  activityCaps: jsonb("activity_caps").$type<{
+    dailyLikes?: number;
+    dailyFollows?: number;
+    dailyPurchases?: number;
+    dailyComments?: number;
+  }>(),
   createdBy: varchar("created_by").references(() => users.id), // Admin who created bot
   joinDate: timestamp("join_date").notNull().defaultNow(),
   lastActiveAt: timestamp("last_active_at"),
@@ -3788,6 +3797,12 @@ export const insertBotSchema = createInsertSchema(bots).omit({
   trustLevel: z.number().int().min(2).max(5).default(3),
   timezone: z.string().max(50).default('UTC'),
   favoritePairs: z.array(z.string()).optional(),
+  activityCaps: z.object({
+    dailyLikes: z.number().int().optional(),
+    dailyFollows: z.number().int().optional(),
+    dailyPurchases: z.number().int().optional(),
+    dailyComments: z.number().int().optional(),
+  }).optional(),
   createdBy: z.string().uuid().optional(),
   lastActiveAt: z.date().optional(),
 });
