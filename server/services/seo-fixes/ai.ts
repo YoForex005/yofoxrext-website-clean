@@ -2,7 +2,7 @@ import type { SeoIssue } from '../../../shared/schema';
 import { db } from '../../db';
 import { seoFixJobs } from '../../../shared/schema';
 
-export async function canHandle(issue: SeoIssue): boolean {
+export async function canHandle(issue: SeoIssue): Promise<boolean> {
   const aiFixTypes = [
     'missing_meta_description',
     'poor_meta_description',

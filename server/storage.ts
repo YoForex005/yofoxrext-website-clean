@@ -5786,6 +5786,47 @@ export class MemStorage implements IStorage {
       timeline: []
     };
   }
+
+  async savePageSpeedMetrics(metrics: InsertSeoPerformanceMetric): Promise<SeoPerformanceMetric> {
+    throw new Error('PageSpeed metrics not supported in MemStorage. Use PostgreSQL.');
+  }
+
+  async getLatestPageSpeedMetrics(pageUrl: string, strategy?: 'mobile' | 'desktop'): Promise<SeoPerformanceMetric | null> {
+    return null;
+  }
+
+  async getPageSpeedTrends(pageUrl: string, options?: {
+    strategy?: 'mobile' | 'desktop';
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<SeoPerformanceMetric[]> {
+    return [];
+  }
+
+  async getPageSpeedSummary(): Promise<{
+    totalScans: number;
+    averagePerformance: number;
+    averageSeo: number;
+    averageAccessibility: number;
+    averageBestPractices: number;
+    recentScans: Array<{
+      pageUrl: string;
+      strategy: 'mobile' | 'desktop';
+      performanceScore: number;
+      seoScore: number;
+      fetchTime: Date;
+    }>;
+  }> {
+    return {
+      totalScans: 0,
+      averagePerformance: 0,
+      averageSeo: 0,
+      averageAccessibility: 0,
+      averageBestPractices: 0,
+      recentScans: []
+    };
+  }
 }
 
 export class DrizzleStorage implements IStorage {
@@ -15470,7 +15511,7 @@ export class DrizzleStorage implements IStorage {
     try {
       const [result] = await db
         .insert(seoPerformanceMetrics)
-        .values(metrics)
+        .values(metrics as any)
         .returning();
       
       return result;

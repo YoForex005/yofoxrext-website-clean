@@ -10610,7 +10610,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ============================================================================
 
   const { seoScanner } = await import('./services/seo-scanner');
-  const { seoScans, seoIssues, seoFixes, seoMetrics } = await import('../shared/schema');
+  const { seoScans, seoIssues, seoFixes, seoMetrics, seoFixJobs } = await import('../shared/schema');
   const { and, inArray, sql: sqlDrizzle } = await import('drizzle-orm');
   const { getSeoOverrides } = await import('./services/seo-override-loader');
 
@@ -10731,7 +10731,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
           beforePayload: JSON.stringify(result.before),
           afterPayload: JSON.stringify(result.after),
           fixMethod: 'auto',
-          appliedBy: req.user?.id || 'system',
+          appliedBy: (req.user as any)?.claims?.sub || 'system',
           success: true,
         });
 
@@ -10739,7 +10739,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
           .set({
             status: 'fixed',
             fixedAt: new Date(),
-            fixedBy: req.user?.id || 'system',
+            fixedBy: (req.user as any)?.claims?.sub || 'system',
             updatedAt: new Date(),
           })
           .where(eq(seoIssues.id, id));

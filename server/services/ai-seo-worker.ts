@@ -55,9 +55,9 @@ export async function processAiFixJob(jobId: string) {
         role: 'user',
         parts: [{ text: userPrompt }]
       }],
-    });
+    } as any);
 
-    const aiResponse = response.response?.text() || response.text;
+    const aiResponse = (response as any).response?.text() || (response as any).text;
     
     if (!aiResponse) {
       throw new Error('Empty response from Gemini');
