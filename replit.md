@@ -1,10 +1,9 @@
 # YoForex - Expert Advisor Forum & Marketplace
 
 ## Overview
-YoForex is a comprehensive trading community platform for forex traders, offering forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to foster a vibrant, self-sustaining ecosystem by rewarding user contributions, enhancing retention through loyalty tiers, badges, AI nudges, and abandonment emails, and providing valuable tools and resources.
+YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions, boosting retention through loyalty tiers, badges, AI nudges, and abandonment emails, and providing valuable trading tools and resources.
 
 ## User Preferences
-
 ### Communication Style
 - Use simple, everyday language
 - Avoid technical jargon when explaining to user
@@ -70,29 +69,28 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 
 ## System Architecture
 
-YoForex utilizes a hybrid frontend and a robust backend designed for scalability and performance.
+YoForex employs a hybrid frontend and a robust backend for scalability and performance.
 
 ### Hybrid Frontend Architecture
-- **Next.js:** Primary user-facing application leveraging App Router and Server Components for SEO and dynamic routing, with ISR (60-second revalidation).
+- **Next.js:** Primary user-facing application utilizing App Router, Server Components, and Incremental Static Regeneration (ISR) for SEO and dynamic routing.
 - **Express API:** Backend API server providing RESTful endpoints, Replit OIDC authentication, rate limiting, and input validation. React Query manages client-side state and caching.
 
 ### Database Design
-- **PostgreSQL with Drizzle ORM:** Features 25+ tables, 25 critical indexes, connection pooling, SSL/TLS, and automatic retry logic. Secure storage for service credentials in `service_credentials`.
+- **PostgreSQL with Drizzle ORM:** Features 25+ tables, critical indexes, connection pooling, SSL/TLS, and automatic retry logic. Securely stores service credentials.
 
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
-- **Authentication System:** Email/Password (bcryptjs) + Google OAuth (Firebase Admin SDK) with PostgreSQL session storage.
-- **Email System:** Transactional and notification emails.
-- **Coin Economy ("Sweets"):** Virtual currency system with transaction history, expiration management, multi-layer fraud prevention (rate limits, velocity checks, reconciliation), and a redemption marketplace. Includes an authentication-gated system to protect all sweets-related UI and API routes.
+- **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage.
+- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes authentication-gated UI and API routes.
 - **Production Deployment:** One-command deployment to Replit or full control via AWS EC2/VPS using Docker, PM2, Nginx, and Let's Encrypt.
 - **Zero-Touch Migration System:** Automated GitHub import for fresh Replit database setup.
-- **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails.
+- **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails to enhance user engagement.
 - **Bot Economy System:** Automated bot system for natural engagement (likes, follows, purchases, forum replies) using Gemini AI, with wallet caps, daily budgets, and activity limits. Bots are excluded from user-facing metrics.
-- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, admin dashboard for resolution, and production hardening fixes (rate limiting, performance optimization, error filtering, bulk submission, circuit breaker).
+- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, admin dashboard for resolution, and production hardening fixes.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
-- **Comprehensive Messaging System:** Facebook/Freelancer-style private messaging (1-on-1 and group chats) with file attachments (EA files, PDFs, images up to 50MB), reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
-- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, SEO-optimized "Coming Soon" pages, and admin dashboard controls. This includes a robust Page Control System (ON/OFF/Coming Soon/Maintenance) with database storage, caching, API endpoints, Next.js middleware (fail-closed), dedicated page templates, and an admin UI for full CRUD operations.
+- **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
+- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, SEO-optimized "Coming Soon" pages, and admin dashboard controls. This includes a robust Page Control System (ON/OFF/Coming Soon/Maintenance) with database storage, caching, API endpoints, Next.js middleware, dedicated page templates, and an admin UI.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies

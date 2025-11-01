@@ -118,11 +118,11 @@ export class BotOrchestrator {
 
   async performFollow(botId: string, targetUserId: string): Promise<boolean> {
     try {
-      // Check if user has < 50 followers (from settings)
+      // Check if user has < 50 followers (follow users with low follower count)
       const followerCount = await this.storage.getFollowerCount(targetUserId);
-      const settings = await this.storage.getBotSettings();
+      const followThreshold = 50; // Follow users with less than 50 followers
       
-      if (followerCount >= (settings?.followThreshold || 50)) {
+      if (followerCount >= followThreshold) {
         console.log(`[BOT] User ${targetUserId} has enough followers (${followerCount}), skipping`);
         return false;
       }
@@ -336,7 +336,7 @@ export class BotOrchestrator {
         const selectedBots = await this.selectBotsForAction("purchase", purchaseCount);
 
         for (const bot of selectedBots) {
-          await this.performPurchase(bot.id, ea.id, ea.priceCoins, ea.userId);
+          await this.performPurchase(bot.id, ea.id, ea.priceCoins, ea.authorId);
         }
       }
     } catch (error) {
