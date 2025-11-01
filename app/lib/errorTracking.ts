@@ -72,6 +72,18 @@ export class ErrorTracker {
   private resourceErrorHandler: ((e: Event) => void) | null = null;
   private securityPolicyHandler: ((e: SecurityPolicyViolationEvent) => void) | null = null;
   private socketErrorHandlers: Map<any, () => void> = new Map();
+  
+  // Circuit Breaker for Rate Limiting
+  private circuitBreakerActive = false;
+  private circuitBreakerUntil = 0;
+  private consecutiveRateLimitErrors = 0;
+  private readonly maxConsecutiveRateLimits = 3; // Activate circuit breaker after 3 consecutive 429s
+  private readonly circuitBreakerDuration = 5 * 60 * 1000; // 5 minutes
+  
+  // Deduplication
+  private sentFingerprints: Set<string> = new Set();
+  private fingerprintExpiry: Map<string, number> = new Map();
+  private readonly fingerprintTTL = 60 * 60 * 1000; // 1 hour
 
   private constructor() {
     // Check if we're in a browser environment
@@ -348,6 +360,12 @@ export class ErrorTracker {
       actualErrorMessage = responseText?.substring(0, 200) || '';
     }
 
+    // Check if this is a CORS error - don't track these as they're handled by the browser
+    if (actualErrorMessage.includes('CORS') || actualErrorMessage.includes('Not allowed by CORS')) {
+      console.info('[API] CORS error detected, not tracking:', actualErrorMessage);
+      return;
+    }
+
     // Create comprehensive error message
     const message = actualErrorMessage 
       ? `API Error (${status}): ${actualErrorMessage} [${method} ${url}]`
@@ -436,6 +454,7 @@ export class ErrorTracker {
    * - 5xx errors: "critical" - Server errors that need immediate attention
    * - 429 errors: "warning" - Rate limiting, expected under high load
    * - 401 errors: "info" - Expected for unauthenticated requests (checking login state)
+   * - 404 errors: "info" - Expected for missing resources (deleted content, wrong URLs)
    * - Other 4xx errors: "error" - Client errors that may need investigation
    */
   private determineErrorSeverity(status: number, url: string): 'critical' | 'error' | 'warning' | 'info' {
@@ -455,11 +474,49 @@ export class ErrorTracker {
       return 'info';
     }
     
+    // 404 errors are expected when users navigate to deleted/non-existent content
+    // Log as "info" since this is normal user behavior
+    if (status === 404) {
+      return 'info';
+    }
+    
     // All other 4xx errors are client errors
     return 'error';
   }
 
   private queueError(errorEvent: ErrorEvent): void {
+    // Check circuit breaker
+    if (this.circuitBreakerActive && Date.now() < this.circuitBreakerUntil) {
+      // Circuit breaker is active, silently drop errors
+      console.warn('[ErrorTracker] Circuit breaker active, dropping error:', errorEvent.message);
+      return;
+    }
+    
+    // Reset circuit breaker if duration has passed
+    if (this.circuitBreakerActive && Date.now() >= this.circuitBreakerUntil) {
+      this.circuitBreakerActive = false;
+      this.consecutiveRateLimitErrors = 0;
+      console.info('[ErrorTracker] Circuit breaker reset');
+    }
+    
+    // Deduplication: Check if we've recently sent this error
+    const now = Date.now();
+    const expiry = this.fingerprintExpiry.get(errorEvent.fingerprint);
+    
+    if (expiry && expiry > now) {
+      // This error was recently sent, skip it
+      console.debug('[ErrorTracker] Skipping duplicate error:', errorEvent.fingerprint);
+      return;
+    }
+    
+    // Clean up expired fingerprints
+    for (const [fp, exp] of this.fingerprintExpiry.entries()) {
+      if (exp <= now) {
+        this.fingerprintExpiry.delete(fp);
+        this.sentFingerprints.delete(fp);
+      }
+    }
+    
     this.errorQueue.push(errorEvent);
     
     // Check if we should send immediately (10 errors accumulated)
@@ -488,20 +545,159 @@ export class ErrorTracker {
 
     if (this.errorQueue.length === 0) return;
 
+    // Check circuit breaker before sending
+    if (this.circuitBreakerActive && Date.now() < this.circuitBreakerUntil) {
+      console.warn('[ErrorTracker] Circuit breaker active, clearing queue without sending');
+      this.errorQueue = [];
+      return;
+    }
+
     const batch = [...this.errorQueue];
     this.errorQueue = [];
 
     try {
-      // Send errors one by one (API expects single error per request)
-      const promises = batch.map(error => this.sendError(error));
-      await Promise.allSettled(promises);
+      // Validate and sanitize error data before sending
+      const validatedErrors = batch.map(error => {
+        // Ensure all required fields have proper values
+        const sanitizedError = {
+          fingerprint: error.fingerprint || this.generateFingerprint(error.message, error.component, error.stackTrace),
+          message: (error.message || 'Unknown error').substring(0, 1000), // Truncate message to 1000 chars
+          component: error.component || 'unknown',
+          severity: error.severity || 'error',
+          stackTrace: error.stackTrace?.substring(0, 5000), // Limit stack trace length
+          context: {
+            sessionId: error.context?.sessionId || this.sessionId,
+            route: error.context?.route || this.getCurrentRoute(),
+            // Only include safe context properties
+            ...(error.context?.errorType && { errorType: error.context.errorType }),
+            ...(error.context?.component && { component: error.context.component }),
+          },
+          browserInfo: error.browserInfo ? {
+            name: error.browserInfo.name,
+            version: error.browserInfo.version,
+            os: error.browserInfo.os,
+            userAgent: error.browserInfo.userAgent?.substring(0, 500), // Limit user agent length
+            viewport: error.browserInfo.viewport,
+            screen: error.browserInfo.screen,
+          } : undefined,
+          requestInfo: error.requestInfo ? {
+            url: error.requestInfo.url?.substring(0, 500),
+            method: error.requestInfo.method,
+            responseStatus: error.requestInfo.responseStatus,
+            responseText: error.requestInfo.responseText?.substring(0, 1000), // Limit response text
+          } : undefined,
+          userDescription: error.userDescription?.substring(0, 5000),
+          sessionId: error.context?.sessionId || this.sessionId,
+        };
+        
+        return sanitizedError;
+      });
       
-      // Reset retry count on successful send
-      this.retryCount = 0;
-      
-      // Clear from localStorage
-      this.clearStoredErrors();
+      // Chunk validated errors into batches of 50 (API limit)
+      const BATCH_SIZE = 50;
+      const batches = [];
+      for (let i = 0; i < validatedErrors.length; i += BATCH_SIZE) {
+        batches.push(validatedErrors.slice(i, i + BATCH_SIZE));
+      }
+
+      console.debug(`[ErrorTracker] Sending ${validatedErrors.length} errors in ${batches.length} batch(es)`);
+
+      // Send each batch separately
+      let allSuccessful = true;
+      let rateLimitEncountered = false;
+
+      for (let i = 0; i < batches.length; i++) {
+        const batchChunk = batches[i];
+        
+        const response = await fetch('/api/telemetry/errors', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            errors: batchChunk,
+          }),
+        });
+
+        if (response.ok) {
+          // Success for this batch chunk
+          console.debug(`[ErrorTracker] Successfully sent batch ${i + 1}/${batches.length} (${batchChunk.length} errors)`);
+        } else if (response.status === 429) {
+          // Rate limited
+          console.warn(`[ErrorTracker] Rate limited on batch ${i + 1}/${batches.length}`);
+          rateLimitEncountered = true;
+          allSuccessful = false;
+          // Don't break - log but continue with next batch
+        } else {
+          // Other error
+          const errorData = await response.json().catch(() => ({ error: response.statusText }));
+          console.error(`[ErrorTracker] Batch ${i + 1}/${batches.length} submission failed:`, errorData);
+          allSuccessful = false;
+          // Don't break - continue with next batch
+        }
+      }
+
+      // Handle overall result
+      if (allSuccessful) {
+        // All batches successful - mark fingerprints as sent
+        const now = Date.now();
+        batch.forEach(error => {
+          this.sentFingerprints.add(error.fingerprint);
+          this.fingerprintExpiry.set(error.fingerprint, now + this.fingerprintTTL);
+        });
+        
+        // Reset retry count and circuit breaker counters
+        this.retryCount = 0;
+        this.consecutiveRateLimitErrors = 0;
+        
+        // Clear from localStorage
+        this.clearStoredErrors();
+        
+        console.debug(`[ErrorTracker] Successfully sent all ${batch.length} errors in ${batches.length} batch(es)`);
+      } else if (rateLimitEncountered) {
+        // Handle rate limiting
+        this.consecutiveRateLimitErrors++;
+        
+        console.warn(`[ErrorTracker] Rate limited (${this.consecutiveRateLimitErrors}/${this.maxConsecutiveRateLimits})`);
+        
+        if (this.consecutiveRateLimitErrors >= this.maxConsecutiveRateLimits) {
+          // Activate circuit breaker
+          this.circuitBreakerActive = true;
+          this.circuitBreakerUntil = Date.now() + this.circuitBreakerDuration;
+          
+          console.error(`[ErrorTracker] Circuit breaker activated until ${new Date(this.circuitBreakerUntil).toISOString()}`);
+          
+          // Clear the queue to prevent infinite retry loops
+          this.errorQueue = [];
+          this.clearStoredErrors();
+        } else {
+          // Re-queue for retry with exponential backoff
+          this.errorQueue = [...batch, ...this.errorQueue];
+          this.storeUnsentErrors();
+          
+          if (this.retryCount < this.maxRetries) {
+            const delay = this.baseDelay * Math.pow(2, this.retryCount);
+            this.retryCount++;
+            
+            console.info(`[ErrorTracker] Retrying in ${delay}ms (attempt ${this.retryCount}/${this.maxRetries})`);
+            
+            setTimeout(() => {
+              this.sendBatch();
+            }, delay);
+          } else {
+            console.error('[ErrorTracker] Max retries reached, giving up');
+            this.errorQueue = [];
+            this.clearStoredErrors();
+          }
+        }
+      } else {
+        // Some batches failed but not due to rate limiting
+        console.error('[ErrorTracker] Some batches failed to send');
+        // Don't retry - errors are already logged
+      }
     } catch (error) {
+      console.error('[ErrorTracker] Error sending batch:', error);
+      
       // Re-queue errors for retry
       this.errorQueue = [...batch, ...this.errorQueue];
       
@@ -516,32 +712,11 @@ export class ErrorTracker {
         setTimeout(() => {
           this.sendBatch();
         }, delay);
+      } else {
+        console.error('[ErrorTracker] Max retries reached after network error, clearing queue');
+        this.errorQueue = [];
+        this.clearStoredErrors();
       }
-    }
-  }
-
-  private async sendError(errorEvent: ErrorEvent): Promise<void> {
-    const response = await fetch('/api/telemetry/errors', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        fingerprint: errorEvent.fingerprint,
-        message: errorEvent.message,
-        component: errorEvent.component,
-        severity: errorEvent.severity,
-        stackTrace: errorEvent.stackTrace,
-        context: errorEvent.context,
-        browserInfo: errorEvent.browserInfo,
-        requestInfo: errorEvent.requestInfo,
-        userDescription: errorEvent.userDescription,
-        sessionId: errorEvent.context.sessionId,
-      }),
-    });
-
-    if (!response.ok && response.status !== 429) {
-      throw new Error(`Failed to send error: ${response.statusText}`);
     }
   }
 

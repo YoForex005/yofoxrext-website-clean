@@ -202,6 +202,7 @@ import {
   supportTickets,
   announcements,
   ipBans,
+  pageControls,
   emailTemplates,
   emailPreferences,
   emailNotifications,
@@ -1286,6 +1287,36 @@ export interface IStorage {
    * Check if IP is banned
    */
   isIpBanned(ipAddress: string): Promise<boolean>;
+  
+  /**
+   * List all page controls
+   */
+  listPageControls(): Promise<PageControl[]>;
+  
+  /**
+   * Get page control by ID
+   */
+  getPageControl(id: number): Promise<PageControl | undefined>;
+  
+  /**
+   * Get page control by route pattern
+   */
+  getPageControlByRoute(route: string): Promise<PageControl | undefined>;
+  
+  /**
+   * Create new page control
+   */
+  createPageControl(data: InsertPageControl): Promise<PageControl>;
+  
+  /**
+   * Update existing page control
+   */
+  updatePageControl(id: number, data: Partial<InsertPageControl>): Promise<PageControl>;
+  
+  /**
+   * Delete page control
+   */
+  deletePageControl(id: number): Promise<void>;
   
   /**
    * Log admin action
@@ -7877,12 +7908,18 @@ export class DrizzleStorage implements IStorage {
       query = query.where(and(...conditions)) as any;
     }
     
-    const threads = await query.orderBy(
+    // CRITICAL FIX: Apply LIMIT in the database query, not after fetching
+    query = query.orderBy(
       desc(forumThreads.isPinned),
       desc(forumThreads.lastActivityAt)
-    );
+    ) as any;
     
-    return filters?.limit ? threads.slice(0, filters.limit) : threads;
+    if (filters?.limit) {
+      query = query.limit(filters.limit) as any;
+    }
+    
+    const threads = await query;
+    return threads;
   }
   
   async updateForumThreadReplyCount(threadId: string, increment: number): Promise<void> {
@@ -13196,6 +13233,79 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error("Error checking IP ban:", error);
       return false;
+    }
+  }
+
+  async listPageControls(): Promise<PageControl[]> {
+    try {
+      const controls = await db.select().from(pageControls).orderBy(desc(pageControls.createdAt));
+      return controls;
+    } catch (error) {
+      console.error("Error listing page controls:", error);
+      return [];
+    }
+  }
+
+  async getPageControl(id: number): Promise<PageControl | undefined> {
+    try {
+      const [control] = await db.select().from(pageControls).where(eq(pageControls.id, id)).limit(1);
+      return control;
+    } catch (error) {
+      console.error("Error getting page control:", error);
+      return undefined;
+    }
+  }
+
+  async getPageControlByRoute(route: string): Promise<PageControl | undefined> {
+    try {
+      const [control] = await db
+        .select()
+        .from(pageControls)
+        .where(eq(pageControls.routePattern, route))
+        .limit(1);
+      return control;
+    } catch (error) {
+      console.error("Error getting page control by route:", error);
+      return undefined;
+    }
+  }
+
+  async createPageControl(data: InsertPageControl): Promise<PageControl> {
+    try {
+      const [control] = await db
+        .insert(pageControls)
+        .values({ ...data, updatedAt: new Date() })
+        .returning();
+      return control;
+    } catch (error) {
+      console.error("Error creating page control:", error);
+      throw error;
+    }
+  }
+
+  async updatePageControl(id: number, data: Partial<InsertPageControl>): Promise<PageControl> {
+    try {
+      const [control] = await db
+        .update(pageControls)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(pageControls.id, id))
+        .returning();
+      if (!control) {
+        throw new Error("Page control not found");
+      }
+      return control;
+    } catch (error) {
+      console.error("Error updating page control:", error);
+      throw error;
+    }
+  }
+
+  async deletePageControl(id: number): Promise<void> {
+    try {
+      await db.delete(pageControls).where(eq(pageControls.id, id));
+    } catch (error) {
+      console.error("Error deleting page control:", error);
+      throw error;
     }
   }
 

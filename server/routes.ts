@@ -38,6 +38,7 @@ import {
   insertTreasurySnapshotSchema,
   insertTreasuryAdjustmentSchema,
   insertBotWalletEventSchema,
+  insertPageControlSchema,
   BADGE_METADATA,
   type BadgeType,
   type User,
@@ -83,6 +84,7 @@ import {
   activityTrackingLimiter,
   messagingLimiter,
   newsletterSubscriptionLimiter,
+  errorTrackingLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
 import { generateSlug, generateFocusKeyword, generateMetaDescription as generateMetaDescriptionOld, generateImageAltTexts } from './seo.js';
@@ -2501,16 +2503,34 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // GET /api/content/top-sellers - Top selling EAs/Indicators
   // IMPORTANT: This must come BEFORE /api/content/:id to avoid route conflict
   app.get("/api/content/top-sellers", async (req, res) => {
+    // Cache for 5 minutes
+    res.set('Cache-Control', 'public, max-age=300, stale-while-revalidate=600');
+    
     try {
-      const content = await storage.getAllContent({ status: 'approved' });
+      // OPTIMIZED: Use database query with JOIN and LIMIT instead of loading all data
+      const topSellers = await db
+        .select({
+          id: content.id,
+          slug: content.slug,
+          title: content.title,
+          type: content.type,
+          priceCoins: content.priceCoins,
+          isFree: content.isFree,
+          postLogoUrl: content.postLogoUrl,
+          salesScore: content.salesScore,
+          downloads: content.downloads,
+          authorId: content.authorId,
+          authorUsername: users.username,
+          authorProfileImageUrl: users.profileImageUrl,
+        })
+        .from(content)
+        .leftJoin(users, eq(content.authorId, users.id))
+        .where(eq(content.status, 'approved'))
+        .orderBy(desc(content.salesScore))
+        .limit(10);
       
-      // Sort by sales score
-      const topSellers = content
-        .sort((a, b) => (b.salesScore || 0) - (a.salesScore || 0))
-        .slice(0, 10);
-      
+      // Get sales stats in parallel
       const sellersWithStats = await Promise.all(topSellers.map(async (item) => {
-        const author = await storage.getUserById(item.authorId);
         const salesStats = await storage.getContentSalesStats(item.id);
         
         return {
@@ -2527,9 +2547,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
           reviewCount: salesStats.reviewCount,
           downloads: item.downloads,
           author: {
-            id: author?.id,
-            username: author?.username,
-            profileImageUrl: author?.profileImageUrl
+            id: item.authorId,
+            username: item.authorUsername,
+            profileImageUrl: item.authorProfileImageUrl
           }
         };
       }));
@@ -3789,89 +3809,137 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       
-      // Fetch all content types
-      const [threads, marketplaceContent, brokers] = await Promise.all([
-        storage.getAllForumThreads(),
-        storage.getAllContent({ status: 'published' }),
-        storage.getAllBrokers({ isVerified: true })
+      // OPTIMIZED: Use database queries with LIMIT and WHERE instead of loading all data
+      const [threads, marketplaceContent, topBrokers] = await Promise.all([
+        // Fetch only recent threads with high engagement, already limited
+        db.select({
+          id: forumThreads.id,
+          title: forumThreads.title,
+          slug: forumThreads.slug,
+          categorySlug: forumThreads.categorySlug,
+          views: forumThreads.views,
+          createdAt: forumThreads.createdAt,
+          authorId: forumThreads.authorId,
+          engagementScore: forumThreads.engagementScore,
+          replyCount: forumThreads.replyCount,
+          authorUsername: users.username,
+          authorProfileImageUrl: users.profileImageUrl,
+        })
+          .from(forumThreads)
+          .leftJoin(users, eq(forumThreads.authorId, users.id))
+          .where(gte(forumThreads.createdAt, sevenDaysAgo))
+          .orderBy(desc(forumThreads.engagementScore))
+          .limit(limit),
+        
+        // Fetch only recent content with high sales score, already limited
+        db.select({
+          id: content.id,
+          title: content.title,
+          slug: content.slug,
+          category: content.category,
+          downloads: content.downloads,
+          createdAt: content.createdAt,
+          authorId: content.authorId,
+          type: content.type,
+          priceCoins: content.priceCoins,
+          isFree: content.isFree,
+          salesScore: content.salesScore,
+          purchaseCount: content.purchaseCount,
+          authorUsername: users.username,
+          authorProfileImageUrl: users.profileImageUrl,
+        })
+          .from(content)
+          .leftJoin(users, eq(content.authorId, users.id))
+          .where(and(
+            eq(content.status, 'published'),
+            gte(content.createdAt, sevenDaysAgo)
+          ))
+          .orderBy(desc(content.salesScore))
+          .limit(limit),
+        
+        // Fetch top brokers (they don't have date filter, just by rating)
+        db.select({
+          id: brokers.id,
+          name: brokers.name,
+          slug: brokers.slug,
+          createdAt: brokers.createdAt,
+          submittedBy: brokers.submittedBy,
+          reviewCount: brokers.reviewCount,
+          overallRating: brokers.overallRating,
+          submitterUsername: users.username,
+          submitterProfileImageUrl: users.profileImageUrl,
+        })
+          .from(brokers)
+          .leftJoin(users, eq(brokers.submittedBy, users.id))
+          .where(eq(brokers.isVerified, true))
+          .orderBy(desc(brokers.overallRating))
+          .limit(Math.floor(limit / 3)) // Limit brokers to 1/3 of total
       ]);
       
       // Prepare thread items (normalized score)
-      const threadItems = threads
-        .filter((t: any) => new Date(t.createdAt) >= sevenDaysAgo)
-        .map((thread: any) => ({
-          id: thread.id,
-          type: 'thread' as const,
-          title: thread.title,
-          slug: thread.slug,
-          categorySlug: thread.categorySlug,
-          views: thread.views || 0,
-          createdAt: thread.createdAt,
-          authorId: thread.authorId,
-          // Engagement score (0-200 range) - keep as is
-          normalizedScore: thread.engagementScore || 0,
-          originalScore: thread.engagementScore || 0,
-          replyCount: thread.replyCount || 0,
-        }));
+      const threadItems = threads.map((thread) => ({
+        id: thread.id,
+        type: 'thread' as const,
+        title: thread.title,
+        slug: thread.slug,
+        categorySlug: thread.categorySlug,
+        views: thread.views || 0,
+        createdAt: thread.createdAt,
+        normalizedScore: thread.engagementScore || 0,
+        replyCount: thread.replyCount || 0,
+        author: {
+          id: thread.authorId,
+          username: thread.authorUsername,
+          profileImageUrl: thread.authorProfileImageUrl
+        }
+      }));
       
       // Prepare marketplace items (normalized score)
-      const marketplaceItems = marketplaceContent
-        .filter((c: any) => new Date(c.createdAt) >= sevenDaysAgo)
-        .map((item: any) => ({
-          id: item.id,
-          type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
-          title: item.title,
-          slug: item.slug,
-          categorySlug: item.category,
-          views: item.downloads || 0,
-          createdAt: item.createdAt,
-          authorId: item.authorId,
-          priceCoins: item.priceCoins || 0,
-          isFree: item.isFree,
-          // Sales score (0-500 range) / 2 to match thread scale (0-250)
-          normalizedScore: (item.salesScore || 0) / 2,
-          originalScore: item.salesScore || 0,
-          purchaseCount: item.purchaseCount || 0,
-        }));
+      const marketplaceItems = marketplaceContent.map((item) => ({
+        id: item.id,
+        type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
+        title: item.title,
+        slug: item.slug,
+        categorySlug: item.category,
+        views: item.downloads || 0,
+        createdAt: item.createdAt,
+        priceCoins: item.priceCoins || 0,
+        isFree: item.isFree,
+        normalizedScore: (item.salesScore || 0) / 2,
+        purchaseCount: item.purchaseCount || 0,
+        author: {
+          id: item.authorId,
+          username: item.authorUsername,
+          profileImageUrl: item.authorProfileImageUrl
+        }
+      }));
       
       // Prepare broker items (normalized score)
-      const brokerItems = brokers
-        .map((broker: any) => ({
-          id: broker.id,
-          type: 'broker' as const,
-          title: broker.name,
-          slug: broker.slug,
-          categorySlug: 'brokers',
-          views: broker.reviewCount || 0,
-          createdAt: broker.createdAt,
-          authorId: broker.submittedBy,
-          // Rating (0-500 scale, divide by 100 to get 0-5) * reviewCount (typical 0-50 = 0-250)
-          normalizedScore: ((broker.overallRating || 0) / 100) * (broker.reviewCount || 0),
-          originalScore: broker.overallRating || 0,
-          reviewCount: broker.reviewCount || 0,
-          overallRating: broker.overallRating || 0,
-        }));
+      const brokerItems = topBrokers.map((broker) => ({
+        id: broker.id,
+        type: 'broker' as const,
+        title: broker.name,
+        slug: broker.slug,
+        categorySlug: 'brokers',
+        views: broker.reviewCount || 0,
+        createdAt: broker.createdAt,
+        normalizedScore: ((broker.overallRating || 0) / 100) * (broker.reviewCount || 0),
+        reviewCount: broker.reviewCount || 0,
+        overallRating: broker.overallRating || 0,
+        author: {
+          id: broker.submittedBy,
+          username: broker.submitterUsername,
+          profileImageUrl: broker.submitterProfileImageUrl
+        }
+      }));
       
       // Combine all items and sort by normalized score
       const allHotItems = [...threadItems, ...marketplaceItems, ...brokerItems]
         .sort((a, b) => b.normalizedScore - a.normalizedScore)
         .slice(0, limit);
       
-      // Enrich with author information
-      const itemsWithAuthors = await Promise.all(allHotItems.map(async (item) => {
-        const author = await storage.getUserById(item.authorId);
-        return {
-          ...item,
-          author: {
-            id: author?.id,
-            username: author?.username,
-            profileImageUrl: author?.profileImageUrl
-          }
-        };
-      }));
-      
       res.json({
-        items: itemsWithAuthors,
+        items: allHotItems,
         lastUpdated: new Date().toISOString()
       });
     } catch (error: any) {
@@ -7042,6 +7110,152 @@ export async function registerRoutes(app: Express): Promise<Express> {
       res.status(500).json({ message: 'Failed to create template' });
     }
   });
+
+  // ============================================
+  // PUBLIC: PAGE CONTROLS LOOKUP (No Auth Required)
+  // ============================================
+  
+  // PUBLIC: Page controls lookup for middleware (no auth required)
+  app.get('/api/public/page-controls', async (req, res) => {
+    try {
+      const controls = await storage.listPageControls();
+      
+      // Only return non-live controls (filter out 'live' status)
+      const activeControls = controls.filter((c: any) => c.status !== 'live');
+      
+      // Return minimal data (no audit fields)
+      const publicData = activeControls.map((c: any) => ({
+        routePattern: c.routePattern,
+        status: c.status,
+        title: c.title,
+        message: c.message,
+        metadata: c.metadata,
+      }));
+      
+      res.setHeader('Cache-Control', 'public, max-age=60'); // 60s cache
+      res.json(publicData);
+    } catch (error: any) {
+      console.error('[Public API] Error fetching page controls:', error);
+      res.status(500).json({ error: 'Failed to fetch page controls' });
+    }
+  });
+
+  // ============================================
+  // ADMIN: PAGE CONTROLS MANAGEMENT
+  // ============================================
+
+  app.get(
+    '/api/admin/page-controls',
+    isAuthenticated,
+    adminOperationLimiter,
+    async (req, res) => {
+      if (!isAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      try {
+        const controls = await storage.listPageControls();
+        res.json(controls);
+      } catch (error) {
+        console.error('Error fetching page controls:', error);
+        res.status(500).json({ error: 'Failed to fetch page controls' });
+      }
+    }
+  );
+
+  app.get(
+    '/api/admin/page-controls/:id',
+    isAuthenticated,
+    adminOperationLimiter,
+    async (req, res) => {
+      if (!isAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      try {
+        const control = await storage.getPageControl(parseInt(req.params.id));
+        if (!control) {
+          return res.status(404).json({ error: 'Page control not found' });
+        }
+        res.json(control);
+      } catch (error) {
+        console.error(`Error fetching page control ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to fetch page control' });
+      }
+    }
+  );
+
+  app.post(
+    '/api/admin/page-controls',
+    isAuthenticated,
+    adminOperationLimiter,
+    async (req, res) => {
+      if (!isAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      try {
+        const validated = insertPageControlSchema.parse(req.body);
+        const control = await storage.createPageControl({
+          ...validated,
+          createdBy: req.user!.id,
+          updatedBy: req.user!.id,
+        });
+        res.json(control);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ error: 'Invalid data', details: error.errors });
+        }
+        console.error('Error creating page control:', error);
+        res.status(500).json({ error: 'Failed to create page control' });
+      }
+    }
+  );
+
+  app.patch(
+    '/api/admin/page-controls/:id',
+    isAuthenticated,
+    adminOperationLimiter,
+    async (req, res) => {
+      if (!isAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      try {
+        const validated = insertPageControlSchema.partial().parse(req.body);
+        const control = await storage.updatePageControl(parseInt(req.params.id), {
+          ...validated,
+          updatedBy: req.user!.id,
+        });
+        res.json(control);
+      } catch (error) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ error: 'Invalid data', details: error.errors });
+        }
+        console.error(`Error updating page control ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to update page control' });
+      }
+    }
+  );
+
+  app.delete(
+    '/api/admin/page-controls/:id',
+    isAuthenticated,
+    adminOperationLimiter,
+    async (req, res) => {
+      if (!isAdmin(req.user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      try {
+        await storage.deletePageControl(parseInt(req.params.id));
+        res.json({ success: true });
+      } catch (error) {
+        console.error(`Error deleting page control ${req.params.id}:`, error);
+        res.status(500).json({ error: 'Failed to delete page control' });
+      }
+    }
+  );
 
   // ============================================================================
   // FEATURE FLAGS API ENDPOINTS
@@ -11320,10 +11534,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ERROR TRACKING & MONITORING ROUTES
   // ============================================
 
-  // Note: No rate limiting on error telemetry endpoint to prevent error cascade issues
-  // Error tracking must always work, even during high error rates
-
-  // Schema for error event ingestion
+  // Schema for single error event ingestion
   const errorEventIngestionSchema = z.object({
     fingerprint: z.string().min(1).max(255),
     message: z.string().min(1).max(1000),
@@ -11348,56 +11559,132 @@ export async function registerRoutes(app: Express): Promise<Express> {
     sessionId: z.string().optional(),
   });
 
-  // POST /api/telemetry/errors - Ingest errors from frontend (no rate limiting)
-  app.post("/api/telemetry/errors", async (req, res) => {
+  // Schema for bulk error ingestion
+  const bulkErrorIngestionSchema = z.object({
+    errors: z.array(errorEventIngestionSchema).min(1).max(50), // Max 50 errors per batch
+  });
+
+  // Helper function to sanitize sensitive data
+  const sanitizeSensitiveData = (text: string | undefined): string | undefined => {
+    if (!text) return text;
+    return text
+      .replace(/password['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'password=***')
+      .replace(/api[_-]?key['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'api_key=***')
+      .replace(/token['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'token=***')
+      .replace(/secret['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'secret=***');
+  };
+
+  // POST /api/telemetry/errors - Ingest errors from frontend (with dedicated rate limiting)
+  // Supports both single error and bulk error submissions
+  app.post("/api/telemetry/errors", errorTrackingLimiter, async (req, res) => {
     try {
-      // Validate request body
-      const validation = errorEventIngestionSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          error: "Invalid error data", 
-          details: validation.error.errors 
-        });
-      }
-
-      const errorData = validation.data;
-
       // Get user ID if authenticated
       const userId = (req.user as any)?.id || null;
 
-      // Sanitize sensitive data from error messages and stack traces
-      const sanitizedMessage = errorData.message
-        .replace(/password['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'password=***')
-        .replace(/api[_-]?key['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'api_key=***')
-        .replace(/token['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'token=***')
-        .replace(/secret['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'secret=***');
+      // Check if this is a bulk submission
+      const isBulk = req.body.errors && Array.isArray(req.body.errors);
 
-      const sanitizedStackTrace = errorData.stackTrace
-        ?.replace(/password['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'password=***')
-        .replace(/api[_-]?key['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'api_key=***')
-        .replace(/token['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'token=***')
-        .replace(/secret['\"]?\s*[:=]\s*['\"]?[^'\"}\s]+/gi, 'secret=***');
+      if (isBulk) {
+        // Validate bulk request
+        const validation = bulkErrorIngestionSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ 
+            error: "Invalid bulk error data", 
+            details: validation.error.errors 
+          });
+        }
 
-      // Create error event in storage
-      const event = await storage.createErrorEvent({
-        fingerprint: errorData.fingerprint,
-        message: sanitizedMessage,
-        component: errorData.component,
-        severity: errorData.severity,
-        userId,
-        sessionId: errorData.sessionId,
-        stackTrace: sanitizedStackTrace,
-        context: errorData.context,
-        browserInfo: errorData.browserInfo,
-        requestInfo: errorData.requestInfo,
-        userDescription: errorData.userDescription,
-      });
+        const { errors } = validation.data;
+        const results = [];
 
-      res.status(201).json({ 
-        success: true, 
-        eventId: event.id,
-        groupId: event.groupId 
-      });
+        // Process errors in parallel for better performance
+        const promises = errors.map(async (errorData) => {
+          try {
+            const sanitizedMessage = sanitizeSensitiveData(errorData.message) || errorData.message;
+            const sanitizedStackTrace = sanitizeSensitiveData(errorData.stackTrace);
+
+            const event = await storage.createErrorEvent({
+              fingerprint: errorData.fingerprint,
+              message: sanitizedMessage,
+              component: errorData.component,
+              severity: errorData.severity,
+              userId,
+              sessionId: errorData.sessionId,
+              stackTrace: sanitizedStackTrace,
+              context: errorData.context,
+              browserInfo: errorData.browserInfo,
+              requestInfo: errorData.requestInfo,
+              userDescription: errorData.userDescription,
+            });
+
+            return { success: true, eventId: event.id, groupId: event.groupId };
+          } catch (error: any) {
+            console.error("[Telemetry] Error ingesting bulk error:", {
+              error: error.message,
+              fingerprint: errorData.fingerprint,
+            });
+            return { success: false, error: error.message, fingerprint: errorData.fingerprint };
+          }
+        });
+
+        const settledResults = await Promise.allSettled(promises);
+        
+        settledResults.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            results.push(result.value);
+          } else {
+            results.push({ success: false, error: result.reason?.message || 'Unknown error' });
+          }
+        });
+
+        const successCount = results.filter(r => r.success).length;
+        const failureCount = results.length - successCount;
+
+        res.status(201).json({ 
+          success: true,
+          bulk: true,
+          total: errors.length,
+          successCount,
+          failureCount,
+          results 
+        });
+      } else {
+        // Single error submission
+        const validation = errorEventIngestionSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ 
+            error: "Invalid error data", 
+            details: validation.error.errors 
+          });
+        }
+
+        const errorData = validation.data;
+
+        // Sanitize sensitive data
+        const sanitizedMessage = sanitizeSensitiveData(errorData.message) || errorData.message;
+        const sanitizedStackTrace = sanitizeSensitiveData(errorData.stackTrace);
+
+        // Create error event in storage
+        const event = await storage.createErrorEvent({
+          fingerprint: errorData.fingerprint,
+          message: sanitizedMessage,
+          component: errorData.component,
+          severity: errorData.severity,
+          userId,
+          sessionId: errorData.sessionId,
+          stackTrace: sanitizedStackTrace,
+          context: errorData.context,
+          browserInfo: errorData.browserInfo,
+          requestInfo: errorData.requestInfo,
+          userDescription: errorData.userDescription,
+        });
+
+        res.status(201).json({ 
+          success: true, 
+          eventId: event.id,
+          groupId: event.groupId 
+        });
+      }
     } catch (error: any) {
       // Enhanced error logging for debugging 500 errors
       console.error("[Telemetry] Error ingesting error event:", {
@@ -11406,6 +11693,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
         code: error.code,
         detail: error.detail,
         requestBody: {
+          isBulk: req.body?.errors ? true : false,
+          count: req.body?.errors?.length,
           fingerprint: req.body?.fingerprint,
           message: req.body?.message?.substring(0, 100),
           component: req.body?.component,

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
@@ -48,7 +48,10 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
-  Lightbulb
+  Lightbulb,
+  Trophy,
+  BarChart,
+  TrendingUp
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -308,7 +311,16 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
       }, 0);
       setImageCount(totalImages);
     },
-  });
+  }, []);
+  
+  // Cleanup editor on unmount to prevent duplicate extension warnings
+  useEffect(() => {
+    return () => {
+      if (editor) {
+        editor.destroy();
+      }
+    };
+  }, [editor]);
 
   useEffect(() => {
     if (editor && value !== editor.getHTML()) {
@@ -564,6 +576,336 @@ function formatFileSize(bytes: number): string {
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Helper function to calculate estimated views
+function calculateEstimatedViews(formData: {
+  title: string;
+  tags: string[];
+  description: string;
+  priceCoins: number;
+  imageUrls: string[];
+}): number {
+  const { title, tags, description, priceCoins, imageUrls } = formData;
+  let baseViews = 150;
+  
+  // Title optimization
+  if (title.length >= 40 && title.length <= 60) baseViews += 100;
+  
+  // Description quality
+  const descriptionLength = countTextCharacters(description);
+  if (descriptionLength >= 500) baseViews += 150;
+  if (descriptionLength >= 1000) baseViews += 100;
+  
+  // Images
+  baseViews += imageUrls.length * 50;
+  
+  // Categories
+  if (tags.length >= 2) baseViews += 100;
+  if (tags.length >= 3) baseViews += 150;
+  
+  // Price sweetspot
+  if (priceCoins >= 20 && priceCoins <= 100) baseViews += 200;
+  
+  return Math.min(baseViews, 1500); // Cap at 1500
+}
+
+// Helper function to get title strength
+function getTitleStrength(title: string): { variant: 'destructive' | 'secondary' | 'default', label: string } {
+  const length = title.length;
+  if (length < 30) return { variant: 'destructive', label: 'Too Short' };
+  if (length >= 30 && length < 40) return { variant: 'secondary', label: 'Okay' };
+  if (length >= 40 && length <= 55) return { variant: 'default', label: 'Good' };
+  if (length >= 56 && length <= 60) return { variant: 'default', label: 'Perfect' };
+  return { variant: 'destructive', label: 'Too Long' };
+}
+
+// Publishing Progress Panel Component
+interface PublishingProgressPanelProps {
+  formData: {
+    title: string;
+    tags: string[];
+    description: string;
+    priceCoins: number;
+    eaFileUrl: string;
+    imageUrls: string[];
+    primaryKeyword: string;
+  };
+}
+
+function PublishingProgressPanel({ formData }: PublishingProgressPanelProps) {
+  const { title, tags, description, priceCoins, eaFileUrl, imageUrls, primaryKeyword } = formData;
+  const descriptionLength = countTextCharacters(description);
+  
+  const checks = [
+    {
+      label: 'Title added (30-60 chars)',
+      completed: title.length >= 30 && title.length <= 60,
+      icon: '✏️'
+    },
+    {
+      label: 'Category selected (1-5)',
+      completed: tags.length >= 1 && tags.length <= 5,
+      icon: '🏷️'
+    },
+    {
+      label: 'Description (min 200 chars)',
+      completed: descriptionLength >= 200 && descriptionLength <= 2000,
+      icon: '📝'
+    },
+    {
+      label: 'EA file uploaded',
+      completed: eaFileUrl.length > 0,
+      icon: '📁'
+    },
+    {
+      label: 'At least 1 image',
+      completed: imageUrls.length >= 1,
+      icon: '🖼️'
+    },
+    {
+      label: 'Price set (20+ coins)',
+      completed: priceCoins >= 20,
+      icon: '💰'
+    },
+    {
+      label: 'SEO keyword added',
+      completed: primaryKeyword.length > 0,
+      icon: '🔍'
+    }
+  ];
+  
+  const completedCount = checks.filter(c => c.completed).length;
+  const percentComplete = Math.round((completedCount / checks.length) * 100);
+  const allComplete = completedCount === checks.length;
+  
+  // Progress bar color
+  const getProgressColor = () => {
+    if (percentComplete < 50) return 'bg-red-500';
+    if (percentComplete < 80) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+  
+  return (
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <TrendingUp className="h-5 w-5" />
+          Publishing Progress
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Vertical Progress Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Completion</span>
+            <span className="font-bold text-lg">{percentComplete}%</span>
+          </div>
+          <div className="h-3 bg-muted rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-300 ease-in-out ${getProgressColor()}`}
+              style={{ width: `${percentComplete}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* Checklist */}
+        <div className="space-y-2">
+          {checks.map((check, index) => (
+            <div 
+              key={index}
+              className={`flex items-start gap-2 text-sm transition-all duration-200 ${
+                check.completed ? 'opacity-100' : 'opacity-60'
+              }`}
+            >
+              {check.completed ? (
+                <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0 animate-in fade-in slide-in-from-left-2 duration-300" />
+              ) : (
+                <div className="h-4 w-4 rounded-full border-2 border-muted-foreground mt-0.5 flex-shrink-0" />
+              )}
+              <span className={check.completed ? 'font-medium' : ''}>
+                <span className="mr-1">{check.icon}</span>
+                {check.label}
+              </span>
+            </div>
+          ))}
+        </div>
+        
+        {/* Completion Badge */}
+        {allComplete ? (
+          <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-3 text-center animate-in zoom-in duration-300">
+            <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-300 font-semibold">
+              <Sparkles className="h-5 w-5 animate-pulse" />
+              <span>Ready to Publish!</span>
+              <Sparkles className="h-5 w-5 animate-pulse" />
+            </div>
+          </div>
+        ) : (
+          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg p-3 text-center">
+            <div className="flex items-center justify-center gap-2 text-blue-700 dark:text-blue-300 text-sm">
+              <Info className="h-4 w-4" />
+              <span>{checks.length - completedCount} steps remaining</span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Quick Tips Card Component
+function QuickTipsCard() {
+  return (
+    <Card className="mb-4 animate-in fade-in slide-in-from-right duration-500">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Lightbulb className="h-5 w-5 text-yellow-500" />
+          Quick Tips for Success
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-2 text-sm">
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+            <span><strong>Add backtest screenshots</strong> – buyers trust results!</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+            <span><strong>Set price 20–100 coins</strong> for first-time sales</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+            <span><strong>Use bold & images</strong> in description for 2x more views</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+            <span><strong>Tag 2–3 categories</strong> to reach the right traders</span>
+          </li>
+        </ul>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Live Stats Card Component
+interface LiveStatsCardProps {
+  formData: {
+    title: string;
+    tags: string[];
+    description: string;
+    priceCoins: number;
+    imageUrls: string[];
+  };
+}
+
+function LiveStatsCard({ formData }: LiveStatsCardProps) {
+  const { title, description, imageUrls } = formData;
+  const descriptionLength = countTextCharacters(description);
+  const titleStrength = getTitleStrength(title);
+  const estimatedViews = calculateEstimatedViews(formData);
+  
+  return (
+    <Card className="mb-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 animate-in fade-in slide-in-from-right duration-700">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <BarChart className="h-5 w-5 text-blue-600" />
+          Live Stats Preview
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between items-center">
+            <span>Title strength:</span>
+            <Badge variant={titleStrength.variant as any}>{titleStrength.label}</Badge>
+          </div>
+          <div className="flex justify-between">
+            <span>Description:</span>
+            <span className="text-muted-foreground">{descriptionLength}/2000 chars</span>
+          </div>
+          <div className="flex justify-between">
+            <span>Images added:</span>
+            <span className="text-muted-foreground">{imageUrls.length}/5</span>
+          </div>
+          <div className="flex justify-between pt-2 border-t">
+            <span className="text-blue-600 dark:text-blue-400 font-medium">Estimated views:</span>
+            <span className="text-blue-600 dark:text-blue-400 font-bold">~{estimatedViews} this week</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Top Performing EAs Card Component
+function TopPerformingEAsCard() {
+  const { data: topSellers, isLoading } = useQuery({
+    queryKey: ['/api/content/top-sellers'],
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+  
+  const topEAs = (topSellers as any)?.slice(0, 2) || [];
+  
+  return (
+    <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 animate-in fade-in slide-in-from-right duration-1000">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Trophy className="h-5 w-5 text-amber-600" />
+          Top Performing EAs This Week
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2].map((i) => (
+              <div key={i} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-gray-800/50 animate-pulse">
+                <div className="w-12 h-12 rounded bg-muted" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted rounded w-3/4" />
+                  <div className="h-3 bg-muted rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : topEAs.length > 0 ? (
+          <>
+            <div className="space-y-3">
+              {topEAs.map((ea: any, index: number) => (
+                <div key={index} className="flex items-start gap-3 p-2 rounded-lg bg-white/50 dark:bg-gray-800/50 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-colors">
+                  <div className="w-12 h-12 rounded overflow-hidden flex-shrink-0 bg-muted">
+                    {ea.imageUrls?.[0] ? (
+                      <img 
+                        src={ea.imageUrls[0]} 
+                        alt={ea.title} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                        <ImageIcon className="h-6 w-6" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{ea.title}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="secondary" className="text-xs">{ea.priceCoins || 0} ₡</Badge>
+                      <span className="text-xs text-muted-foreground">{ea.salesCount || 0} sales</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-3 italic">
+              💡 This is what success looks like!
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No top sellers available yet
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 interface ProTipsProps {
@@ -1149,9 +1491,9 @@ export default function PublishEAFormClient() {
   return (
     <>
       <Header />
-      <main className="min-h-screen bg-gradient-to-br from-background to-muted/20">
-        <div className="container max-w-4xl mx-auto px-4 py-8">
-          {/* Header */}
+      <main className="min-h-screen bg-gradient-to-br from-background to-muted/20 pb-20 lg:pb-8">
+        {/* Page Header */}
+        <div className="container max-w-7xl mx-auto px-4 py-8">
           <div className="mb-8">
             <Link href="/publish-ea">
               <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
@@ -1168,22 +1510,29 @@ export default function PublishEAFormClient() {
           </div>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Progress Tracker */}
-              <ProgressTracker
-                formData={{
-                  title,
-                  tags,
-                  description,
-                  priceCoins,
-                  eaFileUrl,
-                  imageUrls,
-                  primaryKeyword: seoData?.primaryKeyword || "",
-                  seoExcerpt: seoData?.seoExcerpt || ""
-                }}
-              />
+            <form onSubmit={form.handleSubmit(onSubmit)}>
+              {/* 3-Column Grid Layout */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* LEFT SIDEBAR - Publishing Progress Panel */}
+                <aside className="hidden lg:block lg:col-span-3">
+                  <div className="sticky top-20">
+                    <PublishingProgressPanel
+                      formData={{
+                        title,
+                        tags,
+                        description,
+                        priceCoins,
+                        eaFileUrl,
+                        imageUrls,
+                        primaryKeyword: seoData?.primaryKeyword || ""
+                      }}
+                    />
+                  </div>
+                </aside>
 
-              <Tabs defaultValue="details" className="w-full">
+                {/* MAIN FORM CONTENT */}
+                <div className="lg:col-span-6">
+                  <Tabs defaultValue="details" className="w-full">
                 <TabsList className="grid w-full grid-cols-3">
                   <TabsTrigger value="details">EA Details</TabsTrigger>
                   <TabsTrigger value="files">Files & Media</TabsTrigger>
@@ -1817,80 +2166,138 @@ export default function PublishEAFormClient() {
                     </div>
                   </div>
                 </TabsContent>
-              </Tabs>
+                  </Tabs>
 
-              {/* Submit Buttons */}
-              <Card>
-                <CardContent className="pt-6 flex gap-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => setShowPreview(!showPreview)}
-                    data-testid="button-toggle-preview"
-                  >
-                    <Eye className="h-4 w-4 mr-2" />
-                    {showPreview ? "Hide" : "Show"} Preview
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1"
-                    disabled={publishMutation.isPending || !eaFileUrl}
-                    data-testid="button-publish-ea"
-                  >
-                    {publishMutation.isPending ? (
-                      <>
-                        <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
-                        Publishing...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Publish EA
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Preview Section */}
-              {showPreview && title && description && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Preview</CardTitle>
-                    <CardDescription>
-                      This is how your EA will appear to users
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="border rounded-lg p-6 space-y-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <h2 className="text-2xl font-bold mb-2">{title}</h2>
-                          {customCategory && <Badge>{customCategory}</Badge>}
-                        </div>
-                        <Badge variant="default" className="text-lg px-4 py-2">
-                          {priceCoins} ₡
-                        </Badge>
-                      </div>
-                      
-                      {imageUrls.length > 0 && (
-                        <img
-                          src={imageUrls[0]}
-                          alt={title}
-                          className="w-full aspect-video object-cover rounded-lg"
-                        />
-                      )}
-                      
-                      <p className="text-muted-foreground whitespace-pre-wrap">{description}</p>
-                      
-                      <Button className="w-full" size="lg" disabled>
-                        Download for {priceCoins} ₡
+                  {/* Submit Buttons */}
+                  <Card className="mt-6">
+                    <CardContent className="pt-6 flex gap-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1"
+                        onClick={() => setShowPreview(!showPreview)}
+                        data-testid="button-toggle-preview"
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        {showPreview ? "Hide" : "Show"} Preview
                       </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                      <Button
+                        type="submit"
+                        className="flex-1"
+                        disabled={publishMutation.isPending || !eaFileUrl}
+                        data-testid="button-publish-ea"
+                      >
+                        {publishMutation.isPending ? (
+                          <>
+                            <div className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
+                            Publishing...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Publish EA
+                          </>
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Preview Section */}
+                  {showPreview && title && description && (
+                    <Card className="mt-6">
+                      <CardHeader>
+                        <CardTitle>Preview</CardTitle>
+                        <CardDescription>
+                          This is how your EA will appear to users
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="border rounded-lg p-6 space-y-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <h2 className="text-2xl font-bold mb-2">{title}</h2>
+                              {customCategory && <Badge>{customCategory}</Badge>}
+                            </div>
+                            <Badge variant="default" className="text-lg px-4 py-2">
+                              {priceCoins} ₡
+                            </Badge>
+                          </div>
+                          
+                          {imageUrls.length > 0 && (
+                            <img
+                              src={imageUrls[0]}
+                              alt={title}
+                              className="w-full aspect-video object-cover rounded-lg"
+                            />
+                          )}
+                          
+                          <p className="text-muted-foreground whitespace-pre-wrap">{description}</p>
+                          
+                          <Button className="w-full" size="lg" disabled>
+                            Download for {priceCoins} ₡
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+
+                {/* RIGHT SIDEBAR - Engagement Panel */}
+                <aside className="hidden lg:block lg:col-span-3">
+                  <div className="sticky top-20 space-y-4">
+                    <QuickTipsCard />
+                    <LiveStatsCard
+                      formData={{
+                        title,
+                        tags,
+                        description,
+                        priceCoins,
+                        imageUrls
+                      }}
+                    />
+                    <TopPerformingEAsCard />
+                  </div>
+                </aside>
+              </div>
+
+              {/* MOBILE: Bottom Progress Bar */}
+              <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t p-4 z-40 shadow-lg">
+                <div className="flex items-center gap-3">
+                  <Progress 
+                    value={(() => {
+                      const descriptionLength = countTextCharacters(description);
+                      const checks = [
+                        title.length >= 30 && title.length <= 60,
+                        tags.length >= 1 && tags.length <= 5,
+                        descriptionLength >= 200 && descriptionLength <= 2000,
+                        eaFileUrl.length > 0,
+                        imageUrls.length >= 1,
+                        priceCoins >= 20,
+                        (seoData?.primaryKeyword || "").length > 0
+                      ];
+                      const completedCount = checks.filter(Boolean).length;
+                      return Math.round((completedCount / 7) * 100);
+                    })()} 
+                    className="flex-1" 
+                  />
+                  <span className="text-sm font-medium whitespace-nowrap">
+                    {(() => {
+                      const descriptionLength = countTextCharacters(description);
+                      const checks = [
+                        title.length >= 30 && title.length <= 60,
+                        tags.length >= 1 && tags.length <= 5,
+                        descriptionLength >= 200 && descriptionLength <= 2000,
+                        eaFileUrl.length > 0,
+                        imageUrls.length >= 1,
+                        priceCoins >= 20,
+                        (seoData?.primaryKeyword || "").length > 0
+                      ];
+                      const completedCount = checks.filter(Boolean).length;
+                      return Math.round((completedCount / 7) * 100);
+                    })()}%
+                  </span>
+                </div>
+              </div>
             </form>
           </Form>
         </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +37,7 @@ interface TopSellersResponse {
   lastUpdated: string;
 }
 
-export default function TopSellers() {
+function TopSellers() {
   const { data, isLoading, refetch } = useQuery<TopSellersResponse>({
     queryKey: ["/api/content/top-sellers"],
     staleTime: 5 * 60 * 1000, // 5 minutes, no auto-refresh for performance
@@ -160,3 +161,5 @@ export default function TopSellers() {
     </Card>
   );
 }
+
+export default memo(TopSellers);

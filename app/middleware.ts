@@ -1,56 +1,129 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-/**
- * Geo-locale detection via edge headers (FEATURE-FLAGGED OFF).
- * 
- * Set GEOLOCALE_ENABLED='true' in environment to enable automatic redirects.
- * 
- * Reads x-vercel-ip-country / cf-ipcountry / CloudFront-Viewer-Country to map -> locale.
- * If user has `prefLocale` cookie, it always wins (respect manual choice).
- */
-const COUNTRY_TO_LOCALE: Record<string, string> = {
-  CN: 'zh', HK: 'zh', TW: 'zh',
-  IN: 'hi',
-  RU: 'ru',
-  BR: 'pt',
-  ES: 'es', MX: 'es', AR: 'es', CL: 'es',
-  FR: 'fr', DE: 'de', IT: 'it',
-  US: 'en', GB: 'en', CA: 'en', AU: 'en', SG: 'en'
-};
+// Note: Import directly from server files - Next.js middleware runs in Edge runtime
+// We'll fetch controls via API instead
+async function getPageControls(request: NextRequest): Promise<any[] | null> {
+  try {
+    // Use request URL to construct API endpoint (works in all environments)
+    const apiUrl = new URL('/api/public/page-controls', request.url);
+    const response = await fetch(apiUrl, {
+      next: { revalidate: 60 }, // Use Next.js cache with 60s revalidation
+    });
+    
+    if (!response.ok) {
+      console.error('[Middleware] Failed to fetch page controls:', response.statusText);
+      return null; // Fail closed - will trigger fail-safe behavior
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('[Middleware] Error fetching page controls - failing closed:', error);
+    return null; // Fail closed - will trigger fail-safe behavior
+  }
+}
 
-export function middleware(req: NextRequest) {
-  const enabled = process.env.GEOLOCALE_ENABLED === 'true';
-  if (!enabled) return NextResponse.next();
+function matchRoute(pathname: string, controls: any[]) {
+  for (const control of controls) {
+    if (control.status === 'live') continue;
 
-  const url = req.nextUrl;
-  const cookiePref = req.cookies.get('prefLocale')?.value;
-  if (cookiePref) return NextResponse.next();
+    const pattern = control.routePattern;
 
-  const country =
-    req.headers.get('x-vercel-ip-country') ||
-    req.headers.get('cf-ipcountry') ||
-    req.headers.get('cloudfront-viewer-country') || '';
+    // Exact match
+    if (pattern === pathname) return control;
 
-  const locale = COUNTRY_TO_LOCALE[country] || 'en';
+    // Wildcard match: /admin/* matches /admin/users
+    if (pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -2);
+      if (pathname.startsWith(prefix + '/')) return control;
+    }
 
-  // If already on localized path (e.g., /zh/...), continue.
-  const pathLocaleMatch = url.pathname.split('/')[1];
-  const supported = new Set(['en','zh','hi','ru','es','pt','fr','de','it']);
-  if (supported.has(pathLocaleMatch)) return NextResponse.next();
+    // Prefix match: /discussions* matches /discussions, /discussions/new
+    if (pattern.endsWith('*') && !pattern.endsWith('/*')) {
+      const prefix = pattern.slice(0, -1);
+      if (pathname.startsWith(prefix)) return control;
+    }
+  }
 
-  // Redirect to locale subpath (e.g., /zh/path). Append original path.
-  const localized = url.clone();
-  localized.pathname = `/${locale}${url.pathname}`;
-  const res = NextResponse.redirect(localized, 307);
-  // Set a short-lived cookie so we don't bounce repeatedly.
-  res.cookies.set('prefLocale', locale, { path: '/', maxAge: 60 * 60 * 24 });
-  return res;
+  return null;
+}
+
+export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Skip middleware for specific paths
+  if (
+    pathname.startsWith('/_next') || // Next.js internals
+    pathname.startsWith('/api') || // API routes
+    pathname.startsWith('/static') || // Static files
+    pathname === '/coming-soon' || // Don't redirect coming-soon page itself
+    pathname === '/maintenance' || // Don't redirect maintenance page itself
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff|woff2|ttf|eot|webp|gif)$/) // File extensions
+  ) {
+    return NextResponse.next();
+  }
+
+  // Fetch page controls
+  const controls = await getPageControls(request);
+  
+  // Fail-safe: If controls cannot be fetched, show maintenance page (fail closed)
+  if (controls === null) {
+    console.log(`[Middleware] Failed to fetch controls - showing maintenance page for ${pathname}`);
+    const url = request.nextUrl.clone();
+    url.pathname = '/maintenance';
+    
+    const response = NextResponse.rewrite(url);
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    response.headers.set('Retry-After', '300'); // 5 minutes
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return response;
+  }
+  
+  const control = matchRoute(pathname, controls);
+
+  if (!control) {
+    return NextResponse.next(); // No control, page is live
+  }
+
+  // Check admin bypass cookie (optional)
+  const isAdmin = request.cookies.get('admin_bypass')?.value === 'true';
+  if (isAdmin && control.metadata?.allowAdminBypass) {
+    console.log(`[Middleware] Admin bypass enabled for ${pathname}`);
+    return NextResponse.next();
+  }
+
+  // Redirect to coming soon page
+  if (control.status === 'coming_soon') {
+    console.log(`[Middleware] Redirecting ${pathname} to coming-soon`);
+    const url = request.nextUrl.clone();
+    url.pathname = '/coming-soon';
+    
+    return NextResponse.rewrite(url, {
+      headers: {
+        'X-Robots-Tag': 'noindex, nofollow',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
+  }
+
+  // Redirect to maintenance page
+  if (control.status === 'maintenance') {
+    console.log(`[Middleware] Redirecting ${pathname} to maintenance`);
+    const url = request.nextUrl.clone();
+    url.pathname = '/maintenance';
+    
+    const response = NextResponse.rewrite(url);
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+    response.headers.set('Retry-After', '3600'); // 1 hour
+    response.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    
+    // Note: Cannot set status to 503 with rewrite, but headers will indicate maintenance
+    return response;
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    // apply to all content pages, skip assets and api
-    '/((?!_next|api|favicon.ico|robots.txt|sitemap.xml|sitemaps).*)',
-  ],
+  matcher: '/((?!_next/static|_next/image|favicon.ico).*)',
 };

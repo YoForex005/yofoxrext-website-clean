@@ -1233,6 +1233,34 @@ export const ipBans = pgTable("ip_bans", {
   expiresAtIdx: index("idx_ip_bans_expires_at").on(table.expiresAt),
 }));
 
+// 7.5. Page Controls - Admin page availability control system
+export const pageControls = pgTable("page_controls", {
+  id: serial("id").primaryKey(),
+  routePattern: varchar("route_pattern", { length: 255 }).notNull().unique(),
+  status: varchar("status", { length: 20 })
+    .notNull()
+    .default("live")
+    .$type<"live" | "coming_soon" | "maintenance">(),
+  title: varchar("title", { length: 255 }),
+  message: text("message"),
+  scheduledLiveDate: timestamp("scheduled_live_date"),
+  estimatedRestoreTime: timestamp("estimated_restore_time"),
+  metadata: jsonb("metadata").$type<{
+    contactEmail?: string;
+    launchDate?: string;
+    customCTA?: string;
+    showCountdown?: boolean;
+    allowAdminBypass?: boolean;
+  }>(),
+  createdBy: varchar("created_by").references(() => users.id),
+  updatedBy: varchar("updated_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  routePatternIdx: index("idx_page_controls_route_pattern").on(table.routePattern),
+  statusIdx: index("idx_page_controls_status").on(table.status),
+}));
+
 // 8. Admin Roles - Admin permission system
 export const adminRoles = pgTable("admin_roles", {
   id: serial("id").primaryKey(),
@@ -2417,6 +2445,11 @@ export type Announcement = typeof announcements.$inferSelect;
 export const insertIpBanSchema = createInsertSchema(ipBans).omit({ id: true, bannedAt: true });
 export type InsertIpBan = z.infer<typeof insertIpBanSchema>;
 export type IpBan = typeof ipBans.$inferSelect;
+
+// 7.5. Page Controls
+export const insertPageControlSchema = createInsertSchema(pageControls).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPageControl = z.infer<typeof insertPageControlSchema>;
+export type PageControl = typeof pageControls.$inferSelect;
 
 // 8. Admin Roles
 export const insertAdminRoleSchema = createInsertSchema(adminRoles).omit({ id: true, grantedAt: true });

@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,7 +40,7 @@ interface HotItemsData {
   lastUpdated: string;
 }
 
-export default function WhatsHot() {
+function WhatsHot() {
   // Fetch hot items on mount, no auto-refresh for performance
   const { data, isLoading, refetch } = useRealtimeUpdates<HotItemsData>('/api/hot?limit=5', { enabled: true, interval: 0 });
 
@@ -243,3 +244,5 @@ export default function WhatsHot() {
     </Card>
   );
 }
+
+export default memo(WhatsHot);

@@ -221,3 +221,28 @@ export const newsletterSubscriptionLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Error tracking rate limiter
+ * 100 requests per 15 minutes per IP
+ * More generous than general API to prevent circular rate-limiting issues
+ * where error tracking itself gets rate-limited, causing more errors
+ */
+export const errorTrackingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // 100 requests per window
+  message: {
+    error: "Error tracking rate limit exceeded. Please slow down error reporting.",
+    retryAfter: "15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipFailedRequests: true, // Don't count failed requests (4xx/5xx) against the limit
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "Error tracking rate limit exceeded from this IP",
+      retryAfter: "15 minutes",
+      circuitBreakerActive: true, // Signal to client to activate circuit breaker
+    });
+  },
+});

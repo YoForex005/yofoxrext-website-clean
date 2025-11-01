@@ -32,11 +32,12 @@ declare module 'http' {
   }
 }
 app.use(express.json({
+  limit: '10mb', // Increased limit for error tracking bulk submissions
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Configure CORS for cross-origin requests with credentials
 // CORS must come AFTER body parsing but can be before or after sessions

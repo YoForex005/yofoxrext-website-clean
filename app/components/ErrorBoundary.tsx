@@ -77,7 +77,9 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = (): void => {
-    window.location.reload();
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
   };
 
   handleDescriptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
@@ -242,7 +244,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => window.history.back()}
+                    onClick={() => typeof window !== 'undefined' && window.history.back()}
                     data-testid="button-go-back"
                   >
                     Go Back
@@ -250,7 +252,7 @@ export class ErrorBoundary extends Component<Props, State> {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => (window.location.href = '/')}
+                    onClick={() => typeof window !== 'undefined' && (window.location.href = '/')}
                     data-testid="button-go-home"
                   >
                     Go to Home
