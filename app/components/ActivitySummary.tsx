@@ -3,9 +3,11 @@
 import { TrendingUp, MessageSquare, Coins, Star } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { withSweetsAccess } from "../../lib/sweetsAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GuestSweetsCTA } from "@/components/coins/GuestSweetsCTA";
 
 interface ActivityStats {
   weeklyPosts: number;
@@ -21,11 +23,17 @@ export default function ActivitySummary() {
 
   const { data: stats, isLoading } = useQuery<ActivityStats>({
     queryKey: ["/api/user/activity-stats", user?.id],
-    enabled: !!user && isAuthenticated,
+    enabled: !!user && isAuthenticated && !user.isBot,
     refetchOnWindowFocus: false,
   });
 
-  if (!isAuthenticated || !user) return null;
+  // Show CTA for non-authenticated users (conversion opportunity)
+  if (!user || !isAuthenticated) {
+    return <GuestSweetsCTA />;
+  }
+
+  // Check if user has access to sweets system (blocks bots and suspended users)
+  if (!withSweetsAccess(user)) return null;
 
   if (isLoading) {
     return (

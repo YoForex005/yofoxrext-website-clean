@@ -13141,10 +13141,32 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // SWEETS ECONOMY SYSTEM - API ROUTES
   // ============================================================================
 
+  // Middleware to protect sweets economy routes from bots and unauthorized access
+  const sweetsAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+    // Check if user is authenticated
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required to access sweets economy" });
+    }
+    
+    const user = req.user as User;
+    
+    // Block bot accounts from accessing sweets system
+    if (user.isBot) {
+      return res.status(403).json({ error: "Bot accounts cannot access the sweets economy" });
+    }
+    
+    // Block suspended/banned users
+    if (user.status === 'suspended' || user.status === 'banned') {
+      return res.status(403).json({ error: "Your account status does not permit access to the sweets economy" });
+    }
+    
+    next();
+  };
+
   // ===== REWARD CATALOG ROUTES =====
   
-  // GET /api/sweets/rewards - Get all active rewards
-  app.get("/api/sweets/rewards", async (req, res) => {
+  // GET /api/sweets/rewards - Get all active rewards (authenticated users only)
+  app.get("/api/sweets/rewards", sweetsAuthMiddleware, async (req, res) => {
     try {
       const rewards = await storage.getAllActiveRewards();
       res.json(rewards);
@@ -13154,8 +13176,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // GET /api/sweets/rewards/:id - Get specific reward
-  app.get("/api/sweets/rewards/:id", async (req, res) => {
+  // GET /api/sweets/rewards/:id - Get specific reward (authenticated users only)
+  app.get("/api/sweets/rewards/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const reward = await storage.getRewardCatalogById(id);
@@ -13172,7 +13194,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/sweets/rewards - Create new reward (admin only)
-  app.post("/api/sweets/rewards", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/rewards", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13196,7 +13218,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // PATCH /api/sweets/rewards/:id - Update reward (admin only)
-  app.patch("/api/sweets/rewards/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/sweets/rewards/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13225,7 +13247,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // DELETE /api/sweets/rewards/:id - Deactivate reward (admin only)
-  app.delete("/api/sweets/rewards/:id", isAuthenticated, async (req, res) => {
+  app.delete("/api/sweets/rewards/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13249,7 +13271,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== REWARD GRANTS ROUTES =====
   
   // GET /api/sweets/grants/me - Get my granted rewards
-  app.get("/api/sweets/grants/me", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/grants/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const grants = await storage.getUserRewardGrants(user.id);
@@ -13261,7 +13283,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/sweets/grants/:id/claim - Claim a granted reward
-  app.post("/api/sweets/grants/:id/claim", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/grants/:id/claim", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const { id } = req.params;
@@ -13293,8 +13315,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   // ===== REDEMPTION OPTIONS ROUTES =====
   
-  // GET /api/sweets/redemptions/options - Get all redemption options
-  app.get("/api/sweets/redemptions/options", async (req, res) => {
+  // GET /api/sweets/redemptions/options - Get all redemption options (authenticated users only)
+  app.get("/api/sweets/redemptions/options", sweetsAuthMiddleware, async (req, res) => {
     try {
       const { category, isActive } = req.query;
       
@@ -13310,8 +13332,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // GET /api/sweets/redemptions/options/:id - Get specific redemption option
-  app.get("/api/sweets/redemptions/options/:id", async (req, res) => {
+  // GET /api/sweets/redemptions/options/:id - Get specific redemption option (authenticated users only)
+  app.get("/api/sweets/redemptions/options/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
       const option = await storage.getRedemptionOptionById(id);
@@ -13328,7 +13350,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/sweets/redemptions/options - Create redemption option (admin only)
-  app.post("/api/sweets/redemptions/options", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/redemptions/options", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13354,7 +13376,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== REDEMPTION ORDERS ROUTES =====
   
   // POST /api/sweets/redemptions/orders - Place redemption order
-  app.post("/api/sweets/redemptions/orders", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/redemptions/orders", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const { optionId, coinAmount } = req.body;
@@ -13403,7 +13425,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/sweets/redemptions/orders/me - Get my redemption orders
-  app.get("/api/sweets/redemptions/orders/me", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/redemptions/orders/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const orders = await storage.getUserRedemptionOrders(user.id);
@@ -13415,7 +13437,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/sweets/redemptions/orders/:id - Get order details
-  app.get("/api/sweets/redemptions/orders/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/redemptions/orders/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const { id } = req.params;
@@ -13435,7 +13457,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // PATCH /api/sweets/redemptions/orders/:id - Update order status (admin only)
-  app.patch("/api/sweets/redemptions/orders/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/sweets/redemptions/orders/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13471,7 +13493,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== BALANCE & TRANSACTIONS ROUTES =====
   
   // GET /api/sweets/balance/me - Get my coin balance
-  app.get("/api/sweets/balance/me", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/balance/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const balance = await storage.getUserCoinBalance(user.id);
@@ -13483,7 +13505,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/sweets/transactions/me - Get my transactions
-  app.get("/api/sweets/transactions/me", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/transactions/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const { limit = '50', offset = '0' } = req.query;
@@ -13502,7 +13524,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/sweets/expirations/me - Get my expiring coins
-  app.get("/api/sweets/expirations/me", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/expirations/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       const { daysAhead = '30' } = req.query;
@@ -13522,7 +13544,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== ADMIN OPERATIONS ROUTES =====
   
   // GET /api/sweets/admin/treasury/snapshot - Get latest treasury snapshot
-  app.get("/api/sweets/admin/treasury/snapshot", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/admin/treasury/snapshot", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13538,7 +13560,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/sweets/admin/treasury/snapshot - Create treasury snapshot
-  app.post("/api/sweets/admin/treasury/snapshot", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/admin/treasury/snapshot", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13562,7 +13584,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/sweets/admin/treasury/adjustment - Create treasury adjustment
-  app.post("/api/sweets/admin/treasury/adjustment", isAuthenticated, async (req, res) => {
+  app.post("/api/sweets/admin/treasury/adjustment", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13586,7 +13608,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/sweets/admin/fraud-signals - Get pending fraud reviews
-  app.get("/api/sweets/admin/fraud-signals", isAuthenticated, async (req, res) => {
+  app.get("/api/sweets/admin/fraud-signals", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {
@@ -13602,7 +13624,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // PATCH /api/sweets/admin/fraud-signals/:id - Update fraud signal status
-  app.patch("/api/sweets/admin/fraud-signals/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/sweets/admin/fraud-signals/:id", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
       if (!isAdmin(user)) {

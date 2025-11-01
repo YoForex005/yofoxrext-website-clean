@@ -68,6 +68,64 @@ YoForex is a comprehensive trading community platform for forex traders, providi
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
+## Recent Changes
+
+### November 1, 2025 - Authentication-Gated Sweets Economy (LATEST)
+
+**Phase 6: Multi-Layer Authentication & Security**
+- Created `lib/sweetsAuth.ts` - Centralized authentication helper:
+  - `withSweetsAccess(user)` - Blocks bots, suspended, and banned users
+  - `getSweetsAuthState(user)` - Returns comprehensive auth state
+- Protected all client-side components with intelligent UX:
+  - `app/components/CoinBalanceWidget.tsx` - Shows GuestSweetsCTA for guests, null for bots
+  - `app/components/ActivitySummary.tsx` - Shows GuestSweetsCTA for guests, null for bots
+  - `app/components/OnboardingRewardsModal.tsx` - Hidden from bots
+  - `app/components/coins/GuestSweetsCTA.tsx` (NEW) - Conversion-optimized CTA for guests
+- Protected all API routes with `sweetsAuthMiddleware` (server/routes.ts):
+  - **23 sweets endpoints** now require authentication (401 for guests, 403 for bots)
+  - Routes: /api/sweets/rewards/*, /grants/*, /redemptions/*, /balance/*, /admin/*
+- **Security Model:**
+  - Double protection: Client checks + Server middleware
+  - No data leakage to unauthorized users
+  - User-specific data only (filtered by userId)
+  - Bots completely blocked from sweets system
+- **UX Optimization:**
+  - Guest users see attractive gradient CTA encouraging sign-up
+  - No blank space in UI - better conversion funnel
+  - Clear value proposition: "Earn Sweets for Your Contributions!"
+
+**Files Modified:**
+- lib/sweetsAuth.ts (NEW)
+- app/components/coins/GuestSweetsCTA.tsx (NEW)
+- app/components/CoinBalanceWidget.tsx (updated with auth guards)
+- app/components/ActivitySummary.tsx (updated with auth guards)
+- app/components/OnboardingRewardsModal.tsx (updated with bot filtering)
+- server/routes.ts (added sweetsAuthMiddleware to 23 routes)
+
+**Status:** ✅ Production-ready. All sweets UI/API protected. Zero TypeScript errors. Server running successfully.
+
+### November 1, 2025 - Comprehensive Sweets Economy System
+
+**Complete virtual currency system with automation, fraud prevention, and bot AI integration.**
+
+**Phase 1-5 Summary:**
+- **Database:** 9 new tables (reward_catalog, reward_grants, redemption_options, redemption_orders, coin_expirations, fraud_signals, treasury_snapshots, treasury_adjustments, bot_wallet_events) + extended coinTransactions with 6 columns
+- **Backend:** 33 storage methods + 22 API endpoints across 5 route groups with Zod validation
+- **Frontend:** 7 components + 2 pages (rewards catalog, my redemptions, balance widget, transaction history, activity summary, redemption modal, onboarding modal)
+- **Bot Economy:** Gemini AI integration for auto-replies (<180 words), auto-like, auto-purchase, wallet cap enforcement (199 coins)
+- **Automation:** 4 critical cron jobs (coin expiration daily 4 AM, fraud detection hourly, treasury snapshot daily 6 AM, balance reconciliation weekly Sunday 3 AM)
+- **Security:** Multi-layer fraud detection, rate limiting, velocity checks, balance reconciliation, dual-approval treasury adjustments
+
+**Business Impact:**
+- Increased retention through onboarding rewards and expiration urgency
+- Fraud prevention via multi-layer detection and auto-pause
+- Treasury security with dual-approval and daily snapshots
+- Natural bot engagement via Gemini AI with wallet caps
+- Automated operations reducing manual admin workload
+- Data integrity through double-entry ledger and weekly reconciliation
+
+**Status:** ✅ All 6 phases complete. Fully operational and production-ready.
+
 ## System Architecture
 
 YoForex uses a hybrid frontend and a robust backend for scalability and performance.

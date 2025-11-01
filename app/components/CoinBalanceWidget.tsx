@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Coins, TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { withSweetsAccess } from "../../lib/sweetsAuth";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import TransactionHistoryDrawer from "./TransactionHistoryDrawer";
+import { GuestSweetsCTA } from "@/components/coins/GuestSweetsCTA";
 
 interface CoinBalanceData {
   balance: number;
@@ -27,12 +29,18 @@ export default function CoinBalanceWidget() {
 
   const { data: balanceData, isLoading } = useQuery<CoinBalanceData>({
     queryKey: ["/api/sweets/balance/me"],
-    enabled: !!user && isAuthenticated,
+    enabled: !!user && isAuthenticated && !user.isBot,
     refetchInterval: 30000, // Poll every 30 seconds
     refetchOnWindowFocus: true,
   });
 
-  if (!isAuthenticated || !user) return null;
+  // Show CTA for non-authenticated users (conversion opportunity)
+  if (!user || !isAuthenticated) {
+    return <GuestSweetsCTA />;
+  }
+
+  // Check if user has access to sweets system (blocks bots and suspended users)
+  if (!withSweetsAccess(user)) return null;
 
   if (isLoading) {
     return (

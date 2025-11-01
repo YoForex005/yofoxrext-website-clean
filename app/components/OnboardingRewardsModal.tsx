@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { CheckCircle, Upload, MessageSquare, Star, Coins, X } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { withSweetsAccess } from "../../lib/sweetsAuth";
 import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
@@ -73,7 +74,7 @@ export default function OnboardingRewardsModal() {
     totalStepsCompleted: number;
   }>({
     queryKey: ["/api/user/onboarding-progress", user?.id],
-    enabled: !!user?.id && isAuthenticated,
+    enabled: !!user?.id && isAuthenticated && !user.isBot,
     refetchOnWindowFocus: false,
   });
 
@@ -106,7 +107,10 @@ export default function OnboardingRewardsModal() {
     setIsDismissed(true);
   };
 
-  if (!isAuthenticated || !progressData) return null;
+  // Check if user has access to sweets system (blocks bots and suspended users)
+  if (!withSweetsAccess(user)) return null;
+  
+  if (!progressData) return null;
 
   const completedSteps = progressData.totalStepsCompleted || 0;
   const progressPercentage = (completedSteps / 3) * 100;
