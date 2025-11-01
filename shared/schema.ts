@@ -135,10 +135,22 @@ export const coinTransactions = pgTable("coin_transactions", {
   status: text("status").notNull().$type<"completed" | "pending" | "failed">().default("completed"),
   botId: varchar("bot_id"), // References bot if transaction was from bot activity (nullable)
   metadata: jsonb("metadata"), // Store additional metadata like isBot flag for admin tracking
+  
+  // SWEETS SYSTEM ENHANCEMENTS
+  channel: varchar("channel", { length: 50 }), // Source: web/mobile/api/bot/admin
+  trigger: varchar("trigger", { length: 100 }), // What triggered: onboarding_step/purchase/referral/admin_grant
+  expiresAt: timestamp("expires_at"), // When these coins expire (for earned coins)
+  reconciledAt: timestamp("reconciled_at"), // When reconciled in balance check
+  reversalOf: varchar("reversal_of"), // Reference to original transaction if this is a reversal
+  
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   userIdIdx: index("idx_coin_transactions_user_id").on(table.userId),
   botIdIdx: index("idx_coin_transactions_bot_id").on(table.botId),
+  channelIdx: index("idx_coin_transactions_channel").on(table.channel),
+  triggerIdx: index("idx_coin_transactions_trigger").on(table.trigger),
+  expiresAtIdx: index("idx_coin_transactions_expires_at").on(table.expiresAt),
+  reconciledAtIdx: index("idx_coin_transactions_reconciled_at").on(table.reconciledAt),
 }));
 
 export const rechargeOrders = pgTable("recharge_orders", {
@@ -3981,3 +3993,333 @@ export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({
 });
 export type InsertBotSettings = z.infer<typeof insertBotSettingsSchema>;
 export type BotSettings = typeof botSettings.$inferSelect;
+
+// ============================================================================
+// SWEETS SYSTEM ENHANCEMENTS - Comprehensive Virtual Currency Management
+// ============================================================================
+
+// 1. Reward Catalog - Define available rewards users can earn
+export const rewardCatalog = pgTable("reward_catalog", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description").notNull(),
+  rewardType: varchar("reward_type", { length: 50 }).notNull().$type<"onboarding" | "daily" | "streak" | "event" | "special">(),
+  coinAmount: integer("coin_amount").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  maxUsesPerUser: integer("max_uses_per_user"), // Null means unlimited
+  totalAvailableQuantity: integer("total_available_quantity"), // Null means unlimited
+  triggerType: varchar("trigger_type", { length: 100 }).$type<"profile_upload" | "first_thread" | "broker_review" | "referral" | "daily_login" | "streak" | "manual">(),
+  validFrom: timestamp("valid_from"),
+  validUntil: timestamp("valid_until"),
+  metadata: jsonb("metadata"), // Additional config like tier requirements, etc.
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  rewardTypeIdx: index("idx_reward_catalog_reward_type").on(table.rewardType),
+  isActiveIdx: index("idx_reward_catalog_is_active").on(table.isActive),
+  triggerTypeIdx: index("idx_reward_catalog_trigger_type").on(table.triggerType),
+}));
+
+export const insertRewardCatalogSchema = createInsertSchema(rewardCatalog).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1).max(200),
+  description: z.string().min(1),
+  rewardType: z.enum(["onboarding", "daily", "streak", "event", "special"]),
+  coinAmount: z.number().int().min(1),
+  isActive: z.boolean().default(true),
+  maxUsesPerUser: z.number().int().min(1).optional(),
+  totalAvailableQuantity: z.number().int().min(1).optional(),
+  triggerType: z.enum(["profile_upload", "first_thread", "broker_review", "referral", "daily_login", "streak", "manual"]).optional(),
+  validFrom: z.date().optional(),
+  validUntil: z.date().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertRewardCatalog = z.infer<typeof insertRewardCatalogSchema>;
+export type RewardCatalog = typeof rewardCatalog.$inferSelect;
+
+// 2. Reward Grants - Track rewards granted to users
+export const rewardGrants = pgTable("reward_grants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rewardId: varchar("reward_id").notNull().references(() => rewardCatalog.id, { onDelete: "cascade" }),
+  ledgerTransactionId: varchar("ledger_transaction_id").references(() => coinLedgerTransactions.id),
+  source: varchar("source", { length: 50 }).notNull().$type<"onboarding" | "daily_login" | "achievement" | "admin_manual" | "streak" | "referral">(),
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"), // When this reward expires if unclaimed
+  claimed: boolean("claimed").notNull().default(false),
+  claimedAt: timestamp("claimed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_reward_grants_user_id").on(table.userId),
+  rewardIdIdx: index("idx_reward_grants_reward_id").on(table.rewardId),
+  grantedAtIdx: index("idx_reward_grants_granted_at").on(table.grantedAt),
+  expiresAtIdx: index("idx_reward_grants_expires_at").on(table.expiresAt),
+}));
+
+export const insertRewardGrantSchema = createInsertSchema(rewardGrants).omit({
+  id: true,
+  createdAt: true,
+  grantedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  rewardId: z.string().uuid(),
+  ledgerTransactionId: z.string().uuid().optional(),
+  source: z.enum(["onboarding", "daily_login", "achievement", "admin_manual", "streak", "referral"]),
+  expiresAt: z.date().optional(),
+  claimed: z.boolean().default(false),
+  claimedAt: z.date().optional(),
+});
+export type InsertRewardGrant = z.infer<typeof insertRewardGrantSchema>;
+export type RewardGrant = typeof rewardGrants.$inferSelect;
+
+// 3. Redemption Options - Items users can redeem with coins
+export const redemptionOptions = pgTable("redemption_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description").notNull(),
+  category: varchar("category", { length: 50 }).notNull().$type<"gift_card" | "premium_feature" | "merchandise" | "donation">(),
+  coinCost: integer("coin_cost").notNull(),
+  stock: integer("stock"), // Null means unlimited
+  isActive: boolean("is_active").notNull().default(true),
+  tierRequirement: integer("tier_requirement"), // Minimum loyalty tier required
+  imageUrl: text("image_url"),
+  termsAndConditions: text("terms_and_conditions"),
+  validFrom: timestamp("valid_from"),
+  validUntil: timestamp("valid_until"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  categoryIdx: index("idx_redemption_options_category").on(table.category),
+  isActiveIdx: index("idx_redemption_options_is_active").on(table.isActive),
+  coinCostIdx: index("idx_redemption_options_coin_cost").on(table.coinCost),
+}));
+
+export const insertRedemptionOptionSchema = createInsertSchema(redemptionOptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1).max(200),
+  description: z.string().min(1),
+  category: z.enum(["gift_card", "premium_feature", "merchandise", "donation"]),
+  coinCost: z.number().int().min(1),
+  stock: z.number().int().min(0).optional(),
+  isActive: z.boolean().default(true),
+  tierRequirement: z.number().int().min(0).optional(),
+  imageUrl: z.string().url().optional(),
+  termsAndConditions: z.string().optional(),
+  validFrom: z.date().optional(),
+  validUntil: z.date().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertRedemptionOption = z.infer<typeof insertRedemptionOptionSchema>;
+export type RedemptionOption = typeof redemptionOptions.$inferSelect;
+
+// 4. Redemption Orders - Track user redemptions
+export const redemptionOrders = pgTable("redemption_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  optionId: varchar("option_id").notNull().references(() => redemptionOptions.id),
+  coinAmount: integer("coin_amount").notNull(),
+  ledgerTransactionId: varchar("ledger_transaction_id").references(() => coinLedgerTransactions.id),
+  status: varchar("status", { length: 20 }).notNull().$type<"pending" | "processing" | "fulfilled" | "cancelled" | "expired">().default("pending"),
+  redemptionCode: varchar("redemption_code", { length: 100 }), // Unique code for redemption
+  fulfilledAt: timestamp("fulfilled_at"),
+  fulfilledBy: varchar("fulfilled_by").references(() => users.id), // Admin who fulfilled
+  cancellationReason: text("cancellation_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_redemption_orders_user_id").on(table.userId),
+  statusIdx: index("idx_redemption_orders_status").on(table.status),
+  createdAtIdx: index("idx_redemption_orders_created_at").on(table.createdAt),
+}));
+
+export const insertRedemptionOrderSchema = createInsertSchema(redemptionOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  optionId: z.string().uuid(),
+  coinAmount: z.number().int().min(1),
+  ledgerTransactionId: z.string().uuid().optional(),
+  status: z.enum(["pending", "processing", "fulfilled", "cancelled", "expired"]).default("pending"),
+  redemptionCode: z.string().max(100).optional(),
+  fulfilledAt: z.date().optional(),
+  fulfilledBy: z.string().uuid().optional(),
+  cancellationReason: z.string().optional(),
+});
+export type InsertRedemptionOrder = z.infer<typeof insertRedemptionOrderSchema>;
+export type RedemptionOrder = typeof redemptionOrders.$inferSelect;
+
+// 5. Coin Expirations - Track coin expiration lifecycle
+export const coinExpirations = pgTable("coin_expirations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  transactionId: varchar("transaction_id").notNull().references(() => coinTransactions.id),
+  originalAmount: integer("original_amount").notNull(),
+  expiredAmount: integer("expired_amount").notNull(),
+  scheduledExpiryDate: timestamp("scheduled_expiry_date").notNull(),
+  actualExpiredAt: timestamp("actual_expired_at"),
+  status: varchar("status", { length: 20 }).notNull().$type<"pending" | "processed" | "cancelled">().default("pending"),
+  notificationSent: boolean("notification_sent").notNull().default(false),
+  notificationSentAt: timestamp("notification_sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_coin_expirations_user_id").on(table.userId),
+  scheduledExpiryDateIdx: index("idx_coin_expirations_scheduled_expiry_date").on(table.scheduledExpiryDate),
+  statusIdx: index("idx_coin_expirations_status").on(table.status),
+}));
+
+export const insertCoinExpirationSchema = createInsertSchema(coinExpirations).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  transactionId: z.string().uuid(),
+  originalAmount: z.number().int().min(1),
+  expiredAmount: z.number().int().min(0),
+  scheduledExpiryDate: z.date(),
+  actualExpiredAt: z.date().optional(),
+  status: z.enum(["pending", "processed", "cancelled"]).default("pending"),
+  notificationSent: z.boolean().default(false),
+  notificationSentAt: z.date().optional(),
+});
+export type InsertCoinExpiration = z.infer<typeof insertCoinExpirationSchema>;
+export type CoinExpiration = typeof coinExpirations.$inferSelect;
+
+// 6. Fraud Signals - Track suspicious activity
+export const fraudSignals = pgTable("fraud_signals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  signalType: varchar("signal_type", { length: 50 }).notNull().$type<"rate_limit_breach" | "velocity_anomaly" | "duplicate_device" | "suspicious_pattern">(),
+  severity: varchar("severity", { length: 20 }).notNull().$type<"low" | "medium" | "high" | "critical">(),
+  details: jsonb("details").notNull(), // IP, device fingerprint, action counts, etc.
+  reviewStatus: varchar("review_status", { length: 20 }).notNull().$type<"pending" | "reviewed" | "false_positive" | "confirmed">().default("pending"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id), // Admin who reviewed
+  reviewedAt: timestamp("reviewed_at"),
+  detectedAt: timestamp("detected_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+  metadata: jsonb("metadata"),
+}, (table) => ({
+  userIdIdx: index("idx_fraud_signals_user_id").on(table.userId),
+  signalTypeIdx: index("idx_fraud_signals_signal_type").on(table.signalType),
+  severityIdx: index("idx_fraud_signals_severity").on(table.severity),
+  reviewStatusIdx: index("idx_fraud_signals_review_status").on(table.reviewStatus),
+  detectedAtIdx: index("idx_fraud_signals_detected_at").on(table.detectedAt),
+}));
+
+export const insertFraudSignalSchema = createInsertSchema(fraudSignals).omit({
+  id: true,
+  detectedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  signalType: z.enum(["rate_limit_breach", "velocity_anomaly", "duplicate_device", "suspicious_pattern"]),
+  severity: z.enum(["low", "medium", "high", "critical"]),
+  details: z.record(z.any()),
+  reviewStatus: z.enum(["pending", "reviewed", "false_positive", "confirmed"]).default("pending"),
+  reviewedBy: z.string().uuid().optional(),
+  reviewedAt: z.date().optional(),
+  resolvedAt: z.date().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertFraudSignal = z.infer<typeof insertFraudSignalSchema>;
+export type FraudSignal = typeof fraudSignals.$inferSelect;
+
+// 7. Treasury Snapshots - Daily treasury state for auditing
+export const treasurySnapshots = pgTable("treasury_snapshots", {
+  id: serial("id").primaryKey(),
+  snapshotDate: date("snapshot_date").notNull().unique(),
+  totalBalance: integer("total_balance").notNull(),
+  botTreasuryBalance: integer("bot_treasury_balance").notNull(),
+  userBalancesTotal: integer("user_balances_total").notNull(),
+  pendingRedemptions: integer("pending_redemptions").notNull(),
+  expiredCoinsTotal: integer("expired_coins_total").notNull(),
+  metadata: jsonb("metadata"), // Additional metrics like active users, etc.
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  snapshotDateIdx: index("idx_treasury_snapshots_snapshot_date").on(table.snapshotDate),
+}));
+
+export const insertTreasurySnapshotSchema = createInsertSchema(treasurySnapshots).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  snapshotDate: z.date(),
+  totalBalance: z.number().int().min(0),
+  botTreasuryBalance: z.number().int().min(0),
+  userBalancesTotal: z.number().int().min(0),
+  pendingRedemptions: z.number().int().min(0),
+  expiredCoinsTotal: z.number().int().min(0),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertTreasurySnapshot = z.infer<typeof insertTreasurySnapshotSchema>;
+export type TreasurySnapshot = typeof treasurySnapshots.$inferSelect;
+
+// 8. Treasury Adjustments - Manual treasury corrections/audits
+export const treasuryAdjustments = pgTable("treasury_adjustments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adjustmentType: varchar("adjustment_type", { length: 20 }).notNull().$type<"add" | "remove" | "correction" | "audit">(),
+  amount: integer("amount").notNull(),
+  reason: text("reason").notNull(),
+  approvedBy: varchar("approved_by").notNull().references(() => users.id),
+  secondApprover: varchar("second_approver").references(() => users.id), // For large adjustments
+  ledgerTransactionId: varchar("ledger_transaction_id").references(() => coinLedgerTransactions.id),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  adjustmentTypeIdx: index("idx_treasury_adjustments_adjustment_type").on(table.adjustmentType),
+  createdAtIdx: index("idx_treasury_adjustments_created_at").on(table.createdAt),
+}));
+
+export const insertTreasuryAdjustmentSchema = createInsertSchema(treasuryAdjustments).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  adjustmentType: z.enum(["add", "remove", "correction", "audit"]),
+  amount: z.number().int().min(1),
+  reason: z.string().min(10),
+  approvedBy: z.string().uuid(),
+  secondApprover: z.string().uuid().optional(),
+  ledgerTransactionId: z.string().uuid().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertTreasuryAdjustment = z.infer<typeof insertTreasuryAdjustmentSchema>;
+export type TreasuryAdjustment = typeof treasuryAdjustments.$inferSelect;
+
+// 9. Bot Wallet Events - Track all bot economy transactions
+export const botWalletEvents = pgTable("bot_wallet_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  botId: varchar("bot_id").notNull().references(() => bots.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 20 }).notNull().$type<"purchase" | "like" | "follow" | "comment" | "refund">(),
+  coinAmount: integer("coin_amount").notNull(),
+  targetType: varchar("target_type", { length: 20 }).notNull().$type<"ea" | "thread" | "reply" | "user">(),
+  targetId: varchar("target_id").notNull(),
+  ledgerTransactionId: varchar("ledger_transaction_id").references(() => coinLedgerTransactions.id),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  botIdIdx: index("idx_bot_wallet_events_bot_id").on(table.botId),
+  eventTypeIdx: index("idx_bot_wallet_events_event_type").on(table.eventType),
+  createdAtIdx: index("idx_bot_wallet_events_created_at").on(table.createdAt),
+}));
+
+export const insertBotWalletEventSchema = createInsertSchema(botWalletEvents).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  botId: z.string().uuid(),
+  eventType: z.enum(["purchase", "like", "follow", "comment", "refund"]),
+  coinAmount: z.number().int().min(0),
+  targetType: z.enum(["ea", "thread", "reply", "user"]),
+  targetId: z.string().uuid(),
+  ledgerTransactionId: z.string().uuid().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertBotWalletEvent = z.infer<typeof insertBotWalletEventSchema>;
+export type BotWalletEvent = typeof botWalletEvents.$inferSelect;
