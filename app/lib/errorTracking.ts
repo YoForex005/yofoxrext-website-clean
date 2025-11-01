@@ -369,12 +369,19 @@ export class ErrorTracker {
       },
     };
 
+    // Determine severity based on status code and endpoint
+    const severity = this.determineErrorSeverity(status, url);
+    
     // Log to console for immediate debugging
-    console.error('[API Error]', {
+    // Use different console methods based on severity
+    const logMethod = severity === 'critical' || severity === 'error' ? 'error' : 
+                     severity === 'warning' ? 'warn' : 'info';
+    console[logMethod]('[API Error]', {
       message,
       url,
       method,
       status,
+      severity,
       actualError: actualErrorMessage,
       response: parsedError || responseText?.substring(0, 200),
       route: this.getCurrentRoute(),
@@ -385,7 +392,7 @@ export class ErrorTracker {
       fingerprint: this.generateFingerprint(message, 'api', url),
       message,
       component: 'api',
-      severity: status >= 500 ? 'critical' : 'error',
+      severity,
       stackTrace: new Error().stack,
       context: errorContext,
       browserInfo: this.getBrowserInfo(),
@@ -406,6 +413,50 @@ export class ErrorTracker {
     // Try to extract React component name from stack trace
     const componentMatch = stackTrace.match(/at (\w+) \(.*\.(jsx?|tsx?):/);
     return componentMatch?.[1];
+  }
+
+  /**
+   * Check if a 401 error is expected for a given endpoint
+   * These endpoints commonly return 401 for unauthenticated users as part of normal flow
+   */
+  private isExpected401Endpoint(url: string): boolean {
+    const whitelistedPatterns = [
+      '/api/me',           // Checks if user is logged in
+      '/api/auth/',        // Authentication endpoints
+      '/api/user/',        // User-specific endpoints when not logged in
+    ];
+    
+    return whitelistedPatterns.some(pattern => url.includes(pattern));
+  }
+
+  /**
+   * Determine error severity based on HTTP status code and endpoint
+   * 
+   * Severity rules:
+   * - 5xx errors: "critical" - Server errors that need immediate attention
+   * - 429 errors: "warning" - Rate limiting, expected under high load
+   * - 401 errors: "info" - Expected for unauthenticated requests (checking login state)
+   * - Other 4xx errors: "error" - Client errors that may need investigation
+   */
+  private determineErrorSeverity(status: number, url: string): 'critical' | 'error' | 'warning' | 'info' {
+    // 5xx errors are critical server errors
+    if (status >= 500) {
+      return 'critical';
+    }
+    
+    // 429 (rate limit) is a warning - expected under high load
+    if (status === 429) {
+      return 'warning';
+    }
+    
+    // 401 errors are typically expected when checking authentication state
+    // Log as "info" since this is normal behavior for unauthenticated users
+    if (status === 401) {
+      return 'info';
+    }
+    
+    // All other 4xx errors are client errors
+    return 'error';
   }
 
   private queueError(errorEvent: ErrorEvent): void {
