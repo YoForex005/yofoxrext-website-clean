@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { adminTreasury, botEconomySettings, users, coinTransactions } from '../../shared/schema.js';
+import { botTreasury as adminTreasury, botSettings as botEconomySettings, users, coinTransactions } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 
 /**
