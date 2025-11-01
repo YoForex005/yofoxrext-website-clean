@@ -6157,6 +6157,291 @@ export class MemStorage implements IStorage {
       recentScans: []
     };
   }
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - MemStorage Stub Implementations
+  // ============================================================================
+
+  // Bot Profile Management
+  async getBotById(id: string): Promise<Bot | null> {
+    return this.botsMap.get(id) || null;
+  }
+
+  async getAllBots(filters?: { isActive?: boolean; squad?: string; purpose?: string }): Promise<Bot[]> {
+    let bots = Array.from(this.botsMap.values());
+    
+    if (filters?.isActive !== undefined) {
+      bots = bots.filter(bot => bot.isActive === filters.isActive);
+    }
+    if (filters?.squad) {
+      bots = bots.filter(bot => bot.squad === filters.squad);
+    }
+    if (filters?.purpose) {
+      bots = bots.filter(bot => bot.purpose === filters.purpose);
+    }
+    
+    return bots;
+  }
+
+  async createBot(bot: InsertBot): Promise<Bot> {
+    const newBot: Bot = {
+      id: randomUUID(),
+      ...bot,
+      isBot: true,
+      joinDate: new Date(),
+      lastActiveAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.botsMap.set(newBot.id, newBot);
+    return newBot;
+  }
+
+  async updateBot(id: string, updates: Partial<InsertBot>): Promise<Bot> {
+    const bot = this.botsMap.get(id);
+    if (!bot) throw new Error('Bot not found');
+    
+    const updatedBot = { ...bot, ...updates, updatedAt: new Date() };
+    this.botsMap.set(id, updatedBot);
+    return updatedBot;
+  }
+
+  async deleteBot(id: string): Promise<void> {
+    this.botsMap.delete(id);
+  }
+
+  async toggleBotStatus(id: string, isActive: boolean): Promise<Bot> {
+    return this.updateBot(id, { isActive });
+  }
+
+  // Bot Actions
+  async recordBotAction(action: InsertBotAction): Promise<BotAction> {
+    const newAction: BotAction = {
+      id: randomUUID(),
+      ...action,
+      createdAt: new Date(),
+    };
+    this.botActionsMap.set(newAction.id, newAction);
+    return newAction;
+  }
+
+  async getBotActions(botId: string, limit: number = 100): Promise<BotAction[]> {
+    const actions = Array.from(this.botActionsMap.values())
+      .filter(action => action.botId === botId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+    return actions;
+  }
+
+  async getBotActionsByType(actionType: string, limit: number = 100): Promise<BotAction[]> {
+    const actions = Array.from(this.botActionsMap.values())
+      .filter(action => action.actionType === actionType)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+    return actions;
+  }
+
+  async getUnrefundedActions(): Promise<BotAction[]> {
+    return Array.from(this.botActionsMap.values())
+      .filter(action => !action.wasRefunded && action.coinCost > 0);
+  }
+
+  async markActionAsRefunded(actionId: string): Promise<void> {
+    const action = this.botActionsMap.get(actionId);
+    if (action) {
+      action.wasRefunded = true;
+      action.refundedAt = new Date();
+      this.botActionsMap.set(actionId, action);
+    }
+  }
+
+  // Bot Treasury
+  async getTreasury(): Promise<BotTreasury | null> {
+    const treasury = this.botTreasuryMap.get(1);
+    return treasury || null;
+  }
+
+  async deductFromTreasury(amount: number): Promise<BotTreasury> {
+    let treasury = this.botTreasuryMap.get(1);
+    if (!treasury) {
+      treasury = {
+        id: 1,
+        balance: 10000,
+        dailySpendLimit: 500,
+        todaySpent: 0,
+        lastResetAt: new Date(),
+        totalSpent: 0,
+        totalRefunded: 0,
+        updatedAt: new Date(),
+      };
+    }
+    
+    treasury.balance -= amount;
+    treasury.todaySpent += amount;
+    treasury.totalSpent += amount;
+    treasury.updatedAt = new Date();
+    this.botTreasuryMap.set(1, treasury);
+    return treasury;
+  }
+
+  async refillTreasury(amount: number): Promise<BotTreasury> {
+    let treasury = this.botTreasuryMap.get(1);
+    if (!treasury) {
+      treasury = {
+        id: 1,
+        balance: 10000,
+        dailySpendLimit: 500,
+        todaySpent: 0,
+        lastResetAt: new Date(),
+        totalSpent: 0,
+        totalRefunded: 0,
+        updatedAt: new Date(),
+      };
+    }
+    
+    treasury.balance += amount;
+    treasury.totalRefunded += amount;
+    treasury.updatedAt = new Date();
+    this.botTreasuryMap.set(1, treasury);
+    return treasury;
+  }
+
+  async resetDailySpend(): Promise<BotTreasury> {
+    let treasury = this.botTreasuryMap.get(1);
+    if (!treasury) {
+      treasury = {
+        id: 1,
+        balance: 10000,
+        dailySpendLimit: 500,
+        todaySpent: 0,
+        lastResetAt: new Date(),
+        totalSpent: 0,
+        totalRefunded: 0,
+        updatedAt: new Date(),
+      };
+    }
+    
+    treasury.todaySpent = 0;
+    treasury.lastResetAt = new Date();
+    treasury.updatedAt = new Date();
+    this.botTreasuryMap.set(1, treasury);
+    return treasury;
+  }
+
+  async getTreasuryBalance(): Promise<number> {
+    const treasury = this.botTreasuryMap.get(1);
+    return treasury?.balance || 0;
+  }
+
+  // Bot Refunds
+  async scheduleRefund(refund: InsertBotRefund): Promise<BotRefund> {
+    const newRefund: BotRefund = {
+      id: randomUUID(),
+      ...refund,
+      createdAt: new Date(),
+    };
+    this.botRefundsMap.set(newRefund.id, newRefund);
+    return newRefund;
+  }
+
+  async getPendingRefunds(beforeTime?: Date): Promise<BotRefund[]> {
+    const refunds = Array.from(this.botRefundsMap.values())
+      .filter(refund => refund.status === 'pending');
+    
+    if (beforeTime) {
+      return refunds.filter(refund => refund.scheduledFor <= beforeTime);
+    }
+    
+    return refunds;
+  }
+
+  async markRefundAsProcessed(refundId: string, error?: string): Promise<BotRefund> {
+    const refund = this.botRefundsMap.get(refundId);
+    if (!refund) throw new Error('Refund not found');
+    
+    refund.status = error ? 'failed' : 'completed';
+    refund.processedAt = new Date();
+    refund.error = error || null;
+    this.botRefundsMap.set(refundId, refund);
+    return refund;
+  }
+
+  // Bot Audit Log
+  async logBotAction(log: InsertBotAuditLog): Promise<BotAuditLog> {
+    const newLog: BotAuditLog = {
+      id: randomUUID(),
+      ...log,
+      createdAt: new Date(),
+    };
+    this.botAuditLogMap.set(newLog.id, newLog);
+    return newLog;
+  }
+
+  async getAuditLogs(filters?: { adminId?: string; actionType?: string; limit?: number }): Promise<BotAuditLog[]> {
+    let logs = Array.from(this.botAuditLogMap.values());
+    
+    if (filters?.adminId) {
+      logs = logs.filter(log => log.adminId === filters.adminId);
+    }
+    if (filters?.actionType) {
+      logs = logs.filter(log => log.actionType === filters.actionType);
+    }
+    
+    logs = logs.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    if (filters?.limit) {
+      logs = logs.slice(0, filters.limit);
+    }
+    
+    return logs;
+  }
+
+  async undoAuditAction(logId: string, undoneBy: string): Promise<BotAuditLog> {
+    const log = this.botAuditLogMap.get(logId);
+    if (!log) throw new Error('Audit log not found');
+    
+    log.isUndone = true;
+    log.undoneBy = undoneBy;
+    log.undoneAt = new Date();
+    this.botAuditLogMap.set(logId, log);
+    return log;
+  }
+
+  // Bot Settings
+  async getBotSettings(): Promise<BotSettings | null> {
+    return this.botSettingsMap.get(1) || null;
+  }
+
+  async updateBotSettings(updates: Partial<InsertBotSettings>): Promise<BotSettings> {
+    let settings = this.botSettingsMap.get(1);
+    if (!settings) {
+      settings = await this.initializeBotSettings();
+    }
+    
+    const updatedSettings = { ...settings, ...updates, updatedAt: new Date() };
+    this.botSettingsMap.set(1, updatedSettings);
+    return updatedSettings;
+  }
+
+  async initializeBotSettings(): Promise<BotSettings> {
+    const settings: BotSettings = {
+      id: 1,
+      globalEnabled: true,
+      maxActiveBots: 15,
+      scanIntervalMinutes: 10,
+      purchaseDelayMinutes: 30,
+      likeDelayMinutes: 5,
+      walletCapEnabled: true,
+      walletCapAmount: 199,
+      refundTimeHour: 3,
+      enableReferralBots: false,
+      maxReferralsPerWeek: 2,
+      retentionScoreCapPerWeek: 5,
+      updatedAt: new Date(),
+    };
+    this.botSettingsMap.set(1, settings);
+    return settings;
+  }
 }
 
 export class DrizzleStorage implements IStorage {
@@ -16740,6 +17025,444 @@ export class DrizzleStorage implements IStorage {
       };
     } catch (error) {
       console.error('Error getting PageSpeed summary:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - DrizzleStorage Implementations
+  // ============================================================================
+
+  // Bot Profile Management
+  async getBotById(id: string): Promise<Bot | null> {
+    try {
+      const [bot] = await db
+        .select()
+        .from(bots)
+        .where(eq(bots.id, id))
+        .limit(1);
+      return bot || null;
+    } catch (error) {
+      console.error('Error fetching bot:', error);
+      throw error;
+    }
+  }
+
+  async getAllBots(filters?: { isActive?: boolean; squad?: string; purpose?: string }): Promise<Bot[]> {
+    try {
+      const conditions = [];
+      
+      if (filters?.isActive !== undefined) {
+        conditions.push(eq(bots.isActive, filters.isActive));
+      }
+      if (filters?.squad) {
+        conditions.push(eq(bots.squad, filters.squad));
+      }
+      if (filters?.purpose) {
+        conditions.push(eq(bots.purpose, filters.purpose));
+      }
+      
+      const query = db.select().from(bots);
+      
+      if (conditions.length > 0) {
+        return await query.where(and(...conditions));
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error('Error fetching bots:', error);
+      throw error;
+    }
+  }
+
+  async createBot(bot: InsertBot): Promise<Bot> {
+    try {
+      const [newBot] = await db
+        .insert(bots)
+        .values(bot as any)
+        .returning();
+      return newBot;
+    } catch (error) {
+      console.error('Error creating bot:', error);
+      throw error;
+    }
+  }
+
+  async updateBot(id: string, updates: Partial<InsertBot>): Promise<Bot> {
+    try {
+      const [updated] = await db
+        .update(bots)
+        .set({ ...updates, updatedAt: new Date() } as any)
+        .where(eq(bots.id, id))
+        .returning();
+      
+      if (!updated) {
+        throw new Error('Bot not found');
+      }
+      
+      return updated;
+    } catch (error) {
+      console.error('Error updating bot:', error);
+      throw error;
+    }
+  }
+
+  async deleteBot(id: string): Promise<void> {
+    try {
+      await db.delete(bots).where(eq(bots.id, id));
+    } catch (error) {
+      console.error('Error deleting bot:', error);
+      throw error;
+    }
+  }
+
+  async toggleBotStatus(id: string, isActive: boolean): Promise<Bot> {
+    return this.updateBot(id, { isActive });
+  }
+
+  // Bot Actions
+  async recordBotAction(action: InsertBotAction): Promise<BotAction> {
+    try {
+      const [newAction] = await db
+        .insert(botActions)
+        .values(action as any)
+        .returning();
+      return newAction;
+    } catch (error) {
+      console.error('Error recording bot action:', error);
+      throw error;
+    }
+  }
+
+  async getBotActions(botId: string, limit: number = 100): Promise<BotAction[]> {
+    try {
+      return await db
+        .select()
+        .from(botActions)
+        .where(eq(botActions.botId, botId))
+        .orderBy(desc(botActions.createdAt))
+        .limit(limit);
+    } catch (error) {
+      console.error('Error fetching bot actions:', error);
+      throw error;
+    }
+  }
+
+  async getBotActionsByType(actionType: string, limit: number = 100): Promise<BotAction[]> {
+    try {
+      return await db
+        .select()
+        .from(botActions)
+        .where(eq(botActions.actionType, actionType))
+        .orderBy(desc(botActions.createdAt))
+        .limit(limit);
+    } catch (error) {
+      console.error('Error fetching bot actions by type:', error);
+      throw error;
+    }
+  }
+
+  async getUnrefundedActions(): Promise<BotAction[]> {
+    try {
+      return await db
+        .select()
+        .from(botActions)
+        .where(
+          and(
+            eq(botActions.wasRefunded, false),
+            gt(botActions.coinCost, 0)
+          )
+        );
+    } catch (error) {
+      console.error('Error fetching unrefunded actions:', error);
+      throw error;
+    }
+  }
+
+  async markActionAsRefunded(actionId: string): Promise<void> {
+    try {
+      await db
+        .update(botActions)
+        .set({
+          wasRefunded: true,
+          refundedAt: new Date(),
+        })
+        .where(eq(botActions.id, actionId));
+    } catch (error) {
+      console.error('Error marking action as refunded:', error);
+      throw error;
+    }
+  }
+
+  // Bot Treasury
+  async getTreasury(): Promise<BotTreasury | null> {
+    try {
+      const [treasury] = await db
+        .select()
+        .from(botTreasury)
+        .limit(1);
+      return treasury || null;
+    } catch (error) {
+      console.error('Error fetching treasury:', error);
+      throw error;
+    }
+  }
+
+  async deductFromTreasury(amount: number): Promise<BotTreasury> {
+    try {
+      const [treasury] = await db
+        .update(botTreasury)
+        .set({
+          balance: sql`${botTreasury.balance} - ${amount}`,
+          todaySpent: sql`${botTreasury.todaySpent} + ${amount}`,
+          totalSpent: sql`${botTreasury.totalSpent} + ${amount}`,
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      if (!treasury) {
+        throw new Error('Treasury not found');
+      }
+      
+      return treasury;
+    } catch (error) {
+      console.error('Error deducting from treasury:', error);
+      throw error;
+    }
+  }
+
+  async refillTreasury(amount: number): Promise<BotTreasury> {
+    try {
+      const [treasury] = await db
+        .update(botTreasury)
+        .set({
+          balance: sql`${botTreasury.balance} + ${amount}`,
+          totalRefunded: sql`${botTreasury.totalRefunded} + ${amount}`,
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      if (!treasury) {
+        throw new Error('Treasury not found');
+      }
+      
+      return treasury;
+    } catch (error) {
+      console.error('Error refilling treasury:', error);
+      throw error;
+    }
+  }
+
+  async resetDailySpend(): Promise<BotTreasury> {
+    try {
+      const [treasury] = await db
+        .update(botTreasury)
+        .set({
+          todaySpent: 0,
+          lastResetAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      if (!treasury) {
+        throw new Error('Treasury not found');
+      }
+      
+      return treasury;
+    } catch (error) {
+      console.error('Error resetting daily spend:', error);
+      throw error;
+    }
+  }
+
+  async getTreasuryBalance(): Promise<number> {
+    try {
+      const treasury = await this.getTreasury();
+      return treasury?.balance || 0;
+    } catch (error) {
+      console.error('Error fetching treasury balance:', error);
+      throw error;
+    }
+  }
+
+  // Bot Refunds
+  async scheduleRefund(refund: InsertBotRefund): Promise<BotRefund> {
+    try {
+      const [newRefund] = await db
+        .insert(botRefunds)
+        .values(refund as any)
+        .returning();
+      return newRefund;
+    } catch (error) {
+      console.error('Error scheduling refund:', error);
+      throw error;
+    }
+  }
+
+  async getPendingRefunds(beforeTime?: Date): Promise<BotRefund[]> {
+    try {
+      const conditions = [eq(botRefunds.status, 'pending')];
+      
+      if (beforeTime) {
+        conditions.push(lte(botRefunds.scheduledFor, beforeTime));
+      }
+      
+      return await db
+        .select()
+        .from(botRefunds)
+        .where(and(...conditions));
+    } catch (error) {
+      console.error('Error fetching pending refunds:', error);
+      throw error;
+    }
+  }
+
+  async markRefundAsProcessed(refundId: string, error?: string): Promise<BotRefund> {
+    try {
+      const [refund] = await db
+        .update(botRefunds)
+        .set({
+          status: error ? 'failed' : 'completed',
+          processedAt: new Date(),
+          error: error || null,
+        })
+        .where(eq(botRefunds.id, refundId))
+        .returning();
+      
+      if (!refund) {
+        throw new Error('Refund not found');
+      }
+      
+      return refund;
+    } catch (error) {
+      console.error('Error marking refund as processed:', error);
+      throw error;
+    }
+  }
+
+  // Bot Audit Log
+  async logBotAction(log: InsertBotAuditLog): Promise<BotAuditLog> {
+    try {
+      const [newLog] = await db
+        .insert(botAuditLog)
+        .values(log as any)
+        .returning();
+      return newLog;
+    } catch (error) {
+      console.error('Error logging bot action:', error);
+      throw error;
+    }
+  }
+
+  async getAuditLogs(filters?: { adminId?: string; actionType?: string; limit?: number }): Promise<BotAuditLog[]> {
+    try {
+      const conditions = [];
+      
+      if (filters?.adminId) {
+        conditions.push(eq(botAuditLog.adminId, filters.adminId));
+      }
+      if (filters?.actionType) {
+        conditions.push(eq(botAuditLog.actionType, filters.actionType));
+      }
+      
+      let query = db.select().from(botAuditLog);
+      
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+      
+      query = query.orderBy(desc(botAuditLog.createdAt)) as any;
+      
+      if (filters?.limit) {
+        query = query.limit(filters.limit) as any;
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      throw error;
+    }
+  }
+
+  async undoAuditAction(logId: string, undoneBy: string): Promise<BotAuditLog> {
+    try {
+      const [log] = await db
+        .update(botAuditLog)
+        .set({
+          isUndone: true,
+          undoneBy,
+          undoneAt: new Date(),
+        })
+        .where(eq(botAuditLog.id, logId))
+        .returning();
+      
+      if (!log) {
+        throw new Error('Audit log not found');
+      }
+      
+      return log;
+    } catch (error) {
+      console.error('Error undoing audit action:', error);
+      throw error;
+    }
+  }
+
+  // Bot Settings
+  async getBotSettings(): Promise<BotSettings | null> {
+    try {
+      const [settings] = await db
+        .select()
+        .from(botSettings)
+        .limit(1);
+      return settings || null;
+    } catch (error) {
+      console.error('Error fetching bot settings:', error);
+      throw error;
+    }
+  }
+
+  async updateBotSettings(updates: Partial<InsertBotSettings>): Promise<BotSettings> {
+    try {
+      // Try to update existing settings
+      const [updated] = await db
+        .update(botSettings)
+        .set({ ...updates, updatedAt: new Date() } as any)
+        .returning();
+      
+      if (updated) {
+        return updated;
+      }
+      
+      // If no settings exist, create them
+      return await this.initializeBotSettings();
+    } catch (error) {
+      console.error('Error updating bot settings:', error);
+      throw error;
+    }
+  }
+
+  async initializeBotSettings(): Promise<BotSettings> {
+    try {
+      const [settings] = await db
+        .insert(botSettings)
+        .values({
+          globalEnabled: true,
+          maxActiveBots: 15,
+          scanIntervalMinutes: 10,
+          purchaseDelayMinutes: 30,
+          likeDelayMinutes: 5,
+          walletCapEnabled: true,
+          walletCapAmount: 199,
+          refundTimeHour: 3,
+          enableReferralBots: false,
+          maxReferralsPerWeek: 2,
+          retentionScoreCapPerWeek: 5,
+        } as any)
+        .returning();
+      
+      return settings;
+    } catch (error) {
+      console.error('Error initializing bot settings:', error);
       throw error;
     }
   }
