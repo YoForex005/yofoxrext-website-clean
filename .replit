@@ -8,7 +8,7 @@ channel = "stable-25_05"
 [deployment]
 deploymentTarget = "autoscale"
 build = ["npm", "run", "build"]
-run = ["bash", "-c", "node dist/index.js & npx next start -p 5000 -H 0.0.0.0"]
+run = ["npm", "run", "start"]
 
 [[ports]]
 localPort = 3000
@@ -21,10 +21,6 @@ externalPort = 5173
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 34117
-externalPort = 5000
 
 [[ports]]
 localPort = 35035
@@ -89,13 +85,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash start-hybrid.sh"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
 
 [agent]
 integrations = ["javascript_log_in_with_replit:1.0.0", "javascript_database:1.0.0", "javascript_object_storage:1.0.0", "javascript_gemini:1.0.0"]
