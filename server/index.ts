@@ -6,6 +6,8 @@ import { setupVite, serveStatic, log } from "./vite";
 import { generalApiLimiter } from "./rateLimiting";
 import { storage } from "./storage";
 import { startBackgroundJobs } from "./jobs/backgroundJobs";
+import { startBotEngagementJob } from "./jobs/botEngagement";
+import { startBotRefundJob } from "./jobs/botRefunds";
 import { setupSecurityHeaders } from "./middleware/securityHeaders";
 import { categoryRedirectMiddleware, trackCategoryViews } from "./middleware/categoryRedirects";
 import { initializeDashboardWebSocket } from "./services/dashboardWebSocket";
@@ -224,10 +226,18 @@ async function initializeServer() {
         setTimeout(() => {
           log('Starting background jobs after deferment period');
           startBackgroundJobs(storage);
+          
+          // Initialize bot jobs
+          startBotEngagementJob();
+          startBotRefundJob();
         }, 5000); // Start after 5 seconds
       } else {
         // Start background jobs immediately
         startBackgroundJobs(storage);
+        
+        // Initialize bot jobs
+        startBotEngagementJob();
+        startBotRefundJob();
       }
     });
 

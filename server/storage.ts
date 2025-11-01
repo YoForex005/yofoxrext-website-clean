@@ -260,6 +260,8 @@ export interface IStorage {
   purchaseContent(contentId: string, buyerId: string): Promise<ContentPurchase>;
   getUserPurchases(userId: string): Promise<ContentPurchase[]>;
   hasPurchased(userId: string, contentId: string): Promise<boolean>;
+  getContentPurchaseCount(contentId: string): Promise<number>;
+  getContentPurchases(contentId: string, limit?: number): Promise<any[]>;
   
   createReview(review: InsertContentReview): Promise<ContentReview>;
   getContentReviews(contentId: string): Promise<ContentReview[]>;
@@ -2431,6 +2433,45 @@ export interface IStorage {
    * Initialize bot settings with defaults
    */
   initializeBotSettings(): Promise<BotSettings>;
+
+  // ============================================================================
+  // BOT INTEGRATION METHODS - Forum/Marketplace Actions
+  // ============================================================================
+  
+  /**
+   * Get follower count for a user
+   */
+  getFollowerCount(userId: string): Promise<number>;
+  
+  /**
+   * Get threads created after a specific time
+   */
+  getThreadsAfter(cutoffTime: Date): Promise<ForumThread[]>;
+  
+  /**
+   * Get EAs/content created after a specific time
+   */
+  getEAsAfter(cutoffTime: Date): Promise<Content[]>;
+  
+  /**
+   * Like a forum thread (increment like count)
+   */
+  likeThread(threadId: string, userId: string): Promise<void>;
+  
+  /**
+   * Like a forum reply (increment helpful votes)
+   */
+  likeReply(replyId: string, userId: string): Promise<void>;
+  
+  /**
+   * Create a follow relationship (simplified wrapper)
+   */
+  createFollow(follow: { followerId: string; followingId: string }): Promise<void>;
+  
+  /**
+   * Create a content purchase (simplified wrapper)
+   */
+  createContentPurchase(purchase: { contentId: string; buyerId: string; priceCoins: number; purchaseType: string }): Promise<ContentPurchase>;
 }
 
 export class MemStorage implements IStorage {
@@ -3181,6 +3222,33 @@ export class MemStorage implements IStorage {
     return Array.from(this.contentPurchases.values()).some(
       (p) => p.buyerId === userId && p.contentId === contentId
     );
+  }
+
+  async getContentPurchaseCount(contentId: string): Promise<number> {
+    // INCLUDE BOT PURCHASES in total sales count (bots boost visible sales metrics)
+    return Array.from(this.contentPurchases.values())
+      .filter((p) => p.contentId === contentId)
+      .length;
+  }
+
+  async getContentPurchases(contentId: string, limit: number = 50): Promise<any[]> {
+    // FILTER BOTS from buyer detail list (hide bot identities while keeping their contribution to count)
+    const purchases = Array.from(this.contentPurchases.values())
+      .filter((p) => p.contentId === contentId)
+      .sort((a, b) => b.purchasedAt.getTime() - a.purchasedAt.getTime())
+      .slice(0, limit);
+    
+    return purchases.map(purchase => {
+      const buyer = this.users.get(purchase.buyerId);
+      // Filter out bots from buyer detail list
+      if (buyer && (buyer as any).isBot) {
+        return null;
+      }
+      return {
+        buyer,
+        purchase
+      };
+    }).filter(item => item !== null);
   }
   
   // Content Review Methods
@@ -3949,7 +4017,10 @@ export class MemStorage implements IStorage {
       .filter((f) => f.followingId === userId)
       .map((f) => f.followerId);
     
-    return Array.from(this.users.values()).filter((u) => followerIds.includes(u.id));
+    // Filter out bots
+    return Array.from(this.users.values()).filter((u) => 
+      followerIds.includes(u.id) && !(u as any).isBot
+    );
   }
 
   async getUserFollowing(userId: string): Promise<User[]> {
@@ -3957,7 +4028,10 @@ export class MemStorage implements IStorage {
       .filter((f) => f.followerId === userId)
       .map((f) => f.followingId);
     
-    return Array.from(this.users.values()).filter((u) => followingIds.includes(u.id));
+    // Filter out bots
+    return Array.from(this.users.values()).filter((u) => 
+      followingIds.includes(u.id) && !(u as any).isBot
+    );
   }
 
   async checkIfFollowing(followerId: string, followingId: string): Promise<boolean> {
@@ -6442,6 +6516,57 @@ export class MemStorage implements IStorage {
     this.botSettingsMap.set(1, settings);
     return settings;
   }
+
+  // Bot Integration Methods
+  async getFollowerCount(userId: string): Promise<number> {
+    const followers = Array.from(this.userFollowsMap.values()).filter(f => f.followingId === userId);
+    return followers.length;
+  }
+
+  async getThreadsAfter(cutoffTime: Date): Promise<ForumThread[]> {
+    return Array.from(this.forumThreadsMap.values())
+      .filter(thread => thread.createdAt >= cutoffTime)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getEAsAfter(cutoffTime: Date): Promise<Content[]> {
+    return Array.from(this.content.values())
+      .filter(c => c.type === 'ea' && c.createdAt >= cutoffTime)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async likeThread(threadId: string, userId: string): Promise<void> {
+    const thread = this.forumThreadsMap.get(threadId);
+    if (thread) {
+      thread.likeCount = (thread.likeCount || 0) + 1;
+      this.forumThreadsMap.set(threadId, thread);
+    }
+  }
+
+  async likeReply(replyId: string, userId: string): Promise<void> {
+    const reply = this.forumRepliesMap.get(replyId);
+    if (reply) {
+      reply.helpfulVotes = (reply.helpfulVotes || 0) + 1;
+      this.forumRepliesMap.set(replyId, reply);
+    }
+  }
+
+  async createFollow(follow: { followerId: string; followingId: string }): Promise<void> {
+    await this.createUserFollow(follow);
+  }
+
+  async createContentPurchase(purchase: { contentId: string; buyerId: string; priceCoins: number; purchaseType: string }): Promise<ContentPurchase> {
+    const newPurchase: ContentPurchase = {
+      id: randomUUID(),
+      contentId: purchase.contentId,
+      buyerId: purchase.buyerId,
+      priceCoins: purchase.priceCoins,
+      purchaseType: purchase.purchaseType as any,
+      purchasedAt: new Date(),
+    };
+    this.contentPurchases.set(newPurchase.id, newPurchase);
+    return newPurchase;
+  }
 }
 
 export class DrizzleStorage implements IStorage {
@@ -7021,6 +7146,37 @@ export class DrizzleStorage implements IStorage {
       ))
       .limit(1);
     return !!result;
+  }
+
+  async getContentPurchaseCount(contentId: string): Promise<number> {
+    // INCLUDE BOT PURCHASES in total sales count (bots boost visible sales metrics)
+    const result = await db
+      .select({ count: count() })
+      .from(contentPurchases)
+      .where(eq(contentPurchases.contentId, contentId));
+    
+    return Number(result[0]?.count || 0);
+  }
+
+  async getContentPurchases(contentId: string, limit: number = 50): Promise<any[]> {
+    // FILTER BOTS from buyer detail list (hide bot identities while keeping their contribution to count)
+    const result = await db
+      .select({
+        buyer: users,
+        purchase: contentPurchases
+      })
+      .from(contentPurchases)
+      .innerJoin(users, eq(users.id, contentPurchases.buyerId))
+      .where(
+        and(
+          eq(contentPurchases.contentId, contentId),
+          ne(users.isBot, true) // FILTER BOTS from buyer detail list
+        )
+      )
+      .orderBy(desc(contentPurchases.purchasedAt))
+      .limit(limit);
+    
+    return result;
   }
 
   async createReview(insertReview: InsertContentReview): Promise<ContentReview> {
@@ -7782,33 +7938,41 @@ export class DrizzleStorage implements IStorage {
   }
 
   async getUserFollowers(userId: string): Promise<User[]> {
-    const follows = await db
-      .select()
+    // FILTER BOTS from detail view (hide bot identities while keeping their contribution to count)
+    const result = await db
+      .select({
+        follower: users
+      })
       .from(userFollows)
-      .where(eq(userFollows.followingId, userId));
+      .innerJoin(users, eq(users.id, userFollows.followerId))
+      .where(
+        and(
+          eq(userFollows.followingId, userId),
+          ne(users.isBot, true) // FILTER BOTS from detail view
+        )
+      )
+      .orderBy(desc(userFollows.createdAt));
     
-    const followerIds = follows.map((f) => f.followerId);
-    if (followerIds.length === 0) return [];
-    
-    return await db
-      .select()
-      .from(users)
-      .where(sql`${users.id} IN ${followerIds}`);
+    return result.map(r => r.follower);
   }
 
   async getUserFollowing(userId: string): Promise<User[]> {
-    const follows = await db
-      .select()
+    // FILTER BOTS from detail view (hide bot identities)
+    const result = await db
+      .select({
+        following: users
+      })
       .from(userFollows)
-      .where(eq(userFollows.followerId, userId));
+      .innerJoin(users, eq(users.id, userFollows.followingId))
+      .where(
+        and(
+          eq(userFollows.followerId, userId),
+          ne(users.isBot, true) // FILTER BOTS from detail view
+        )
+      )
+      .orderBy(desc(userFollows.createdAt));
     
-    const followingIds = follows.map((f) => f.followingId);
-    if (followingIds.length === 0) return [];
-    
-    return await db
-      .select()
-      .from(users)
-      .where(sql`${users.id} IN ${followingIds}`);
+    return result.map(r => r.following);
   }
 
   async checkIfFollowing(followerId: string, followingId: string): Promise<boolean> {
@@ -17463,6 +17627,107 @@ export class DrizzleStorage implements IStorage {
       return settings;
     } catch (error) {
       console.error('Error initializing bot settings:', error);
+      throw error;
+    }
+  }
+
+  // Bot Integration Methods
+  async getFollowerCount(userId: string): Promise<number> {
+    try {
+      // INCLUDE BOTS in total count (bots boost visible engagement metrics)
+      const result = await db
+        .select({ count: count() })
+        .from(userFollows)
+        .where(eq(userFollows.followingId, userId));
+      return result[0]?.count || 0;
+    } catch (error) {
+      console.error('Error getting follower count:', error);
+      return 0;
+    }
+  }
+
+  async getThreadsAfter(cutoffTime: Date): Promise<ForumThread[]> {
+    try {
+      return await db
+        .select()
+        .from(forumThreads)
+        .where(gte(forumThreads.createdAt, cutoffTime))
+        .orderBy(desc(forumThreads.createdAt));
+    } catch (error) {
+      console.error('Error getting threads after cutoff:', error);
+      return [];
+    }
+  }
+
+  async getEAsAfter(cutoffTime: Date): Promise<Content[]> {
+    try {
+      return await db
+        .select()
+        .from(content)
+        .where(
+          and(
+            eq(content.type, 'ea'),
+            gte(content.createdAt, cutoffTime)
+          )
+        )
+        .orderBy(desc(content.createdAt));
+    } catch (error) {
+      console.error('Error getting EAs after cutoff:', error);
+      return [];
+    }
+  }
+
+  async likeThread(threadId: string, userId: string): Promise<void> {
+    try {
+      await db
+        .update(forumThreads)
+        .set({ 
+          likeCount: sql`${forumThreads.likeCount} + 1` 
+        })
+        .where(eq(forumThreads.id, threadId));
+    } catch (error) {
+      console.error('Error liking thread:', error);
+      throw error;
+    }
+  }
+
+  async likeReply(replyId: string, userId: string): Promise<void> {
+    try {
+      await db
+        .update(forumReplies)
+        .set({ 
+          helpfulVotes: sql`${forumReplies.helpfulVotes} + 1` 
+        })
+        .where(eq(forumReplies.id, replyId));
+    } catch (error) {
+      console.error('Error liking reply:', error);
+      throw error;
+    }
+  }
+
+  async createFollow(follow: { followerId: string; followingId: string }): Promise<void> {
+    try {
+      await this.createUserFollow(follow);
+    } catch (error) {
+      console.error('Error creating follow:', error);
+      throw error;
+    }
+  }
+
+  async createContentPurchase(purchase: { contentId: string; buyerId: string; priceCoins: number; purchaseType: string }): Promise<ContentPurchase> {
+    try {
+      const [newPurchase] = await db
+        .insert(contentPurchases)
+        .values({
+          contentId: purchase.contentId,
+          buyerId: purchase.buyerId,
+          priceCoins: purchase.priceCoins,
+          purchaseType: purchase.purchaseType as any,
+        } as any)
+        .returning();
+      return newPurchase;
+    } catch (error) {
+      console.error('Error creating content purchase:', error);
       throw error;
     }
   }

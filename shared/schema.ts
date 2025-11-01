@@ -80,6 +80,9 @@ export const users = pgTable("users", {
   // User level system
   level: integer("level").default(0).notNull(),
   
+  // Bot identification (for filtering bot users from analytics)
+  isBot: boolean("is_bot").notNull().default(false),
+  
   // Admin Management fields
   role: varchar("role", { length: 20 }).notNull().default("member"), // member, moderator, admin
   status: varchar("status", { length: 20 }).notNull().default("active"), // active, suspended, banned
@@ -131,6 +134,7 @@ export const coinTransactions = pgTable("coin_transactions", {
   description: text("description").notNull(),
   status: text("status").notNull().$type<"completed" | "pending" | "failed">().default("completed"),
   botId: varchar("bot_id"), // References bot if transaction was from bot activity (nullable)
+  metadata: jsonb("metadata"), // Store additional metadata like isBot flag for admin tracking
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   userIdIdx: index("idx_coin_transactions_user_id").on(table.userId),

@@ -8,11 +8,12 @@ import {
   contentPurchases,
   users, 
   userFollows,
-  coinTransactions
+  coinTransactions,
+  type Bot
 } from '../../shared/schema.js';
 import { eq, and, lt, gte, sql, desc, notInArray } from 'drizzle-orm';
 import { spend, wouldExceedWalletCap, getEconomySettings } from './treasuryService.js';
-import { listActiveBots } from './botProfileService.js';
+import { storage } from '../storage.js';
 
 /**
  * Bot Behavior Engine - Implements automated bot actions
@@ -68,8 +69,8 @@ export async function scanNewContent(minutesAgo: number = 30) {
  * @returns Number of likes executed
  */
 export async function executeLikes(threadId: string, aggressionLevel: number = 5) {
-  const activeBots = await listActiveBots();
-  const engagementBots = activeBots.filter(bot => bot.purpose === 'engagement');
+  const activeBots = await storage.getAllBots({ isActive: true });
+  const engagementBots = activeBots.filter((bot: Bot) => bot.purpose === 'engagement');
   
   if (engagementBots.length === 0) {
     return 0;
@@ -124,13 +125,13 @@ export async function executeLikes(threadId: string, aggressionLevel: number = 5
       }
       
       // Log bot action
-      await db.insert(botActions).values({
+      await storage.recordBotAction({
         botId: bot.id,
         actionType: 'like',
         targetType: 'thread',
         targetId: threadId,
-        coinDelta: 1,
-        retentionWeight: 1
+        coinCost: 1,
+        wasRefunded: false
       });
       
       likesExecuted++;
@@ -160,8 +161,8 @@ export async function executeFollow(userId: string) {
     return false;
   }
   
-  const activeBots = await listActiveBots();
-  const engagementBots = activeBots.filter(bot => bot.purpose === 'engagement' || bot.purpose === 'referral');
+  const activeBots = await storage.getAllBots({ isActive: true });
+  const engagementBots = activeBots.filter((bot: Bot) => bot.purpose === 'engagement' || bot.purpose === 'referral');
   
   if (engagementBots.length === 0) {
     return false;
@@ -235,13 +236,13 @@ export async function executeFollow(userId: string) {
     });
     
     // Log bot action
-    await db.insert(botActions).values({
+    await storage.recordBotAction({
       botId: bot.id,
       actionType: 'follow',
       targetType: 'user',
       targetId: userId,
-      coinDelta: 1,
-      retentionWeight: 1
+      coinCost: 1,
+      wasRefunded: false
     });
     
     console.log(`[BOT ENGINE] Bot ${bot.username} followed user ${userId}`);
@@ -265,8 +266,8 @@ export async function executePurchase(contentId: string) {
     return false;
   }
   
-  const activeBots = await listActiveBots();
-  const marketplaceBots = activeBots.filter(bot => bot.purpose === 'marketplace');
+  const activeBots = await storage.getAllBots({ isActive: true });
+  const marketplaceBots = activeBots.filter((bot: Bot) => bot.purpose === 'marketplace');
   
   if (marketplaceBots.length === 0) {
     return false;
@@ -365,12 +366,13 @@ export async function executePurchase(contentId: string) {
       });
       
       // Log bot action
-      await db.insert(botActions).values({
+      await storage.recordBotAction({
         botId: bot.id,
         actionType: 'purchase',
-        targetType: 'content',
+        targetType: 'ea',
         targetId: contentId,
-        coinDelta: -price,
+        coinCost: price,
+        wasRefunded: false,
         metadata: { sellerEarnings, isBotOrder: true }
       });
       
@@ -391,7 +393,7 @@ export async function runBotEngine() {
   console.log('[BOT ENGINE] Starting bot behavior engine...');
   
   const settings = await getEconomySettings();
-  const activeBots = await listActiveBots();
+  const activeBots = await storage.getAllBots({ isActive: true });
   
   if (activeBots.length === 0) {
     console.log('[BOT ENGINE] No active bots. Skipping.');

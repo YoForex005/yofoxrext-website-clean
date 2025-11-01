@@ -34,6 +34,7 @@ import {
   profiles,
   forumReplies,
   users,
+  userFollows,
   content,
   rechargeOrders,
   adminActions,
@@ -12415,5 +12416,69 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   // Return the Express app with all routes registered
   // Server creation happens in index.ts
+  // ===== ADMIN BOT ANALYTICS ENDPOINTS =====
+  
+  // GET /api/admin/user/:userId/followers-all - View ALL followers (including bots)
+  app.get("/api/admin/user/:userId/followers-all", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      // Get all followers (bots + real users)
+      const followers = await db
+        .select({
+          follower: users,
+          followedAt: userFollows.createdAt
+        })
+        .from(userFollows)
+        .innerJoin(users, eq(users.id, userFollows.followerId))
+        .where(eq(userFollows.followingId, userId))
+        .orderBy(desc(userFollows.createdAt));
+      
+      // Separate real vs bot followers
+      const realFollowers = followers.filter(f => !f.follower.isBot);
+      const botFollowers = followers.filter(f => f.follower.isBot);
+      
+      res.json({ 
+        realFollowers, 
+        botFollowers,
+        totalReal: realFollowers.length,
+        totalBots: botFollowers.length
+      });
+    } catch (error: any) {
+      console.error('Failed to get all followers:', error);
+      res.status(500).json({ error: 'Failed to get followers', message: error.message });
+    }
+  });
+  
+  // GET /api/admin/user/:userId/bot-earnings - View bot-generated coins
+  app.get("/api/admin/user/:userId/bot-earnings", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      
+      // Get transactions where metadata contains isBot: true
+      const botEarnings = await db
+        .select()
+        .from(coinTransactions)
+        .where(
+          and(
+            eq(coinTransactions.userId, userId),
+            sql`${coinTransactions.metadata}->>'isBot' = 'true'`
+          )
+        )
+        .orderBy(desc(coinTransactions.createdAt));
+      
+      const totalBotEarnings = botEarnings.reduce((sum, t) => sum + t.amount, 0);
+      
+      res.json({ 
+        transactions: botEarnings, 
+        total: totalBotEarnings,
+        count: botEarnings.length
+      });
+    } catch (error: any) {
+      console.error('Failed to get bot earnings:', error);
+      res.status(500).json({ error: 'Failed to get bot earnings', message: error.message });
+    }
+  });
+
   return app;
 }
