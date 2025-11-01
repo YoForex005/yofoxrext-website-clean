@@ -77,8 +77,15 @@ const corsOptions = {
       return callback(null, true);
     }
     
-    // For production Replit domains (multi-level subdomains)
-    if (/^https?:\/\/.*\.replit\.app$/.test(origin)) {
+    // For production Replit domains (multi-level subdomains) - allow all Replit domains
+    const replitDomainPatterns = [
+      /^https?:\/\/.*\.replit\.app$/,      // Replit app domains
+      /^https?:\/\/.*\.replit\.dev$/,      // Replit dev domains
+      /^https?:\/\/.*\.repl\.co$/,         // Replit co domains
+      /^https?:\/\/.*\.repl\.run$/,        // Replit run domains
+    ];
+    
+    if (replitDomainPatterns.some(pattern => pattern.test(origin))) {
       return callback(null, true);
     }
     
