@@ -145,8 +145,11 @@ Grade: A-
 - Applied in: app/category/[slug]/page.tsx, app/thread/[slug]/page.tsx
 
 **Hydration Warning**:
-- Partially fixed with suppressHydrationWarning
-- One minor warning remains (visual only, no functional impact)
+- Fixed TimeAgo component with client-side mounting check
+- Fixed StatsBar component with proper React imports
+- Added suppressHydrationWarning for time-based content
+- Implemented mounting state to prevent SSR/client mismatch
+- Status: RESOLVED ✅
 
 ---
 
@@ -219,6 +222,9 @@ Status: EXCELLENT ✅
 10. `app/category/[slug]/page.tsx` - 404 handling
 11. `app/thread/[slug]/page.tsx` - 404 handling
 12. `app/components/WeekHighlights.tsx` - Hydration fix
+13. `app/components/TimeAgo.tsx` - Client-side mounting fix for hydration
+14. `app/components/StatsBar.tsx` - React imports and hydration prevention
+15. `app/lib/api-config.ts` - Consistent API URL generation
 
 ### Documentation:
 13. `replit.md` - Updated architecture, coin economy, security details

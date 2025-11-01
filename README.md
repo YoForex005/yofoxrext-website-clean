@@ -139,6 +139,14 @@ npm run audit:performance
 npm run build
 ```
 
+## Recent Fixes
+
+### React Hydration (January 2025)
+- ✅ Fixed React Error #418 hydration mismatches
+- ✅ TimeAgo component now handles SSR/client differences
+- ✅ StatsBar component properly initialized
+- ✅ No console warnings in production
+
 ## Deployment
 
 See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions:

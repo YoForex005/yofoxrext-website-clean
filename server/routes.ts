@@ -12011,6 +12011,408 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // ===== BOT ECONOMY API ROUTES =====
+
+  // 1. ADMIN BOT MANAGEMENT ENDPOINTS
+
+  // GET /api/admin/bots - List all bots with filters
+  app.get("/api/admin/bots", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { isActive, squad, purpose } = req.query;
+      const filters = {
+        isActive: isActive === 'true' ? true : isActive === 'false' ? false : undefined,
+        squad: squad as string,
+        purpose: purpose as string
+      };
+      const bots = await storage.getAllBots(filters);
+      res.json(bots);
+    } catch (error: any) {
+      console.error('Failed to get bots:', error);
+      res.status(500).json({ error: 'Failed to get bots', message: error.message });
+    }
+  });
+
+  // GET /api/admin/bots/:id - Get bot details
+  app.get("/api/admin/bots/:id", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const bot = await storage.getBotById(req.params.id);
+      if (!bot) return res.status(404).json({ error: "Bot not found" });
+      res.json(bot);
+    } catch (error: any) {
+      console.error('Failed to get bot:', error);
+      res.status(500).json({ error: 'Failed to get bot', message: error.message });
+    }
+  });
+
+  // POST /api/admin/bots - Create new bot
+  app.post("/api/admin/bots", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const botData = insertBotSchema.parse(req.body);
+      botData.createdBy = req.user!.id;
+      const bot = await storage.createBot(botData);
+      
+      // Log audit trail
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "create_bot",
+        targetType: "bot",
+        targetId: bot.id,
+        newValue: bot
+      });
+      
+      res.status(201).json(bot);
+    } catch (error: any) {
+      console.error('Failed to create bot:', error);
+      res.status(500).json({ error: 'Failed to create bot', message: error.message });
+    }
+  });
+
+  // PATCH /api/admin/bots/:id - Update bot
+  app.patch("/api/admin/bots/:id", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const updates = req.body;
+      const bot = await storage.updateBot(req.params.id, updates);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "update_bot",
+        targetType: "bot",
+        targetId: bot.id,
+        newValue: updates
+      });
+      
+      res.json(bot);
+    } catch (error: any) {
+      console.error('Failed to update bot:', error);
+      res.status(500).json({ error: 'Failed to update bot', message: error.message });
+    }
+  });
+
+  // DELETE /api/admin/bots/:id - Delete bot
+  app.delete("/api/admin/bots/:id", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      await storage.deleteBot(req.params.id);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "delete_bot",
+        targetType: "bot",
+        targetId: req.params.id
+      });
+      
+      res.status(204).send();
+    } catch (error: any) {
+      console.error('Failed to delete bot:', error);
+      res.status(500).json({ error: 'Failed to delete bot', message: error.message });
+    }
+  });
+
+  // POST /api/admin/bots/:id/toggle - Toggle bot active status
+  app.post("/api/admin/bots/:id/toggle", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { isActive } = req.body;
+      const bot = await storage.toggleBotStatus(req.params.id, isActive);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: isActive ? "activate_bot" : "deactivate_bot",
+        targetType: "bot",
+        targetId: bot.id
+      });
+      
+      res.json(bot);
+    } catch (error: any) {
+      console.error('Failed to toggle bot status:', error);
+      res.status(500).json({ error: 'Failed to toggle bot status', message: error.message });
+    }
+  });
+
+  // 2. BOT ACTIONS TRACKING ENDPOINTS
+
+  // GET /api/admin/bot-actions - List bot actions with filters
+  app.get("/api/admin/bot-actions", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { botId, actionType, limit = 100 } = req.query;
+      
+      let actions;
+      if (botId) {
+        actions = await storage.getBotActions(botId as string, parseInt(limit as string));
+      } else if (actionType) {
+        actions = await storage.getBotActionsByType(actionType as string, parseInt(limit as string));
+      } else {
+        // Get recent actions across all bots
+        actions = await storage.getBotActionsByType("", parseInt(limit as string));
+      }
+      
+      res.json(actions);
+    } catch (error: any) {
+      console.error('Failed to get bot actions:', error);
+      res.status(500).json({ error: 'Failed to get bot actions', message: error.message });
+    }
+  });
+
+  // POST /api/admin/bot-actions - Manually record bot action (for testing)
+  app.post("/api/admin/bot-actions", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const actionData = insertBotActionSchema.parse(req.body);
+      const action = await storage.recordBotAction(actionData);
+      res.status(201).json(action);
+    } catch (error: any) {
+      console.error('Failed to record bot action:', error);
+      res.status(500).json({ error: 'Failed to record bot action', message: error.message });
+    }
+  });
+
+  // GET /api/admin/bot-actions/unrefunded - Get actions pending refund
+  app.get("/api/admin/bot-actions/unrefunded", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const actions = await storage.getUnrefundedActions();
+      res.json(actions);
+    } catch (error: any) {
+      console.error('Failed to get unrefunded actions:', error);
+      res.status(500).json({ error: 'Failed to get unrefunded actions', message: error.message });
+    }
+  });
+
+  // 3. TREASURY MANAGEMENT ENDPOINTS
+
+  // GET /api/admin/treasury - Get treasury status
+  app.get("/api/admin/treasury", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const treasury = await storage.getTreasury();
+      if (!treasury) {
+        // Initialize treasury if doesn't exist
+        const initialized = await storage.initializeBotSettings();
+        return res.json({ balance: 10000, dailySpendLimit: 500, todaySpent: 0 });
+      }
+      res.json(treasury);
+    } catch (error: any) {
+      console.error('Failed to get treasury:', error);
+      res.status(500).json({ error: 'Failed to get treasury', message: error.message });
+    }
+  });
+
+  // POST /api/admin/treasury/refill - Refill treasury
+  app.post("/api/admin/treasury/refill", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: "Invalid amount" });
+      }
+      
+      const treasury = await storage.refillTreasury(amount);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "refill_treasury",
+        targetType: "treasury",
+        newValue: { amount, newBalance: treasury.balance }
+      });
+      
+      res.json(treasury);
+    } catch (error: any) {
+      console.error('Failed to refill treasury:', error);
+      res.status(500).json({ error: 'Failed to refill treasury', message: error.message });
+    }
+  });
+
+  // POST /api/admin/treasury/reset-daily - Reset daily spend counter
+  app.post("/api/admin/treasury/reset-daily", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const treasury = await storage.resetDailySpend();
+      res.json(treasury);
+    } catch (error: any) {
+      console.error('Failed to reset daily spend:', error);
+      res.status(500).json({ error: 'Failed to reset daily spend', message: error.message });
+    }
+  });
+
+  // GET /api/admin/treasury/balance - Get treasury balance
+  app.get("/api/admin/treasury/balance", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const balance = await storage.getTreasuryBalance();
+      res.json({ balance });
+    } catch (error: any) {
+      console.error('Failed to get treasury balance:', error);
+      res.status(500).json({ error: 'Failed to get treasury balance', message: error.message });
+    }
+  });
+
+  // 4. REFUND MANAGEMENT ENDPOINTS
+
+  // GET /api/admin/refunds - List refunds
+  app.get("/api/admin/refunds", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const refunds = await storage.getPendingRefunds();
+      
+      if (status) {
+        const filtered = refunds.filter(r => r.status === status);
+        return res.json(filtered);
+      }
+      
+      res.json(refunds);
+    } catch (error: any) {
+      console.error('Failed to get refunds:', error);
+      res.status(500).json({ error: 'Failed to get refunds', message: error.message });
+    }
+  });
+
+  // POST /api/admin/refunds - Schedule refund manually
+  app.post("/api/admin/refunds", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const refundData = insertBotRefundSchema.parse(req.body);
+      const refund = await storage.scheduleRefund(refundData);
+      res.status(201).json(refund);
+    } catch (error: any) {
+      console.error('Failed to schedule refund:', error);
+      res.status(500).json({ error: 'Failed to schedule refund', message: error.message });
+    }
+  });
+
+  // POST /api/admin/refunds/:id/process - Mark refund as processed
+  app.post("/api/admin/refunds/:id/process", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { error } = req.body;
+      const refund = await storage.markRefundAsProcessed(req.params.id, error);
+      res.json(refund);
+    } catch (error: any) {
+      console.error('Failed to process refund:', error);
+      res.status(500).json({ error: 'Failed to process refund', message: error.message });
+    }
+  });
+
+  // 5. AUDIT LOG ENDPOINTS
+
+  // GET /api/admin/bot-audit - Get audit logs
+  app.get("/api/admin/bot-audit", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { adminId, actionType, limit = 100 } = req.query;
+      const logs = await storage.getAuditLogs({
+        adminId: adminId as string,
+        actionType: actionType as string,
+        limit: parseInt(limit as string)
+      });
+      res.json(logs);
+    } catch (error: any) {
+      console.error('Failed to get audit logs:', error);
+      res.status(500).json({ error: 'Failed to get audit logs', message: error.message });
+    }
+  });
+
+  // POST /api/admin/bot-audit/:id/undo - Undo audit action
+  app.post("/api/admin/bot-audit/:id/undo", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const log = await storage.undoAuditAction(req.params.id, req.user!.id);
+      res.json(log);
+    } catch (error: any) {
+      console.error('Failed to undo audit action:', error);
+      res.status(500).json({ error: 'Failed to undo audit action', message: error.message });
+    }
+  });
+
+  // 6. BOT SETTINGS ENDPOINTS
+
+  // GET /api/admin/bot-settings - Get bot settings
+  app.get("/api/admin/bot-settings", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      let settings = await storage.getBotSettings();
+      if (!settings) {
+        settings = await storage.initializeBotSettings();
+      }
+      res.json(settings);
+    } catch (error: any) {
+      console.error('Failed to get bot settings:', error);
+      res.status(500).json({ error: 'Failed to get bot settings', message: error.message });
+    }
+  });
+
+  // PATCH /api/admin/bot-settings - Update bot settings
+  app.patch("/api/admin/bot-settings", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const updates = req.body;
+      const previousSettings = await storage.getBotSettings();
+      const settings = await storage.updateBotSettings(updates);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "update_bot_settings",
+        targetType: "system",
+        previousValue: previousSettings,
+        newValue: updates
+      });
+      
+      res.json(settings);
+    } catch (error: any) {
+      console.error('Failed to update bot settings:', error);
+      res.status(500).json({ error: 'Failed to update bot settings', message: error.message });
+    }
+  });
+
+  // 7. ECONOMY MANIPULATION ENDPOINTS
+
+  // POST /api/admin/economy/drain-wallet - Drain user wallet by percentage
+  app.post("/api/admin/economy/drain-wallet", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { userId, percentage, reason } = req.body;
+      
+      if (!userId || !percentage || percentage < 0 || percentage > 100) {
+        return res.status(400).json({ error: "Invalid request" });
+      }
+      
+      // Get user's current wallet balance
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ error: "User not found" });
+      
+      const drainAmount = Math.floor((user.totalCoins || 0) * (percentage / 100));
+      
+      // Deduct coins (create negative transaction as "spend")
+      await storage.createCoinTransaction({
+        userId,
+        amount: -drainAmount,
+        type: "spend",
+        description: reason || "Economy adjustment by admin"
+      });
+      
+      // Update user's total coins
+      await storage.updateUserCoins(userId, -drainAmount);
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "drain_wallet",
+        targetType: "user",
+        targetId: userId,
+        previousValue: { balance: user.totalCoins },
+        newValue: { drainAmount, percentage, reason }
+      });
+      
+      res.json({ success: true, drainedAmount: drainAmount });
+    } catch (error: any) {
+      console.error('Failed to drain wallet:', error);
+      res.status(500).json({ error: 'Failed to drain wallet', message: error.message });
+    }
+  });
+
+  // POST /api/admin/economy/override-cap - Override wallet cap for user
+  app.post("/api/admin/economy/override-cap", isAuthenticated, isAdminMiddleware, async (req, res) => {
+    try {
+      const { userId, newCap } = req.body;
+      
+      await storage.logBotAction({
+        adminId: req.user!.id,
+        actionType: "override_wallet_cap",
+        targetType: "user",
+        targetId: userId,
+        newValue: { newCap }
+      });
+      
+      res.json({ success: true, message: "Wallet cap overridden" });
+    } catch (error: any) {
+      console.error('Failed to override wallet cap:', error);
+      res.status(500).json({ error: 'Failed to override wallet cap', message: error.message });
+    }
+  });
+
   // Return the Express app with all routes registered
   // Server creation happens in index.ts
   return app;
