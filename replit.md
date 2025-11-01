@@ -93,6 +93,7 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 - **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, and an admin dashboard for resolution workflow.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only workflow with human approval and async processing).
 - **Comprehensive Messaging System:** Facebook/Freelancer-style private messaging with 1-on-1 and group chats, file attachments (EA files, PDFs, images) up to 50MB, message reactions, read receipts, typing indicators, full-text search, privacy controls, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage integration.
+- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status (enabled/disabled/coming_soon), in-memory caching (60s TTL), SEO-optimized "Coming Soon" pages with email capture, and admin dashboard controls for zero-downtime feature toggles.
 
 ## External Dependencies
 
