@@ -451,7 +451,17 @@ export const conversations = pgTable("conversations", {
   participant2Id: varchar("participant2_id").notNull().references(() => users.id),
   lastMessageAt: timestamp("last_message_at").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+  
+  // Group chat support
+  isGroup: boolean("is_group").notNull().default(false),
+  groupName: varchar("group_name"),
+  groupDescription: text("group_description"),
+  createdById: varchar("created_by_id").references(() => users.id),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  isGroupIdx: index("idx_conversations_is_group").on(table.isGroup),
+  createdByIdx: index("idx_conversations_created_by").on(table.createdById),
+}));
 
 export const messages = pgTable("messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -469,6 +479,8 @@ export const messages = pgTable("messages", {
   recipientIdIdx: index("idx_messages_recipient_id").on(table.recipientId),
   createdAtIdx: index("idx_messages_created_at").on(table.createdAt),
   isReadIdx: index("idx_messages_is_read").on(table.isRead),
+  // Full-text search index using PostgreSQL GIN
+  bodyFtsIdx: index("idx_messages_body_fts").using("gin", sql`to_tsvector('english', ${table.body})`),
 }));
 
 // Message Reactions
@@ -480,6 +492,55 @@ export const messageReactions = pgTable("message_reactions", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   messageUserIdx: index("message_reactions_msg_user_idx").on(table.messageId, table.userId),
+}));
+
+// Conversation Participants - For group chat support
+export const conversationParticipants = pgTable("conversation_participants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  leftAt: timestamp("left_at"),
+  role: varchar("role", { length: 20 }).notNull().default("member").$type<"admin" | "member">(),
+  muted: boolean("muted").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  conversationIdIdx: index("idx_conversation_participants_conversation_id").on(table.conversationId),
+  userIdIdx: index("idx_conversation_participants_user_id").on(table.userId),
+  uniqueConversationUser: uniqueIndex("idx_conversation_participants_unique").on(table.conversationId, table.userId),
+}));
+
+// Message Attachments - For file sharing (EAs, strategies, images)
+export const messageAttachments = pgTable("message_attachments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name").notNull(),
+  fileSize: integer("file_size").notNull(),
+  fileType: varchar("file_type").notNull(),
+  storagePath: text("storage_path").notNull(),
+  storageUrl: text("storage_url"),
+  uploadedById: varchar("uploaded_by_id").notNull().references(() => users.id),
+  virusScanned: boolean("virus_scanned").notNull().default(false),
+  scanStatus: varchar("scan_status", { length: 20 }).notNull().default("pending").$type<"pending" | "clean" | "infected" | "error">(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  messageIdIdx: index("idx_message_attachments_message_id").on(table.messageId),
+  uploadedByIdx: index("idx_message_attachments_uploaded_by").on(table.uploadedById),
+  scanStatusIdx: index("idx_message_attachments_scan_status").on(table.scanStatus),
+}));
+
+// Message Read Receipts - More detailed than simple is_read flag
+export const messageReadReceipts = pgTable("message_read_receipts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  readAt: timestamp("read_at").notNull(),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  messageIdIdx: index("idx_message_read_receipts_message_id").on(table.messageId),
+  userIdIdx: index("idx_message_read_receipts_user_id").on(table.userId),
+  uniqueMessageUser: uniqueIndex("idx_message_read_receipts_unique").on(table.messageId, table.userId),
 }));
 
 // Notifications system
@@ -1737,6 +1798,49 @@ export const insertMessageReactionSchema = createInsertSchema(messageReactions).
 });
 export type InsertMessageReaction = z.infer<typeof insertMessageReactionSchema>;
 export type MessageReaction = typeof messageReactions.$inferSelect;
+
+// Conversation Participants
+export const insertConversationParticipantSchema = createInsertSchema(conversationParticipants).omit({
+  id: true,
+  createdAt: true,
+  joinedAt: true,
+}).extend({
+  conversationId: z.string().uuid(),
+  userId: z.string().uuid(),
+  role: z.enum(["admin", "member"]).default("member"),
+});
+export type InsertConversationParticipant = z.infer<typeof insertConversationParticipantSchema>;
+export type ConversationParticipant = typeof conversationParticipants.$inferSelect;
+
+// Message Attachments
+export const insertMessageAttachmentSchema = createInsertSchema(messageAttachments).omit({
+  id: true,
+  createdAt: true,
+  virusScanned: true,
+  scanStatus: true,
+}).extend({
+  messageId: z.string().uuid(),
+  fileName: z.string().min(1).max(255),
+  fileSize: z.number().int().positive(),
+  fileType: z.string().min(1).max(100),
+  storagePath: z.string().min(1),
+  uploadedById: z.string().uuid(),
+});
+export type InsertMessageAttachment = z.infer<typeof insertMessageAttachmentSchema>;
+export type MessageAttachment = typeof messageAttachments.$inferSelect;
+
+// Message Read Receipts
+export const insertMessageReadReceiptSchema = createInsertSchema(messageReadReceipts).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  messageId: z.string().uuid(),
+  userId: z.string().uuid(),
+  readAt: z.date().or(z.string()),
+});
+export type InsertMessageReadReceipt = z.infer<typeof insertMessageReadReceiptSchema>;
+export type MessageReadReceipt = typeof messageReadReceipts.$inferSelect;
+
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type UpdateUserProfile = z.infer<typeof updateUserProfileSchema>;
