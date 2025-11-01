@@ -7,10 +7,19 @@ export interface ErrorContext {
   component?: string;
   props?: any;
   userDescription?: string;
-  errorType?: 'resource' | 'websocket' | 'validation' | 'ssr' | 'third-party' | 'performance' | 'cors' | 'csp' | 'upload';
+  errorType?: 'api_error' | 'resource' | 'websocket' | 'validation' | 'ssr' | 'third-party' | 'performance' | 'cors' | 'csp' | 'upload';
   resourceUrl?: string;
   performanceMetrics?: any;
   validationDetails?: any;
+  apiError?: {
+    url: string;
+    method: string;
+    status: number;
+    statusText: string;
+    actualErrorMessage: string;
+    parsedResponse: any;
+    rawResponse?: string;
+  };
 }
 
 export interface BrowserInfo {
@@ -320,7 +329,57 @@ export class ErrorTracker {
     responseText?: string,
     headers?: Record<string, string>
   ): void {
-    const message = `API Error: ${method} ${url} returned ${status}`;
+    // Parse the response body to extract the actual error message
+    let parsedError: any = null;
+    let actualErrorMessage = '';
+    
+    try {
+      if (responseText) {
+        parsedError = JSON.parse(responseText);
+        // Extract the actual error message from various possible formats
+        actualErrorMessage = parsedError?.error || 
+                           parsedError?.message || 
+                           parsedError?.details || 
+                           parsedError?.errorMessage ||
+                           '';
+      }
+    } catch (e) {
+      // If parsing fails, use the raw response text
+      actualErrorMessage = responseText?.substring(0, 200) || '';
+    }
+
+    // Create comprehensive error message
+    const message = actualErrorMessage 
+      ? `API Error (${status}): ${actualErrorMessage} [${method} ${url}]`
+      : `API Error: ${method} ${url} returned ${status}`;
+    
+    // Enhanced context with parsed error details
+    const errorContext = {
+      sessionId: this.sessionId,
+      route: this.getCurrentRoute(),
+      errorType: 'api_error' as const,
+      apiError: {
+        url,
+        method,
+        status,
+        statusText: status >= 500 ? 'Server Error' : status >= 400 ? 'Client Error' : 'Unknown',
+        actualErrorMessage,
+        parsedResponse: parsedError,
+        rawResponse: responseText?.substring(0, 500), // Store first 500 chars of raw response
+      },
+    };
+
+    // Log to console for immediate debugging
+    console.error('[API Error]', {
+      message,
+      url,
+      method,
+      status,
+      actualError: actualErrorMessage,
+      response: parsedError || responseText?.substring(0, 200),
+      route: this.getCurrentRoute(),
+      timestamp: new Date().toISOString(),
+    });
     
     const errorEvent: ErrorEvent = {
       fingerprint: this.generateFingerprint(message, 'api', url),
@@ -328,17 +387,14 @@ export class ErrorTracker {
       component: 'api',
       severity: status >= 500 ? 'critical' : 'error',
       stackTrace: new Error().stack,
-      context: {
-        sessionId: this.sessionId,
-        route: this.getCurrentRoute(),
-      },
+      context: errorContext,
       browserInfo: this.getBrowserInfo(),
       requestInfo: {
         url,
         method,
         headers,
         responseStatus: status,
-        responseText,
+        responseText: responseText?.substring(0, 1000), // Store first 1000 chars
       },
       timestamp: Date.now(),
     };

@@ -920,6 +920,66 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // Coin earning opportunities endpoint (public - no auth required)
+  app.get("/api/coins/opportunities", async (req, res) => {
+    try {
+      const opportunities = [
+        { 
+          action: "Create a forum thread", 
+          reward: 5, 
+          description: "Start a discussion and earn coins",
+          icon: "message-square"
+        },
+        { 
+          action: "Get a follower", 
+          reward: 1, 
+          description: "Build your network and reputation",
+          icon: "user-plus"
+        },
+        { 
+          action: "Sell an Expert Advisor", 
+          reward: "80%", 
+          description: "Earn commission on every sale",
+          icon: "trending-up"
+        },
+        { 
+          action: "Reply to threads", 
+          reward: 2, 
+          description: "Help the community with your knowledge",
+          icon: "message-circle"
+        },
+        { 
+          action: "Upload content", 
+          reward: 10, 
+          description: "Share your trading strategies",
+          icon: "upload"
+        },
+        {
+          action: "Active trading time",
+          reward: "1/min",
+          description: "Earn coins while actively using the platform",
+          icon: "clock"
+        },
+        {
+          action: "Get a helpful vote",
+          reward: 3,
+          description: "Receive upvotes on your helpful replies",
+          icon: "thumbs-up"
+        },
+        {
+          action: "Post daily journal",
+          reward: 15,
+          description: "Share your daily trading journal",
+          icon: "book-open"
+        }
+      ];
+      res.json(opportunities);
+    } catch (error: any) {
+      console.error('[API /coins/opportunities] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch coin earning opportunities' });
+    }
+  });
+
   // Badge System Endpoints
   // GET /api/users/:userId/badges - Get user badges
   app.get("/api/users/:userId/badges", async (req, res) => {
@@ -6041,36 +6101,47 @@ export async function registerRoutes(app: Express): Promise<Express> {
     res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
     
     try {
-      // Parallel fetching for better performance
-      const [threads, users, content] = await Promise.all([
-        storage.getAllForumThreads(),
-        storage.getAllUsers(),
-        storage.getAllContent()
-      ]);
-      
-      // Calculate today's activity
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      const todayThreads = threads.filter(t => new Date(t.createdAt) >= today).length;
-      const todayContent = content.filter(c => new Date(c.createdAt) >= today).length;
-      
-      // Total replies from all threads
-      const totalReplies = threads.reduce((sum, t) => sum + t.replyCount, 0);
+      // Use efficient COUNT queries instead of fetching all data
+      const stats = await storage.getForumStats();
       
       res.json({
-        totalThreads: threads.length,
-        totalMembers: users.length,
-        totalPosts: totalReplies,
-        totalContent: content.length,
-        todayActivity: {
-          threads: todayThreads,
-          content: todayContent,
-        },
+        totalThreads: stats.totalThreads,
+        totalMembers: stats.totalMembers,
+        totalPosts: stats.totalPosts,
+        totalContent: stats.totalContent,
+        todayActivity: stats.todayActivity,
         lastUpdated: new Date().toISOString()
       });
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      // Comprehensive error logging
+      console.error('[API /stats] Error fetching platform stats:', {
+        message: error?.message || 'Unknown error',
+        name: error?.name || 'Error',
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+        stack: error?.stack,
+        timestamp: new Date().toISOString(),
+      });
+      
+      // Log the full stack trace separately for easier debugging
+      if (error?.stack) {
+        console.error('[API /stats] Full stack trace:', error.stack);
+      }
+      
+      // Return detailed error response (only in development for security)
+      const isDevelopment = process.env.NODE_ENV === 'development';
+      res.status(500).json({ 
+        error: 'Failed to fetch platform statistics',
+        message: error?.message || 'An unexpected error occurred',
+        ...(isDevelopment && {
+          details: {
+            code: error?.code,
+            constraint: error?.constraint,
+            detail: error?.detail,
+          }
+        })
+      });
     }
   });
 

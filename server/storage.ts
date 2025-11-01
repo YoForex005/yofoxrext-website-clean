@@ -392,6 +392,16 @@ export interface IStorage {
   getAllForumThreads(): Promise<ForumThread[]>;
   getAllUsers(): Promise<User[]>;
   getUserById(id: string): Promise<User | undefined>;
+  getForumStats(): Promise<{
+    totalThreads: number;
+    totalMembers: number;
+    totalPosts: number;
+    totalContent: number;
+    todayActivity: {
+      threads: number;
+      content: number;
+    };
+  }>;
   getUserStats(userId: string): Promise<{
     threadsCreated: number;
     repliesPosted: number;
@@ -8350,6 +8360,49 @@ export class DrizzleStorage implements IStorage {
   async getUserById(id: string): Promise<User | undefined> {
     const result = await db.select().from(users).where(eq(users.id, id));
     return result[0];
+  }
+
+  async getForumStats(): Promise<{
+    totalThreads: number;
+    totalMembers: number;
+    totalPosts: number;
+    totalContent: number;
+    todayActivity: {
+      threads: number;
+      content: number;
+    };
+  }> {
+    // Use efficient COUNT queries instead of fetching all data
+    const [threadsCount, membersCount, postsCount, contentCount] = await Promise.all([
+      db.select({ count: count(forumThreads.id) }).from(forumThreads),
+      db.select({ count: count(users.id) }).from(users),
+      db.select({ count: count(forumReplies.id) }).from(forumReplies),
+      db.select({ count: count(content.id) }).from(content)
+    ]);
+    
+    // Calculate today's activity
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const [todayThreads, todayContent] = await Promise.all([
+      db.select({ count: count(forumThreads.id) })
+        .from(forumThreads)
+        .where(gte(forumThreads.createdAt, today)),
+      db.select({ count: count(content.id) })
+        .from(content)
+        .where(gte(content.createdAt, today))
+    ]);
+    
+    return {
+      totalThreads: Number(threadsCount[0]?.count || 0),
+      totalMembers: Number(membersCount[0]?.count || 0),
+      totalPosts: Number(postsCount[0]?.count || 0),
+      totalContent: Number(contentCount[0]?.count || 0),
+      todayActivity: {
+        threads: Number(todayThreads[0]?.count || 0),
+        content: Number(todayContent[0]?.count || 0)
+      }
+    };
   }
 
   async getUserStats(userId: string): Promise<{
@@ -16490,6 +16543,19 @@ export class DrizzleStorage implements IStorage {
         },
       });
 
+      // Enhanced stack trace - include API error details if available
+      let enhancedStackTrace = data.stackTrace || '';
+      if (data.context?.apiError) {
+        const apiError = data.context.apiError;
+        enhancedStackTrace = `API Error Details:\n` +
+          `  URL: ${apiError.url}\n` +
+          `  Method: ${apiError.method}\n` +
+          `  Status: ${apiError.status} (${apiError.statusText})\n` +
+          `  Error Message: ${apiError.actualErrorMessage}\n` +
+          `  Response: ${JSON.stringify(apiError.parsedResponse || apiError.rawResponse, null, 2)}\n\n` +
+          `Stack Trace:\n${enhancedStackTrace}`;
+      }
+
       // Create the error event
       const [event] = await db
         .insert(errorEvents)
@@ -16497,7 +16563,7 @@ export class DrizzleStorage implements IStorage {
           groupId: group.id,
           userId: data.userId,
           sessionId: data.sessionId,
-          stackTrace: data.stackTrace,
+          stackTrace: enhancedStackTrace,
           context: data.context,
           browserInfo: data.browserInfo,
           requestInfo: data.requestInfo,
