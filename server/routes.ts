@@ -10198,14 +10198,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ERROR TRACKING & MONITORING ROUTES
   // ============================================
 
-  // Create a rate limiter for error telemetry
-  const errorTelemetryLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000, // 1 minute
-    max: 100, // limit each IP to 100 requests per minute
-    message: 'Too many error reports from this IP, please try again later',
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
+  // Note: No rate limiting on error telemetry endpoint to prevent error cascade issues
+  // Error tracking must always work, even during high error rates
 
   // Schema for error event ingestion
   const errorEventIngestionSchema = z.object({
@@ -10232,8 +10226,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
     sessionId: z.string().optional(),
   });
 
-  // POST /api/telemetry/errors - Ingest errors from frontend
-  app.post("/api/telemetry/errors", errorTelemetryLimiter, async (req, res) => {
+  // POST /api/telemetry/errors - Ingest errors from frontend (no rate limiting)
+  app.post("/api/telemetry/errors", async (req, res) => {
     try {
       // Validate request body
       const validation = errorEventIngestionSchema.safeParse(req.body);

@@ -307,7 +307,7 @@ export default function WeekHighlights({
                 <div className="flex items-center gap-1.5">
                   <Eye className="h-3.5 w-3.5 text-purple-500/70" />
                   <span className="font-medium" data-testid={`text-views-${thread.id}`}>
-                    {thread.views.toLocaleString()}
+                    {(thread.views ?? 0).toLocaleString()}
                   </span>
                 </div>
 
