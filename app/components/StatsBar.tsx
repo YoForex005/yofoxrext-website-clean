@@ -1,5 +1,7 @@
+
 "use client";
 
+import * as React from "react";
 import { MessageSquare, Users, MessagesSquare, Activity } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshButton } from "./RefreshButton";
@@ -19,11 +21,17 @@ interface StatsBarProps {
 }
 
 export default function StatsBar({ initialStats }: StatsBarProps) {
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   // Use React Query with initial data from server
   const { data, isLoading, refetch } = useQuery<StatsData>({
     queryKey: ['/api/stats'],
     initialData: initialStats,
-    enabled: false, // Don't auto-fetch, use manual refresh
+    enabled: mounted, // Only fetch after mounting
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
@@ -92,7 +100,9 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
                 <stat.icon className="h-5 w-5 text-primary dark:text-primary" />
               </div>
               <div>
-                <div className="text-2xl font-bold" data-testid={`text-stat-${stat.key}`}>{stat.value}</div>
+                <div className="text-2xl font-bold" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
+                  {stat.value}
+                </div>
                 <div className="text-sm text-muted-foreground font-medium truncate">{stat.label}</div>
               </div>
             </div>
