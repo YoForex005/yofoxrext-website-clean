@@ -71,6 +71,52 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 
 ## Recent Changes
 
+### **2025-11-01: Coin Balance UI/UX Redesign - Header Cleanup ✅**
+**Status:** COMPLETED - Architect Approved (PASS)
+
+**Overview:**
+Relocated coin balance display from global header to profile dropdown menu for cleaner UI and lazy data loading.
+
+**Changes Made:**
+1. **Desktop Header Cleanup**
+   - Removed coin balance widget (coins + USD value) from top-right header
+   - Removed HelpCircle tooltip button
+   - Header now cleaner and less cluttered across all pages
+
+2. **Profile Dropdown Enhancement**
+   - Added coin balance at top of dropdown (after username, before menu items)
+   - Display format: Yellow coin icon + formatted coin count + USD value
+   - Links to `/recharge` when clicked with hover effects
+   - Professional, consistent styling
+
+3. **Mobile Sheet Update**
+   - Removed inline coin display from user profile section
+   - Added standalone coin balance card between profile and navigation links
+   - Matches desktop dropdown styling
+   - Closes menu on click, navigates to `/recharge`
+
+4. **Lazy Loading Implementation**
+   - Converted eager coin fetching to lazy loading
+   - API `/api/user/${user.id}/coins` called ONLY when dropdown/menu opens
+   - TanStack Query configured with:
+     - `staleTime: 30000ms` (30 seconds caching)
+     - `refetchOnWindowFocus: false` (prevents unnecessary refetches)
+   - Enabled for both desktop dropdown (`isProfileDropdownOpen`) and mobile menu (`mobileMenuOpen`)
+
+5. **Performance Benefits**
+   - Reduces initial page load API calls
+   - Coins fetched only when user actually needs to see balance
+   - 30-second cache prevents repeated API calls
+   - Improves perceived performance and server load
+
+**Files Modified:**
+- `app/components/Header.tsx` - Desktop header, profile dropdown, mobile sheet
+
+**Architect Verdict:** PASS - "Lazy loading now fires when either desktop profile dropdown or mobile sheet opens. No race conditions. Cached data persists with 30s staleTime."
+
+**Future Enhancement (Optional):**
+- Add loading skeleton/placeholder while coins query is fetching (prevents brief flash of "0 coins")
+
 ### **2025-11-01: Production Bug Fixes - Critical Error Resolution ✅**
 **Status:** COMPLETED - 91 Error Occurrences Fixed
 

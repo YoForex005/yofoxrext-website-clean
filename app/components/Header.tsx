@@ -82,7 +82,7 @@ export default function Header() {
       if (!res.ok) throw new Error('Failed to fetch coins');
       return res.json();
     },
-    enabled: !!user?.id && isProfileDropdownOpen,
+    enabled: !!user?.id && (isProfileDropdownOpen || mobileMenuOpen),
     staleTime: 30000,
     refetchOnWindowFocus: false,
   });
