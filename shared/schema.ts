@@ -3534,21 +3534,14 @@ export const seoFixJobs = pgTable("seo_fix_jobs", {
 
 // SEO Scan History - Track last scan time per URL for delta scans
 export const seoScanHistory = pgTable("seo_scan_history", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  url: varchar("url", { length: 1000 }).notNull(),
+  id: serial("id").primaryKey(),
+  pageUrl: varchar("page_url", { length: 500 }).notNull(),
   lastScanAt: timestamp("last_scan_at").notNull().defaultNow(),
-  lastScannedBy: varchar("last_scanned_by", { length: 20 }).notNull().$type<"cron" | "manual" | "post-publish">(),
-  scanId: varchar("scan_id").references(() => seoScans.id, { onDelete: "set null" }),
-  issuesFound: integer("issues_found").notNull().default(0),
-  metadata: jsonb("metadata").$type<{
-    scanDuration?: number;
-    scanStatus?: string;
-    errorMessage?: string;
-  }>(),
+  scanId: integer("scan_id").references(() => seoScans.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
-  urlIdx: uniqueIndex("idx_seo_scan_history_url").on(table.url),
+  pageUrlIdx: uniqueIndex("idx_seo_scan_history_page_url").on(table.pageUrl),
   lastScanAtIdx: index("idx_seo_scan_history_last_scan_at").on(table.lastScanAt),
   scanIdIdx: index("idx_seo_scan_history_scan_id").on(table.scanId),
 }));
@@ -3702,10 +3695,8 @@ export const insertSeoScanHistorySchema = createInsertSchema(seoScanHistory).omi
   createdAt: true,
   updatedAt: true,
 }).extend({
-  url: z.string().min(1).max(1000),
-  lastScannedBy: z.enum(["cron", "manual", "post-publish"]),
-  scanId: z.string().uuid().optional(),
-  issuesFound: z.number().int().min(0).default(0),
+  pageUrl: z.string().min(1).max(500),
+  scanId: z.number().int().optional(),
 });
 export type InsertSeoScanHistory = z.infer<typeof insertSeoScanHistorySchema>;
 export type SeoScanHistory = typeof seoScanHistory.$inferSelect;
