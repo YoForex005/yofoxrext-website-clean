@@ -3505,7 +3505,7 @@ export const insertSeoFixJobSchema = createInsertSchema(seoFixJobs).omit({
   id: true,
   createdAt: true,
   completedAt: true,
-  approvedAt: true,
+  updatedAt: true,
 }).extend({
   issueId: z.string().uuid().optional(),
   fixType: z.string().min(1).max(100),
