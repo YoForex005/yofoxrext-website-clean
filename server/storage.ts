@@ -427,6 +427,7 @@ export interface IStorage {
   removeParticipantFromConversation(conversationId: string, userId: string): Promise<void>;
   getConversationParticipants(conversationId: string): Promise<User[]>;
   isUserInConversation(conversationId: string, userId: string): Promise<boolean>;
+  getConversationBetweenUsers(user1Id: string, user2Id: string): Promise<Conversation | null>;
   
   // Message Attachments
   addMessageAttachment(messageId: string, attachment: Omit<InsertMessageAttachment, 'id' | 'createdAt'>): Promise<MessageAttachment>;
@@ -4084,6 +4085,10 @@ export class MemStorage implements IStorage {
   }
 
   async isUserInConversation(conversationId: string, userId: string): Promise<boolean> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async getConversationBetweenUsers(user1Id: string, user2Id: string): Promise<Conversation | null> {
     throw new Error("MemStorage does not support messaging operations");
   }
 
@@ -8199,6 +8204,47 @@ export class DrizzleStorage implements IStorage {
       .limit(1);
 
     return result.length > 0;
+  }
+
+  async getConversationBetweenUsers(user1Id: string, user2Id: string): Promise<Conversation | null> {
+    // Find conversations where both users are participants
+    const conversationsQuery = await db
+      .select({ conversationId: conversationParticipants.conversationId })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.userId, user1Id));
+
+    if (conversationsQuery.length === 0) {
+      return null;
+    }
+
+    const conversationIds = conversationsQuery.map(c => c.conversationId);
+
+    // Check which of these conversations also includes user2
+    for (const convId of conversationIds) {
+      const user2Participant = await db
+        .select()
+        .from(conversationParticipants)
+        .where(
+          and(
+            eq(conversationParticipants.conversationId, convId),
+            eq(conversationParticipants.userId, user2Id)
+          )
+        )
+        .limit(1);
+
+      if (user2Participant.length > 0) {
+        // Found a conversation with both users
+        const conversationResult = await db
+          .select()
+          .from(conversations)
+          .where(eq(conversations.id, convId))
+          .limit(1);
+
+        return conversationResult[0] || null;
+      }
+    }
+
+    return null;
   }
 
   // Message Attachments
