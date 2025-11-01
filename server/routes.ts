@@ -4690,19 +4690,52 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       const validated = insertMessageSchema.parse(req.body);
       
+      // Check if sender is blocked by recipient
+      const isBlocked = await storage.isUserBlocked(validated.recipientId, authenticatedUserId);
+      if (isBlocked) {
+        return res.status(403).json({ error: "You cannot send messages to this user" });
+      }
+      
+      // Check recipient's privacy settings
+      const recipientSettings = await storage.getUserMessageSettings(validated.recipientId);
+      if (recipientSettings) {
+        // Check whoCanMessage setting
+        if (recipientSettings.whoCanMessage === 'nobody') {
+          // Check if there's an existing conversation
+          const existingConversations = await storage.getConversations(validated.recipientId);
+          const hasExistingConversation = existingConversations.some(
+            conv => conv.participant.id === authenticatedUserId
+          );
+          
+          if (!hasExistingConversation) {
+            return res.status(403).json({ error: "This user is not accepting new messages" });
+          }
+        } else if (recipientSettings.whoCanMessage === 'followers') {
+          // Check if sender is following recipient
+          const isFollowing = await storage.checkIfFollowing(authenticatedUserId, validated.recipientId);
+          if (!isFollowing) {
+            return res.status(403).json({ error: "Only followers can send messages to this user" });
+          }
+        }
+      }
+      
       const message = await storage.sendMessage(
         authenticatedUserId,
         validated.recipientId,
         validated.body
       );
       
-      // Queue new message email (fire-and-forget)
+      // Queue new message email (fire-and-forget) if enabled
       (async () => {
         try {
           const sender = await storage.getUser(authenticatedUserId);
           const recipient = await storage.getUser(validated.recipientId);
           
-          if (sender?.username && sender?.email && recipient?.email) {
+          // Check if recipient has email notifications enabled
+          const settings = await storage.getUserMessageSettings(validated.recipientId);
+          const emailNotificationsEnabled = settings?.emailNotificationsEnabled !== false;
+          
+          if (emailNotificationsEnabled && sender?.username && sender?.email && recipient?.email) {
             const messagePreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
             await emailQueueService.queueEmail({
               userId: recipient.id,
@@ -5144,6 +5177,123 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error("Error searching conversations:", error);
       res.status(500).json({ error: "Failed to search conversations" });
+    }
+  });
+
+  // ===== PRIVACY SETTINGS ENDPOINTS =====
+  
+  // Get user's message privacy settings
+  app.get("/api/messages/settings", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      let settings = await storage.getUserMessageSettings(authenticatedUserId);
+      
+      // Create default settings if none exist
+      if (!settings) {
+        settings = await storage.createOrUpdateMessageSettings(authenticatedUserId, {});
+      }
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error getting message settings:", error);
+      res.status(500).json({ error: "Failed to get message settings" });
+    }
+  });
+
+  // Update user's message privacy settings
+  app.put("/api/messages/settings", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const validationResult = insertUserMessageSettingsSchema.partial().safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: 'Validation failed', 
+          details: validationResult.error.errors 
+        });
+      }
+
+      const settings = await storage.createOrUpdateMessageSettings(
+        authenticatedUserId,
+        validationResult.data
+      );
+      
+      res.json(settings);
+    } catch (error) {
+      console.error("Error updating message settings:", error);
+      res.status(500).json({ error: "Failed to update message settings" });
+    }
+  });
+
+  // Get list of blocked users
+  app.get("/api/messages/blocked-users", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const blockedUsers = await storage.getBlockedUsers(authenticatedUserId);
+      res.json(blockedUsers);
+    } catch (error) {
+      console.error("Error getting blocked users:", error);
+      res.status(500).json({ error: "Failed to get blocked users" });
+    }
+  });
+
+  // Block a user
+  app.post("/api/messages/block-user", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const validationResult = insertBlockedUserSchema.safeParse({
+        blockerId: authenticatedUserId,
+        ...req.body,
+      });
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: 'Validation failed', 
+          details: validationResult.error.errors 
+        });
+      }
+
+      const blocked = await storage.blockUser(
+        authenticatedUserId,
+        req.body.blockedId,
+        req.body.reason
+      );
+      
+      res.json(blocked);
+    } catch (error: any) {
+      console.error("Error blocking user:", error);
+      if (error.message === 'You cannot block yourself' || error.message === 'User is already blocked') {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Failed to block user" });
+    }
+  });
+
+  // Unblock a user
+  app.delete("/api/messages/unblock/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      await storage.unblockUser(authenticatedUserId, req.params.userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error unblocking user:", error);
+      res.status(500).json({ error: "Failed to unblock user" });
+    }
+  });
+
+  // Export user's messages
+  app.get("/api/messages/export", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const exportData = await storage.exportUserMessages(authenticatedUserId);
+      
+      // Send as JSON download
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="messages-export-${Date.now()}.json"`);
+      res.json(exportData);
+    } catch (error) {
+      console.error("Error exporting messages:", error);
+      res.status(500).json({ error: "Failed to export messages" });
     }
   });
 

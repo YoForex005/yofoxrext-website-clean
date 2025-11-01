@@ -543,6 +543,36 @@ export const messageReadReceipts = pgTable("message_read_receipts", {
   uniqueMessageUser: uniqueIndex("idx_message_read_receipts_unique").on(table.messageId, table.userId),
 }));
 
+// User Message Privacy Settings
+export const userMessageSettings = pgTable("user_message_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  whoCanMessage: varchar("who_can_message").notNull().default("everyone"), // everyone, followers, nobody
+  readReceiptsEnabled: boolean("read_receipts_enabled").notNull().default(true),
+  typingIndicatorsEnabled: boolean("typing_indicators_enabled").notNull().default(true),
+  onlineStatusVisible: boolean("online_status_visible").notNull().default(true),
+  emailNotificationsEnabled: boolean("email_notifications_enabled").notNull().default(true),
+  pushNotificationsEnabled: boolean("push_notifications_enabled").notNull().default(false),
+  soundNotificationsEnabled: boolean("sound_notifications_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_user_message_settings_user_id").on(table.userId),
+}));
+
+// Blocked Users
+export const blockedUsers = pgTable("blocked_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  blockerId: varchar("blocker_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  blockedId: varchar("blocked_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  blockerBlockedIdx: index("blocked_users_blocker_blocked_idx").on(table.blockerId, table.blockedId),
+  blockedIdIdx: index("blocked_users_blocked_id_idx").on(table.blockedId),
+  uniqueBlock: uniqueIndex("blocked_users_unique_block").on(table.blockerId, table.blockedId),
+}));
+
 // Notifications system
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1840,6 +1870,36 @@ export const insertMessageReadReceiptSchema = createInsertSchema(messageReadRece
 });
 export type InsertMessageReadReceipt = z.infer<typeof insertMessageReadReceiptSchema>;
 export type MessageReadReceipt = typeof messageReadReceipts.$inferSelect;
+
+// User Message Settings
+export const insertUserMessageSettingsSchema = createInsertSchema(userMessageSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  whoCanMessage: z.enum(["everyone", "followers", "nobody"]).default("everyone"),
+  readReceiptsEnabled: z.boolean().default(true),
+  typingIndicatorsEnabled: z.boolean().default(true),
+  onlineStatusVisible: z.boolean().default(true),
+  emailNotificationsEnabled: z.boolean().default(true),
+  pushNotificationsEnabled: z.boolean().default(false),
+  soundNotificationsEnabled: z.boolean().default(true),
+});
+export type InsertUserMessageSettings = z.infer<typeof insertUserMessageSettingsSchema>;
+export type UserMessageSettings = typeof userMessageSettings.$inferSelect;
+
+// Blocked Users
+export const insertBlockedUserSchema = createInsertSchema(blockedUsers).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  blockerId: z.string().uuid(),
+  blockedId: z.string().uuid(),
+  reason: z.string().optional(),
+});
+export type InsertBlockedUser = z.infer<typeof insertBlockedUserSchema>;
+export type BlockedUser = typeof blockedUsers.$inferSelect;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;

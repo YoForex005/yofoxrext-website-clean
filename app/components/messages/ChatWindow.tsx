@@ -44,6 +44,7 @@ interface ChatWindowProps {
   messages: MessageWithDetails[];
   currentUser: User;
   isLoading?: boolean;
+  highlightMessageId?: string | null;
   onBack?: () => void;
   onLeaveConversation?: () => void;
   onMuteConversation?: () => void;
@@ -54,6 +55,7 @@ export function ChatWindow({
   messages,
   currentUser,
   isLoading = false,
+  highlightMessageId = null,
   onBack,
   onLeaveConversation,
   onMuteConversation,
@@ -63,6 +65,7 @@ export function ChatWindow({
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [lastMessageId, setLastMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const highlightedMessageRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -98,10 +101,16 @@ export function ChatWindow({
     }
   }, [conversation?.id, joinConversation, socketLeaveConversation]);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom on new messages or highlighted message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (highlightMessageId && highlightedMessageRef.current) {
+      // Scroll to highlighted message
+      highlightedMessageRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      // Scroll to bottom for new messages
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, highlightMessageId]);
 
   // Mark messages as read when they come into view
   useEffect(() => {
@@ -355,14 +364,19 @@ export function ChatWindow({
           ) : (
             <div className="space-y-4">
               {messages.map((message) => (
-                <MessageBubble
+                <div
                   key={message.id}
-                  message={message}
-                  currentUser={currentUser}
-                  onAddReaction={handleAddReaction}
-                  onRemoveReaction={handleRemoveReaction}
-                  onDelete={handleDeleteMessage}
-                />
+                  ref={message.id === highlightMessageId ? highlightedMessageRef : null}
+                >
+                  <MessageBubble
+                    message={message}
+                    currentUser={currentUser}
+                    highlighted={message.id === highlightMessageId}
+                    onAddReaction={handleAddReaction}
+                    onRemoveReaction={handleRemoveReaction}
+                    onDelete={handleDeleteMessage}
+                  />
+                </div>
               ))}
               <div ref={messagesEndRef} />
             </div>

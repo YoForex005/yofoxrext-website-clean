@@ -30,6 +30,7 @@ import type { User } from '@shared/schema';
 interface MessageBubbleProps {
   message: MessageWithDetails;
   currentUser: User;
+  highlighted?: boolean;
   onAddReaction?: (messageId: string, emoji: string) => void;
   onRemoveReaction?: (messageId: string, emoji: string) => void;
   onDelete?: (messageId: string) => void;
@@ -40,6 +41,7 @@ const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 export function MessageBubble({
   message,
   currentUser,
+  highlighted = false,
   onAddReaction,
   onRemoveReaction,
   onDelete,
@@ -131,8 +133,10 @@ export function MessageBubble({
           {/* Message Bubble */}
           <div className="relative group/message">
             <div
-              className={`rounded-lg p-3 ${
-                isSentByMe
+              className={`rounded-lg p-3 transition-colors ${
+                highlighted
+                  ? 'bg-yellow-200 dark:bg-yellow-900/50 animate-pulse'
+                  : isSentByMe
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted text-foreground'
               }`}

@@ -446,6 +446,18 @@ export interface IStorage {
   searchMessagesExtended(userId: string, query: string, limit?: number): Promise<Message[]>;
   searchConversations(userId: string, query: string): Promise<Conversation[]>;
   
+  // Privacy Settings
+  getUserMessageSettings(userId: string): Promise<UserMessageSettings | null>;
+  createOrUpdateMessageSettings(userId: string, settings: Partial<InsertUserMessageSettings>): Promise<UserMessageSettings>;
+  getBlockedUsers(userId: string): Promise<Array<BlockedUser & { blockedUser: User }>>;
+  blockUser(blockerId: string, blockedId: string, reason?: string): Promise<BlockedUser>;
+  unblockUser(blockerId: string, blockedId: string): Promise<void>;
+  isUserBlocked(blockerId: string, blockedId: string): Promise<boolean>;
+  exportUserMessages(userId: string): Promise<Array<{
+    conversation: Conversation;
+    messages: Message[];
+  }>>;
+  
   // Dashboard Preferences
   getDashboardPreferences(userId: string): Promise<DashboardPreferences | null>;
   saveDashboardPreferences(userId: string, preferences: InsertDashboardPreferences): Promise<DashboardPreferences>;
@@ -8330,6 +8342,152 @@ export class DrizzleStorage implements IStorage {
       .limit(20);
 
     return results;
+  }
+
+  // Privacy Settings
+  async getUserMessageSettings(userId: string): Promise<UserMessageSettings | null> {
+    const result = await db
+      .select()
+      .from(userMessageSettings)
+      .where(eq(userMessageSettings.userId, userId))
+      .limit(1);
+
+    return result[0] || null;
+  }
+
+  async createOrUpdateMessageSettings(userId: string, settings: Partial<InsertUserMessageSettings>): Promise<UserMessageSettings> {
+    const existing = await this.getUserMessageSettings(userId);
+
+    if (existing) {
+      const [updated] = await db
+        .update(userMessageSettings)
+        .set({
+          ...settings,
+          updatedAt: new Date(),
+        })
+        .where(eq(userMessageSettings.userId, userId))
+        .returning();
+
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(userMessageSettings)
+        .values({
+          userId,
+          ...settings,
+        })
+        .returning();
+
+      return created;
+    }
+  }
+
+  async getBlockedUsers(userId: string): Promise<Array<BlockedUser & { blockedUser: User }>> {
+    const results = await db
+      .select({
+        id: blockedUsers.id,
+        blockerId: blockedUsers.blockerId,
+        blockedId: blockedUsers.blockedId,
+        reason: blockedUsers.reason,
+        createdAt: blockedUsers.createdAt,
+        blockedUser: users,
+      })
+      .from(blockedUsers)
+      .innerJoin(users, eq(blockedUsers.blockedId, users.id))
+      .where(eq(blockedUsers.blockerId, userId))
+      .orderBy(desc(blockedUsers.createdAt));
+
+    return results;
+  }
+
+  async blockUser(blockerId: string, blockedId: string, reason?: string): Promise<BlockedUser> {
+    // Check if user is trying to block themselves
+    if (blockerId === blockedId) {
+      throw new Error('You cannot block yourself');
+    }
+
+    // Check if already blocked
+    const existing = await db
+      .select()
+      .from(blockedUsers)
+      .where(
+        and(
+          eq(blockedUsers.blockerId, blockerId),
+          eq(blockedUsers.blockedId, blockedId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      throw new Error('User is already blocked');
+    }
+
+    const [blocked] = await db
+      .insert(blockedUsers)
+      .values({
+        blockerId,
+        blockedId,
+        reason: reason || null,
+      })
+      .returning();
+
+    return blocked;
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await db
+      .delete(blockedUsers)
+      .where(
+        and(
+          eq(blockedUsers.blockerId, blockerId),
+          eq(blockedUsers.blockedId, blockedId)
+        )
+      );
+  }
+
+  async isUserBlocked(blockerId: string, blockedId: string): Promise<boolean> {
+    const result = await db
+      .select()
+      .from(blockedUsers)
+      .where(
+        and(
+          eq(blockedUsers.blockerId, blockerId),
+          eq(blockedUsers.blockedId, blockedId)
+        )
+      )
+      .limit(1);
+
+    return result.length > 0;
+  }
+
+  async exportUserMessages(userId: string): Promise<Array<{ conversation: Conversation; messages: Message[] }>> {
+    // Get all conversations for the user
+    const userConversations = await db
+      .select()
+      .from(conversations)
+      .where(
+        or(
+          eq(conversations.participant1Id, userId),
+          eq(conversations.participant2Id, userId)
+        )
+      );
+
+    const exportData = [];
+
+    for (const conversation of userConversations) {
+      const conversationMessages = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id))
+        .orderBy(asc(messages.createdAt));
+
+      exportData.push({
+        conversation,
+        messages: conversationMessages,
+      });
+    }
+
+    return exportData;
   }
 
   async getDashboardPreferences(userId: string): Promise<DashboardPreferences | null> {

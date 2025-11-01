@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import EnhancedFooter from '@/components/EnhancedFooter';
+import { Button } from '@/components/ui/button';
 import { ConversationList } from '@/components/messages/ConversationList';
 import { ChatWindow } from '@/components/messages/ChatWindow';
 import { NewConversationModal } from '@/components/messages/NewConversationModal';
+import { MessageSearch } from '@/components/messages/MessageSearch';
 import { useMessagingSocket } from '@/hooks/useMessagingSocket';
 import { useConversations, useConversation } from '@/hooks/useMessaging';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Search, Settings } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 import type { User } from '@shared/schema';
 import type { ConversationWithDetails, TypingEvent, UserOnlineEvent } from '@/types/messaging';
 
@@ -20,11 +25,15 @@ interface MessagesClientProps {
 
 export default function MessagesClient({ initialConversations = [] }: MessagesClientProps) {
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
   const [showNewConversation, setShowNewConversation] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, boolean>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const isMobile = useIsMobile();
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Fetch current user
   const { data: currentUser } = useQuery<User>({
@@ -82,6 +91,39 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
     },
   });
 
+  // Handle URL parameters for deep linking to specific messages
+  useEffect(() => {
+    const conversationId = searchParams.get('conversationId');
+    const messageId = searchParams.get('messageId');
+
+    if (conversationId) {
+      setSelectedConversationId(conversationId);
+      if (messageId) {
+        setHighlightMessageId(messageId);
+        
+        // Clear highlight after 3 seconds
+        const timeout = setTimeout(() => {
+          setHighlightMessageId(null);
+        }, 3000);
+        
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, [searchParams]);
+
+  // Keyboard shortcut for search (Ctrl/Cmd + K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Enrich conversations with typing status
   const enrichedConversations = useMemo(() => {
     return conversations.map(conv => ({
@@ -119,6 +161,18 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
     toast.info('Mute conversation feature coming soon');
   };
 
+  const handleSearchResultSelect = (conversationId: string, messageId?: string) => {
+    setSelectedConversationId(conversationId);
+    if (messageId) {
+      setHighlightMessageId(messageId);
+      
+      // Clear highlight after 3 seconds
+      setTimeout(() => {
+        setHighlightMessageId(null);
+      }, 3000);
+    }
+  };
+
   // Mobile view: show either conversation list or chat window
   const showConversationList = !isMobile || !selectedConversationId;
   const showChatWindow = !isMobile || selectedConversationId;
@@ -128,11 +182,33 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
       <Header />
       
       <main className="flex-1 container mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold">Messages</h1>
-          <p className="text-muted-foreground mt-2">
-            Connect with traders, share strategies, and collaborate
-          </p>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold">Messages</h1>
+            <p className="text-muted-foreground mt-2">
+              Connect with traders, share strategies, and collaborate
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setShowSearch(true)}
+              title="Search messages (Ctrl+K)"
+              data-testid="button-open-search"
+            >
+              <Search className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => router.push('/messages/settings')}
+              title="Message settings"
+              data-testid="button-message-settings"
+            >
+              <Settings className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
 
         {/* Two-column layout: Conversations | Chat Window */}
@@ -160,6 +236,7 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
                 messages={messages}
                 currentUser={currentUser!}
                 isLoading={messagesLoading}
+                highlightMessageId={highlightMessageId}
                 onBack={isMobile ? handleBack : undefined}
                 onLeaveConversation={handleLeaveConversation}
                 onMuteConversation={handleMuteConversation}
@@ -173,6 +250,13 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
           open={showNewConversation}
           onOpenChange={setShowNewConversation}
           onConversationCreated={handleConversationCreated}
+        />
+
+        {/* Search Modal */}
+        <MessageSearch
+          open={showSearch}
+          onOpenChange={setShowSearch}
+          onSelectConversation={handleSearchResultSelect}
         />
       </main>
 
