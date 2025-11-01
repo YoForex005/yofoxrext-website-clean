@@ -173,7 +173,9 @@ export default function WithdrawalHistoryClient({ initialData }: WithdrawalHisto
                     {withdrawals.map((withdrawal) => (
                       <TableRow key={withdrawal.id} data-testid={`row-withdrawal-${withdrawal.id}`}>
                         <TableCell data-testid={`text-date-${withdrawal.id}`}>
-                          {format(new Date(withdrawal.requestedAt), "MMM dd, yyyy HH:mm")}
+                          <span suppressHydrationWarning>
+                            {format(new Date(withdrawal.requestedAt), "MMM dd, yyyy HH:mm")}
+                          </span>
                         </TableCell>
                         <TableCell data-testid={`text-amount-${withdrawal.id}`}>
                           {withdrawal.amount} coins

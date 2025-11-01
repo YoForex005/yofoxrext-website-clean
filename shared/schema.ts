@@ -3546,3 +3546,37 @@ export const insertSeoAlertHistorySchema = createInsertSchema(seoAlertHistory).o
 });
 export type InsertSeoAlertHistory = z.infer<typeof insertSeoAlertHistorySchema>;
 export type SeoAlertHistory = typeof seoAlertHistory.$inferSelect;
+
+// Service Credentials - Store API keys and service configuration for backup and recovery
+export const serviceCredentials = pgTable("service_credentials", {
+  id: serial("id").primaryKey(),
+  serviceName: varchar("service_name", { length: 100 }).notNull(),
+  credentialKey: varchar("credential_key", { length: 200 }).notNull(),
+  credentialValue: text("credential_value").notNull(),
+  environment: varchar("environment", { length: 50 }).notNull().default("production"),
+  isActive: boolean("is_active").notNull().default(true),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  serviceNameIdx: index("idx_service_credentials_service_name").on(table.serviceName),
+  credentialKeyIdx: index("idx_service_credentials_credential_key").on(table.credentialKey),
+  environmentIdx: index("idx_service_credentials_environment").on(table.environment),
+  isActiveIdx: index("idx_service_credentials_is_active").on(table.isActive),
+  uniqueServiceKeyEnv: uniqueIndex("idx_service_credentials_unique").on(table.serviceName, table.credentialKey, table.environment),
+}));
+
+export const insertServiceCredentialSchema = createInsertSchema(serviceCredentials).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  serviceName: z.string().min(1).max(100),
+  credentialKey: z.string().min(1).max(200),
+  credentialValue: z.string().min(1),
+  environment: z.enum(["production", "development", "staging"]).default("production"),
+  isActive: z.boolean().default(true),
+  description: z.string().optional(),
+});
+export type InsertServiceCredential = z.infer<typeof insertServiceCredentialSchema>;
+export type ServiceCredential = typeof serviceCredentials.$inferSelect;

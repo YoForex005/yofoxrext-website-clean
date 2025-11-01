@@ -122,6 +122,7 @@ export function StatsCards({ stats, isLoading = false }: StatsCardsProps) {
               <div 
                 className="text-2xl font-bold" 
                 data-testid={`${stat.testId}-value`}
+                suppressHydrationWarning
               >
                 {displayValue}{stat.suffix}
               </div>

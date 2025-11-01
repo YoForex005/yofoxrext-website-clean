@@ -78,6 +78,7 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 
 ### Database Design
 - **PostgreSQL with Drizzle ORM:** Features 25+ tables, 25 critical indexes, connection pooling, SSL/TLS, and automatic retry logic.
+- **Service Credentials Storage:** Secure database storage for API keys and service configurations (Firebase, SMTP, etc.) for backup and recovery purposes.
 
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
@@ -126,3 +127,79 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 - **Next.js 16:** React framework.
 - **esbuild:** Express API bundling.
 - **Docker:** Containerization.
+
+## Firebase Credential Storage & Recovery
+
+### Overview
+All Firebase credentials are securely stored in the database `service_credentials` table for backup and recovery purposes. This ensures credentials can be restored if environment variables are lost during migration, redeployment, or system issues.
+
+### Stored Credentials (November 1, 2025)
+The following 7 Firebase Web credentials are backed up in the database:
+- `NEXT_PUBLIC_FIREBASE_API_KEY` - Firebase Web API Key
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Firebase Auth Domain
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID` - Firebase Project ID
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` - Firebase Storage Bucket
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` - Firebase Cloud Messaging Sender ID
+- `NEXT_PUBLIC_FIREBASE_APP_ID` - Firebase App ID
+- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` - Firebase Analytics Measurement ID
+
+### Database Schema
+The `service_credentials` table structure:
+- `id` - Serial primary key
+- `service_name` - Service identifier (e.g., "firebase_web", "smtp")
+- `credential_key` - Environment variable name
+- `credential_value` - Actual credential value (stored as text)
+- `environment` - Deployment environment (production, development, staging)
+- `is_active` - Whether credential is currently active
+- `description` - Human-readable description
+- `created_at`, `updated_at` - Timestamps
+
+### How to Restore Credentials from Database
+
+**1. Retrieve All Firebase Credentials:**
+```sql
+SELECT credential_key, credential_value 
+FROM service_credentials 
+WHERE service_name = 'firebase_web' 
+  AND environment = 'production' 
+  AND is_active = true
+ORDER BY id;
+```
+
+**2. View Credentials with Descriptions:**
+```sql
+SELECT 
+  credential_key, 
+  credential_value,
+  description,
+  created_at
+FROM service_credentials 
+WHERE service_name = 'firebase_web'
+ORDER BY id;
+```
+
+**3. Restore to Environment Variables:**
+After retrieving credentials from the database, set them as environment variables in your Replit Secrets or deployment environment:
+- Go to Replit Secrets (or your deployment environment's secret manager)
+- Add each `credential_key` as a secret with its corresponding `credential_value`
+- Restart the application for changes to take effect
+
+### Updating Credentials
+To update stored credentials (e.g., after rotating API keys):
+```bash
+npm run tsx scripts/save-firebase-credentials.ts
+```
+
+This script will:
+- Read current Firebase environment variables
+- Update existing credentials in the database (or insert if new)
+- Preserve audit trail with `updated_at` timestamp
+
+### Security Considerations
+- Credentials are stored in PostgreSQL, which uses SSL/TLS encryption
+- Database access is restricted to authenticated connections only
+- Regular backups of the database should include this table
+- Consider encrypting `credential_value` field for additional security in production environments
+
+### Recent Changes
+- **November 1, 2025**: Created `service_credentials` table and backed up all 7 Firebase credentials for Google OAuth integration

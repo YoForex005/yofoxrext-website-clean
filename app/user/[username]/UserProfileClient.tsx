@@ -287,7 +287,9 @@ export default function UserProfileClient({
                         <span className="text-muted-foreground">Total Coins</span>
                         <div className="flex items-center gap-1">
                           <Coins className="w-4 h-4 text-primary" />
-                          <span className="font-medium" data-testid="text-coins">{mockUser.totalCoins.toLocaleString()}</span>
+                          <span className="font-medium" data-testid="text-coins" suppressHydrationWarning>
+                            {mockUser.totalCoins.toLocaleString()}
+                          </span>
                         </div>
                       </div>
                       <div className="flex items-center justify-between">
@@ -381,7 +383,7 @@ export default function UserProfileClient({
                           <h4 className="font-semibold">{item.title}</h4>
                           <Badge variant="outline">{item.category}</Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground" suppressHydrationWarning>
                           {item.timestamp.toLocaleDateString()} • {item.type}
                         </p>
                       </div>

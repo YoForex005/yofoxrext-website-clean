@@ -95,12 +95,16 @@ export function ProfileHeader({
                   {user.createdAt && (
                     <div className="flex items-center gap-1" data-testid="text-joined-date">
                       <Calendar className="w-4 h-4" />
-                      Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      <span suppressHydrationWarning>
+                        Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                      </span>
                     </div>
                   )}
                   {user.reputationScore !== undefined && user.reputationScore > 0 && (
                     <Badge variant="outline" data-testid="badge-reputation">
-                      {user.reputationScore.toLocaleString()} Reputation
+                      <span suppressHydrationWarning>
+                        {user.reputationScore.toLocaleString()} Reputation
+                      </span>
                     </Badge>
                   )}
                 </div>
