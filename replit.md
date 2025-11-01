@@ -1,7 +1,7 @@
 # YoForex - Expert Advisor Forum & Marketplace
 
 ## Overview
-YoForex is a comprehensive trading community platform for forex traders. It serves as a central hub for sharing strategies, publishing trading tools, and engaging with a global community through forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy. The platform aims to enhance user retention through loyalty tiers, badges, AI nudges, abandonment emails, and an automated bot system to stimulate community activity. Key features include extensive category management, SEO-optimized URLs, and automated email notifications.
+YoForex is a comprehensive trading community platform for forex traders, offering a central hub for sharing strategies, publishing trading tools, and engaging with a global community. It features forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy. The platform aims to enhance user retention through loyalty tiers, badges, AI nudges, abandonment emails, and an automated bot system. Key capabilities include extensive category management, SEO-optimized URLs, automated email notifications, and an advanced messaging system for private and group communication, file sharing, and robust moderation. The business vision is to create a vibrant, self-sustaining ecosystem for forex traders, fostering community and providing valuable tools and resources.
 
 ## User Preferences
 
@@ -73,31 +73,32 @@ YoForex is a comprehensive trading community platform for forex traders. It serv
 YoForex uses a hybrid frontend and a robust backend for scalability and performance.
 
 ### Hybrid Frontend Architecture
-- **Next.js:** Primary user-facing application with App Router and Server Components for SEO and dynamic routing, utilizing ISR with 60-second revalidation.
+- **Next.js:** Primary user-facing application using App Router and Server Components for SEO and dynamic routing, utilizing ISR with 60-second revalidation.
 - **Express API:** Backend API server with RESTful endpoints, Replit OIDC authentication, rate limiting, and input validation. React Query manages client-side state and caching.
 
 ### Database Design
 - **PostgreSQL with Drizzle ORM:** Features 25+ tables, 25 critical indexes, connection pooling, SSL/TLS, and automatic retry logic.
-- **Service Credentials Storage:** Secure database storage for API keys and service configurations (Firebase, SMTP, etc.) for backup and recovery purposes.
+- **Service Credentials Storage:** Secure database storage in `service_credentials` table for API keys and service configurations (Firebase, SMTP) for backup and recovery.
 
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
-- **Authentication System:** Email/Password (bcryptjs) + Google OAuth (Firebase Admin SDK), with PostgreSQL session storage.
-- **Email System:** Hostinger SMTP for transactional and notification emails, including tracking.
-- **Coin Economy:** Virtual currency rewards user contributions and allows spending on premium content, with transaction history and fraud prevention.
-- **Production Deployment:** Supports one-command deployment to Replit or full control via AWS EC2/VPS using Docker, PM2, Nginx, and Let's Encrypt.
+- **Authentication System:** Email/Password (bcryptjs) + Google OAuth (Firebase Admin SDK) with PostgreSQL session storage.
+- **Email System:** Hostinger SMTP for transactional and notification emails.
+- **Coin Economy:** Virtual currency rewards user contributions, with transaction history and fraud prevention.
+- **Production Deployment:** One-command deployment to Replit or full control via AWS EC2/VPS using Docker, PM2, Nginx, and Let's Encrypt.
 - **Zero-Touch Migration System:** Automated GitHub import for fresh Replit database setup.
-- **Retention Dashboard System:** Enhances user retention through loyalty tiers, badges, AI nudges, and abandonment emails.
-- **Bot Economy System:** Automated bot system for natural engagement, including automated likes/follows/purchases, daily auto-refunds, and wallet cap enforcement.
-- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping via fingerprint hashing, and an admin dashboard for resolution workflow.
-- **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags. Admin-only workflow with human approval, async job processing, and structured JSON response schemas.
+- **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails to enhance user retention.
+- **Bot Economy System:** Automated bot system for natural engagement, including likes/follows/purchases, daily auto-refunds, and wallet cap enforcement.
+- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, and an admin dashboard for resolution workflow.
+- **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only workflow with human approval and async processing).
+- **Comprehensive Messaging System:** Facebook/Freelancer-style private messaging with 1-on-1 and group chats, file attachments (EA files, PDFs, images) up to 50MB, message reactions, read receipts, typing indicators, full-text search, privacy controls, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage integration.
 
 ## External Dependencies
 
 ### Core Infrastructure
 - **Neon PostgreSQL:** Serverless database.
-- **Replit Object Storage:** Persistent file storage.
+- **Replit Object Storage:** Persistent file storage for message attachments.
 - **Replit OIDC:** OAuth authentication provider.
 
 ### Email Services
@@ -111,7 +112,7 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 - **Gemini AI:** AI-powered content suggestions.
 
 ### CDN & Storage
-- **Google Cloud Storage:** Object storage backend.
+- **Google Cloud Storage:** Object storage backend (for general storage, alongside Replit Object Storage).
 
 ### Development Tools
 - **Drizzle Kit:** Database migrations.
@@ -127,79 +128,3 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 - **Next.js 16:** React framework.
 - **esbuild:** Express API bundling.
 - **Docker:** Containerization.
-
-## Firebase Credential Storage & Recovery
-
-### Overview
-All Firebase credentials are securely stored in the database `service_credentials` table for backup and recovery purposes. This ensures credentials can be restored if environment variables are lost during migration, redeployment, or system issues.
-
-### Stored Credentials (November 1, 2025)
-The following 7 Firebase Web credentials are backed up in the database:
-- `NEXT_PUBLIC_FIREBASE_API_KEY` - Firebase Web API Key
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` - Firebase Auth Domain
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID` - Firebase Project ID
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` - Firebase Storage Bucket
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` - Firebase Cloud Messaging Sender ID
-- `NEXT_PUBLIC_FIREBASE_APP_ID` - Firebase App ID
-- `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` - Firebase Analytics Measurement ID
-
-### Database Schema
-The `service_credentials` table structure:
-- `id` - Serial primary key
-- `service_name` - Service identifier (e.g., "firebase_web", "smtp")
-- `credential_key` - Environment variable name
-- `credential_value` - Actual credential value (stored as text)
-- `environment` - Deployment environment (production, development, staging)
-- `is_active` - Whether credential is currently active
-- `description` - Human-readable description
-- `created_at`, `updated_at` - Timestamps
-
-### How to Restore Credentials from Database
-
-**1. Retrieve All Firebase Credentials:**
-```sql
-SELECT credential_key, credential_value 
-FROM service_credentials 
-WHERE service_name = 'firebase_web' 
-  AND environment = 'production' 
-  AND is_active = true
-ORDER BY id;
-```
-
-**2. View Credentials with Descriptions:**
-```sql
-SELECT 
-  credential_key, 
-  credential_value,
-  description,
-  created_at
-FROM service_credentials 
-WHERE service_name = 'firebase_web'
-ORDER BY id;
-```
-
-**3. Restore to Environment Variables:**
-After retrieving credentials from the database, set them as environment variables in your Replit Secrets or deployment environment:
-- Go to Replit Secrets (or your deployment environment's secret manager)
-- Add each `credential_key` as a secret with its corresponding `credential_value`
-- Restart the application for changes to take effect
-
-### Updating Credentials
-To update stored credentials (e.g., after rotating API keys):
-```bash
-npm run tsx scripts/save-firebase-credentials.ts
-```
-
-This script will:
-- Read current Firebase environment variables
-- Update existing credentials in the database (or insert if new)
-- Preserve audit trail with `updated_at` timestamp
-
-### Security Considerations
-- Credentials are stored in PostgreSQL, which uses SSL/TLS encryption
-- Database access is restricted to authenticated connections only
-- Regular backups of the database should include this table
-- Consider encrypting `credential_value` field for additional security in production environments
-
-### Recent Changes
-- **November 1, 2025**: Created `service_credentials` table and backed up all 7 Firebase credentials for Google OAuth integration
