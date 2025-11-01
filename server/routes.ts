@@ -4899,32 +4899,135 @@ export async function registerRoutes(app: Express): Promise<Express> {
       if (!file) {
         return res.status(400).json({ error: "No file uploaded" });
       }
+
+      // Validate file size (50MB max)
+      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+      if (file.size > MAX_FILE_SIZE) {
+        return res.status(400).json({ error: "File size exceeds 50MB limit" });
+      }
       
-      const objectStorageService = new ObjectStorageService();
-      const uploadResult = await objectStorageService.uploadFile(
-        file.buffer,
-        file.originalname,
-        file.mimetype,
-        ObjectPermission.PUBLIC,
-        {
-          userId: authenticatedUserId,
+      // Generate unique filename to avoid collisions
+      const ext = path.extname(file.originalname).toLowerCase();
+      const timestamp = Date.now();
+      const randomSuffix = Math.round(Math.random() * 1E9);
+      const filename = `message-${req.params.messageId}-${timestamp}-${randomSuffix}${ext}`;
+      
+      try {
+        // Upload to object storage
+        const objectStorageService = new ObjectStorageService();
+        const storagePath = await objectStorageService.uploadObject(
+          `message-attachments/${filename}`,
+          file.buffer,
+          file.mimetype,
+          {
+            uploadedBy: authenticatedUserId,
+            messageId: req.params.messageId,
+            originalName: file.originalname,
+            uploadedAt: new Date().toISOString()
+          }
+        );
+        
+        // Get the GCS file object to set ACL policy
+        const objectFile = await objectStorageService.getObjectEntityFile(storagePath);
+        
+        // Set ACL policy to private with sender as owner
+        await objectStorageService.trySetObjectEntityAclPolicy(storagePath, {
+          owner: authenticatedUserId,
+          visibility: 'private',
+          // No additional ACL rules - access control happens at API level
+        });
+        
+        console.log(`[MESSAGE ATTACHMENTS] File uploaded: ${storagePath} by user ${authenticatedUserId}`);
+        
+        // Store metadata in database
+        const attachment = await storage.addMessageAttachment(req.params.messageId, {
           messageId: req.params.messageId,
+          storagePath: storagePath,
+          storageUrl: null, // Will be generated on-demand when downloading
+          fileName: file.originalname,
+          fileSize: file.size,
+          fileType: file.mimetype,
+          uploadedById: authenticatedUserId,
+        });
+        
+        res.json(attachment);
+      } catch (uploadError: any) {
+        console.error("[MESSAGE ATTACHMENTS] Upload error:", uploadError);
+        
+        // Handle object storage not configured
+        if (uploadError.message?.includes('PRIVATE_OBJECT_DIR not set')) {
+          return res.status(503).json({ 
+            error: "File storage not configured. Please set up Object Storage in the Replit UI and configure PRIVATE_OBJECT_DIR environment variable." 
+          });
         }
-      );
-      
-      const attachment = await storage.addMessageAttachment(req.params.messageId, {
-        messageId: req.params.messageId,
-        fileUrl: uploadResult.publicUrl,
-        fileName: file.originalname,
-        fileSize: file.size,
-        fileType: file.mimetype,
-        scanStatus: 'pending',
-      });
-      
-      res.json(attachment);
-    } catch (error) {
+        
+        throw uploadError;
+      }
+    } catch (error: any) {
       console.error("Error adding attachment:", error);
-      res.status(500).json({ error: "Failed to add attachment" });
+      res.status(500).json({ error: error.message || "Failed to add attachment" });
+    }
+  });
+  
+  // Download attachment with access control
+  app.get("/api/attachments/:attachmentId", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const attachmentId = req.params.attachmentId;
+      
+      // Get attachment from database
+      const attachmentResults = await db
+        .select()
+        .from(messageAttachments)
+        .where(eq(messageAttachments.id, attachmentId))
+        .limit(1);
+      
+      if (attachmentResults.length === 0) {
+        return res.status(404).json({ error: "Attachment not found" });
+      }
+      
+      const attachment = attachmentResults[0];
+      
+      // Get the message to find the conversationId
+      const messageResults = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.id, attachment.messageId))
+        .limit(1);
+      
+      if (messageResults.length === 0) {
+        return res.status(404).json({ error: "Message not found" });
+      }
+      
+      const message = messageResults[0];
+      
+      // Verify user has access to the conversation
+      const isParticipant = await storage.isUserInConversation(message.conversationId, authenticatedUserId);
+      
+      if (!isParticipant) {
+        return res.status(403).json({ error: "Access denied. You are not a participant in this conversation." });
+      }
+      
+      // Stream file from object storage
+      const objectStorageService = new ObjectStorageService();
+      const objectFile = await objectStorageService.getObjectEntityFile(attachment.storagePath);
+      
+      // Set filename header for download
+      res.setHeader('Content-Disposition', `attachment; filename="${attachment.fileName}"`);
+      
+      await objectStorageService.downloadObject(objectFile, res);
+      
+      console.log(`[MESSAGE ATTACHMENTS] File downloaded: ${attachment.storagePath} by user ${authenticatedUserId}`);
+    } catch (error: any) {
+      console.error("Error downloading attachment:", error);
+      
+      if (error instanceof ObjectNotFoundError) {
+        return res.status(404).json({ error: "File not found in storage" });
+      }
+      
+      if (!res.headersSent) {
+        res.status(500).json({ error: error.message || "Failed to download attachment" });
+      }
     }
   });
   
