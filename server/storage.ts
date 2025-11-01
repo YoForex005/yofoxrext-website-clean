@@ -118,6 +118,19 @@ import {
   // SEO Performance types
   type SeoPerformanceMetric,
   type InsertSeoPerformanceMetric,
+  // Bot Economy types
+  type Bot,
+  type InsertBot,
+  type BotAction,
+  type InsertBotAction,
+  type BotTreasury,
+  type InsertBotTreasury,
+  type BotRefund,
+  type InsertBotRefund,
+  type BotAuditLog,
+  type InsertBotAuditLog,
+  type BotSettings,
+  type InsertBotSettings,
   users,
   userActivity,
   coinTransactions,
@@ -187,6 +200,13 @@ import {
   errorStatusChanges,
   // SEO Performance tables
   seoPerformanceMetrics,
+  // Bot Economy tables
+  bots,
+  botActions,
+  botTreasury,
+  botRefunds,
+  botAuditLog,
+  botSettings,
   BADGE_TYPES,
   type BadgeType
 } from "@shared/schema";
@@ -2262,6 +2282,155 @@ export interface IStorage {
       fetchTime: Date;
     }>;
   }>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Profile Management
+  // ============================================================================
+  
+  /**
+   * Get bot by ID
+   */
+  getBotById(id: string): Promise<Bot | null>;
+  
+  /**
+   * Get all bots with optional filters
+   */
+  getAllBots(filters?: { isActive?: boolean; squad?: string; purpose?: string }): Promise<Bot[]>;
+  
+  /**
+   * Create a new bot
+   */
+  createBot(bot: InsertBot): Promise<Bot>;
+  
+  /**
+   * Update bot details
+   */
+  updateBot(id: string, updates: Partial<InsertBot>): Promise<Bot>;
+  
+  /**
+   * Delete a bot
+   */
+  deleteBot(id: string): Promise<void>;
+  
+  /**
+   * Toggle bot active status
+   */
+  toggleBotStatus(id: string, isActive: boolean): Promise<Bot>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Actions
+  // ============================================================================
+  
+  /**
+   * Record a bot action
+   */
+  recordBotAction(action: InsertBotAction): Promise<BotAction>;
+  
+  /**
+   * Get actions for a specific bot
+   */
+  getBotActions(botId: string, limit?: number): Promise<BotAction[]>;
+  
+  /**
+   * Get actions by type
+   */
+  getBotActionsByType(actionType: string, limit?: number): Promise<BotAction[]>;
+  
+  /**
+   * Get all unrefunded actions
+   */
+  getUnrefundedActions(): Promise<BotAction[]>;
+  
+  /**
+   * Mark action as refunded
+   */
+  markActionAsRefunded(actionId: string): Promise<void>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Treasury
+  // ============================================================================
+  
+  /**
+   * Get the treasury record
+   */
+  getTreasury(): Promise<BotTreasury | null>;
+  
+  /**
+   * Deduct coins from treasury
+   */
+  deductFromTreasury(amount: number): Promise<BotTreasury>;
+  
+  /**
+   * Refill treasury
+   */
+  refillTreasury(amount: number): Promise<BotTreasury>;
+  
+  /**
+   * Reset daily spend counter
+   */
+  resetDailySpend(): Promise<BotTreasury>;
+  
+  /**
+   * Get treasury balance
+   */
+  getTreasuryBalance(): Promise<number>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Refunds
+  // ============================================================================
+  
+  /**
+   * Schedule a refund
+   */
+  scheduleRefund(refund: InsertBotRefund): Promise<BotRefund>;
+  
+  /**
+   * Get pending refunds scheduled before a specific time
+   */
+  getPendingRefunds(beforeTime?: Date): Promise<BotRefund[]>;
+  
+  /**
+   * Mark refund as processed
+   */
+  markRefundAsProcessed(refundId: string, error?: string): Promise<BotRefund>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Audit Log
+  // ============================================================================
+  
+  /**
+   * Log an admin action on bots
+   */
+  logBotAction(log: InsertBotAuditLog): Promise<BotAuditLog>;
+  
+  /**
+   * Get audit logs with filters
+   */
+  getAuditLogs(filters?: { adminId?: string; actionType?: string; limit?: number }): Promise<BotAuditLog[]>;
+  
+  /**
+   * Undo an audit action
+   */
+  undoAuditAction(logId: string, undoneBy: string): Promise<BotAuditLog>;
+
+  // ============================================================================
+  // BOT ECONOMY SYSTEM - Bot Settings
+  // ============================================================================
+  
+  /**
+   * Get bot settings
+   */
+  getBotSettings(): Promise<BotSettings | null>;
+  
+  /**
+   * Update bot settings
+   */
+  updateBotSettings(updates: Partial<InsertBotSettings>): Promise<BotSettings>;
+  
+  /**
+   * Initialize bot settings with defaults
+   */
+  initializeBotSettings(): Promise<BotSettings>;
 }
 
 export class MemStorage implements IStorage {
@@ -2282,6 +2451,13 @@ export class MemStorage implements IStorage {
   private activityFeedMap: Map<string, ActivityFeed>;
   private userFollowsMap: Map<string, UserFollow>;
   private userActivity: Map<string, UserActivity>;
+  // Bot Economy Maps
+  private botsMap: Map<string, Bot>;
+  private botActionsMap: Map<string, BotAction>;
+  private botTreasuryMap: Map<number, BotTreasury>;
+  private botRefundsMap: Map<string, BotRefund>;
+  private botAuditLogMap: Map<string, BotAuditLog>;
+  private botSettingsMap: Map<number, BotSettings>;
 
   constructor() {
     this.users = new Map();
@@ -2301,6 +2477,13 @@ export class MemStorage implements IStorage {
     this.activityFeedMap = new Map();
     this.userFollowsMap = new Map();
     this.userActivity = new Map();
+    // Bot Economy Maps initialization
+    this.botsMap = new Map();
+    this.botActionsMap = new Map();
+    this.botTreasuryMap = new Map();
+    this.botRefundsMap = new Map();
+    this.botAuditLogMap = new Map();
+    this.botSettingsMap = new Map();
     
     // Create demo user with coins
     const demoUser: User = {
