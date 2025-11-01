@@ -4691,31 +4691,42 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       const validated = insertMessageSchema.parse(req.body);
       
-      // Check if sender is blocked by recipient
-      const isBlocked = await storage.isUserBlocked(validated.recipientId, authenticatedUserId);
-      if (isBlocked) {
-        return res.status(403).json({ error: "You cannot send messages to this user" });
+      // SECURITY: Bidirectional blocking check
+      // 1. Check if sender is blocked by recipient
+      const isBlockedByRecipient = await storage.isUserBlocked(validated.recipientId, authenticatedUserId);
+      if (isBlockedByRecipient) {
+        return res.status(403).json({ error: "You are blocked by this user" });
       }
       
-      // Check recipient's privacy settings
+      // 2. Check if recipient is blocked by sender
+      const hasBlockedRecipient = await storage.isUserBlocked(authenticatedUserId, validated.recipientId);
+      if (hasBlockedRecipient) {
+        return res.status(403).json({ error: "This user has blocked you" });
+      }
+      
+      // SECURITY: Privacy settings enforcement
       const recipientSettings = await storage.getUserMessageSettings(validated.recipientId);
       if (recipientSettings) {
         // Check whoCanMessage setting
         if (recipientSettings.whoCanMessage === 'nobody') {
-          // Check if there's an existing conversation
-          const existingConversations = await storage.getConversations(validated.recipientId);
-          const hasExistingConversation = existingConversations.some(
-            conv => conv.participant.id === authenticatedUserId
+          // Check if there's an existing conversation between these two users
+          const existingConversation = await storage.getConversationBetweenUsers(
+            authenticatedUserId, 
+            validated.recipientId
           );
           
-          if (!hasExistingConversation) {
-            return res.status(403).json({ error: "This user is not accepting new messages" });
+          if (!existingConversation) {
+            return res.status(403).json({ 
+              error: "This user has disabled messages from new contacts" 
+            });
           }
         } else if (recipientSettings.whoCanMessage === 'followers') {
-          // Check if sender is following recipient
+          // Check if sender is following recipient (using checkIfFollowing which already exists)
           const isFollowing = await storage.checkIfFollowing(authenticatedUserId, validated.recipientId);
           if (!isFollowing) {
-            return res.status(403).json({ error: "Only followers can send messages to this user" });
+            return res.status(403).json({ 
+              error: "This user only accepts messages from followers" 
+            });
           }
         }
       }
@@ -4992,14 +5003,43 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
+      // SECURITY: Strict file validation
+      const ALLOWED_MIME_TYPES = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/msword', // .doc
+        'application/octet-stream' // for .ex4, .ex5, .mq4, .mq5
+      ];
+
+      const ALLOWED_EXTENSIONS = [
+        '.jpg', '.jpeg', '.png', '.gif', '.webp',
+        '.pdf', '.doc', '.docx',
+        '.ex4', '.ex5', '.mq4', '.mq5'
+      ];
+
+      // Validate MIME type
+      if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+        return res.status(400).json({ 
+          error: "File type not allowed. Allowed: images, PDFs, Word documents, EA files." 
+        });
+      }
+
+      // Validate file extension
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (!ALLOWED_EXTENSIONS.includes(ext)) {
+        return res.status(400).json({ 
+          error: `File extension ${ext} not allowed` 
+        });
+      }
+
       // Validate file size (50MB max)
       const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
       if (file.size > MAX_FILE_SIZE) {
         return res.status(400).json({ error: "File size exceeds 50MB limit" });
       }
       
-      // Generate unique filename to avoid collisions
-      const ext = path.extname(file.originalname).toLowerCase();
+      // Generate unique filename to avoid collisions (ext already declared above)
       const timestamp = Date.now();
       const randomSuffix = Math.round(Math.random() * 1E9);
       const filename = `message-${req.params.messageId}-${timestamp}-${randomSuffix}${ext}`;
@@ -5031,7 +5071,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         
         console.log(`[MESSAGE ATTACHMENTS] File uploaded: ${storagePath} by user ${authenticatedUserId}`);
         
-        // Store metadata in database
+        // Store metadata in database with pending scan status
         const attachment = await storage.addMessageAttachment(req.params.messageId, {
           messageId: req.params.messageId,
           storagePath: storagePath,
@@ -5040,7 +5080,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
           fileSize: file.size,
           fileType: file.mimetype,
           uploadedById: authenticatedUserId,
+          scanStatus: 'pending', // Pending virus scan
+          virusScanned: false,
         });
+        
+        // TODO: Integrate virus scanning service (e.g., ClamAV, VirusTotal API)
+        // After scan completes, update attachment.scanStatus to 'clean' or 'infected'
         
         res.json(attachment);
       } catch (uploadError: any) {
@@ -5409,6 +5454,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Get all message reports (admin only)
   app.get("/api/admin/moderation/reports", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const { status, reason, limit } = req.query;
       const filters: any = {};
       
@@ -5427,6 +5476,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Get single report details (admin only)
   app.get("/api/admin/moderation/reports/:id", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const report = await storage.getMessageReport(req.params.id);
       if (!report) {
         return res.status(404).json({ error: "Report not found" });
@@ -5441,6 +5494,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Update report status (admin only)
   app.put("/api/admin/moderation/reports/:id", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const authenticatedUserId = getAuthenticatedUserId(req);
       const { status, resolution } = req.body;
 
@@ -5466,6 +5523,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Create moderation action (admin only)
   app.post("/api/admin/moderation/actions", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const authenticatedUserId = getAuthenticatedUserId(req);
       const { targetType, targetId, actionType, reason, duration } = req.body;
 
@@ -5499,6 +5560,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Get moderation actions (admin only)
   app.get("/api/admin/moderation/actions", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const { targetType, moderatorId, limit } = req.query;
       const filters: any = {};
 
@@ -5517,6 +5582,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Get spam detection logs (admin only)
   app.get("/api/admin/moderation/spam-logs", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const { senderId, spamScoreMin, limit } = req.query;
       const filters: any = {};
 
@@ -5535,6 +5604,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // Get moderation stats (admin only)
   app.get("/api/admin/moderation/stats", isAdminMiddleware, async (req, res) => {
     try {
+      // SECURITY: Add security headers
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('X-Frame-Options', 'DENY');
+      
       const stats = await storage.getModerationStats();
       res.json(stats);
     } catch (error) {
