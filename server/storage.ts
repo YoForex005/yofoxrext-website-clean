@@ -131,6 +131,8 @@ import {
   type InsertBotAuditLog,
   type BotSettings,
   type InsertBotSettings,
+  type NewsletterSubscriber,
+  type InsertNewsletterSubscriber,
   users,
   userActivity,
   coinTransactions,
@@ -139,6 +141,7 @@ import {
   withdrawalRequests,
   feedback,
   content,
+  newsletterSubscribers,
   contentPurchases,
   contentReviews,
   contentLikes,
@@ -560,6 +563,9 @@ export interface IStorage {
   retryEmailById(emailId: string): Promise<void>;
   clearEmailQueue(): Promise<void>;
   reEnableUserEmail(userId: string): Promise<void>;
+  
+  // Newsletter Subscription
+  subscribeToNewsletter(email: string, source?: string, metadata?: any): Promise<void>;
   
   // Earnings Summary
   getUserEarningsSummary(userId: string): Promise<{
@@ -16347,6 +16353,41 @@ export class DrizzleStorage implements IStorage {
         .where(eq(users.id, userId));
     } catch (error) {
       console.error('Error re-enabling user email:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // NEWSLETTER SUBSCRIPTION - DrizzleStorage Implementation
+  // ============================================================================
+  
+  async subscribeToNewsletter(email: string, source?: string, metadata?: any): Promise<void> {
+    try {
+      const now = new Date();
+      
+      // Insert or update newsletter subscriber
+      // If email already exists, update subscribedAt timestamp
+      await db
+        .insert(newsletterSubscribers)
+        .values({
+          email: email.toLowerCase().trim(),
+          source: source || 'unknown',
+          metadata: metadata || null,
+          subscribedAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: newsletterSubscribers.email,
+          set: {
+            subscribedAt: now,
+            updatedAt: now,
+            source: source || 'unknown',
+            metadata: metadata || null,
+          },
+        });
+    } catch (error) {
+      console.error('Error subscribing to newsletter:', error);
       throw error;
     }
   }

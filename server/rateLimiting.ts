@@ -200,3 +200,24 @@ export const messagingLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Newsletter subscription rate limiter
+ * 5 requests per 15 minutes per IP to prevent spam signups
+ */
+export const newsletterSubscriptionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 requests per window
+  message: {
+    error: "Too many subscription attempts, please try again later",
+    retryAfter: "15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "Too many subscription attempts from this IP, please try again later",
+      retryAfter: "15 minutes",
+    });
+  },
+});

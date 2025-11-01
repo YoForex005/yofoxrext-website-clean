@@ -2804,6 +2804,21 @@ export const unsubscribeTokens = pgTable("unsubscribe_tokens", {
   usedIdx: index("idx_unsubscribe_tokens_used").on(table.used),
 }));
 
+// Newsletter Subscribers - Email capture for coming soon pages and newsletter signups
+export const newsletterSubscribers = pgTable("newsletter_subscribers", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  source: varchar("source", { length: 100 }), // e.g., "coming-soon-brokers", "footer", "popup"
+  metadata: jsonb("metadata").$type<Record<string, any>>(), // Additional context data
+  subscribedAt: timestamp("subscribed_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  emailIdx: uniqueIndex("idx_newsletter_subscribers_email").on(table.email),
+  sourceIdx: index("idx_newsletter_subscribers_source").on(table.source),
+  subscribedAtIdx: index("idx_newsletter_subscribers_subscribed_at").on(table.subscribedAt),
+}));
+
 // Password Reset Tokens - Secure tokens for password reset flow
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2910,6 +2925,19 @@ export const insertUnsubscribeTokenSchema = createInsertSchema(unsubscribeTokens
 });
 export type InsertUnsubscribeToken = z.infer<typeof insertUnsubscribeTokenSchema>;
 export type UnsubscribeToken = typeof unsubscribeTokens.$inferSelect;
+
+// Newsletter Subscribers
+export const insertNewsletterSubscriberSchema = createInsertSchema(newsletterSubscribers).omit({
+  id: true,
+  subscribedAt: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  email: z.string().email("Invalid email address"),
+  source: z.string().max(100).optional(),
+});
+export type InsertNewsletterSubscriber = z.infer<typeof insertNewsletterSubscriberSchema>;
+export type NewsletterSubscriber = typeof newsletterSubscribers.$inferSelect;
 
 // Password Reset Tokens
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({

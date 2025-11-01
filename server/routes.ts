@@ -28,6 +28,7 @@ import {
   insertBotRefundSchema,
   insertBotAuditLogSchema,
   insertFeatureFlagSchema,
+  insertNewsletterSubscriberSchema,
   BADGE_METADATA,
   type BadgeType,
   type User,
@@ -72,6 +73,7 @@ import {
   adminOperationLimiter,
   activityTrackingLimiter,
   messagingLimiter,
+  newsletterSubscriptionLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
 import { generateSlug, generateFocusKeyword, generateMetaDescription as generateMetaDescriptionOld, generateImageAltTexts } from './seo.js';
@@ -12967,6 +12969,36 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('[Admin Analytics Engagement] Error:', error);
       res.status(500).json({ error: 'Failed to fetch engagement analytics' });
+    }
+  });
+
+  // ===== NEWSLETTER SUBSCRIPTION =====
+  
+  // POST /api/newsletter/subscribe - Public email capture endpoint
+  app.post("/api/newsletter/subscribe", newsletterSubscriptionLimiter, async (req, res) => {
+    try {
+      // Validate request body
+      const bodySchema = insertNewsletterSubscriberSchema;
+      const validatedData = bodySchema.parse(req.body);
+
+      // Subscribe to newsletter (handles conflicts automatically)
+      await storage.subscribeToNewsletter(
+        validatedData.email,
+        validatedData.source || 'unknown',
+        validatedData.metadata || null
+      );
+
+      res.status(200).json({ success: true });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid email format",
+          details: error.errors 
+        });
+      }
+      
+      console.error('[Newsletter Subscribe] Error:', error);
+      res.status(500).json({ error: 'Failed to subscribe to newsletter' });
     }
   });
 
