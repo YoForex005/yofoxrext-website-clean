@@ -3503,23 +3503,13 @@ export const seoFixJobs = pgTable("seo_fix_jobs", {
   fixType: varchar("fix_type", { length: 100 }).notNull(),
   status: varchar("status", { length: 50 }).default("pending").notNull(),
   aiModel: varchar("ai_model", { length: 100 }),
-  prompt: text("prompt"),
+  aiPrompt: text("ai_prompt"),
   aiResponse: text("ai_response"),
-  generatedContent: text("generated_content"),
-  metadata: jsonb("metadata").$type<{
-    pageUrl?: string;
-    issueType?: string;
-    issueDetails?: any;
-    queuedAt?: string;
-    error?: string;
-    failedAt?: string;
-  }>(),
-  humanReviewedBy: varchar("human_reviewed_by", { length: 36 }),
-  humanReviewedAt: timestamp("human_reviewed_at"),
-  humanFeedback: text("human_feedback"),
-  appliedAt: timestamp("applied_at"),
+  humanApprovalStatus: varchar("human_approval_status", { length: 50 }),
+  approvedBy: varchar("approved_by", { length: 36 }),
+  approvedAt: timestamp("approved_at"),
+  error: text("error"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 }, (table) => ({
   statusIdx: index("seo_fix_jobs_status_idx").on(table.status),
