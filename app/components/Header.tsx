@@ -67,6 +67,7 @@ const publishCategories = [
 export default function Header() {
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const pathname = usePathname();
   const { user, isLoading: isAuthLoading, isAuthenticated, logout } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt();
@@ -81,7 +82,9 @@ export default function Header() {
       if (!res.ok) throw new Error('Failed to fetch coins');
       return res.json();
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && isProfileDropdownOpen,
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: unreadData } = useQuery<{ count: number }>({
@@ -241,32 +244,6 @@ export default function Header() {
                 </Button>
               </Link>
               
-              <div className="hidden md:flex items-center gap-1">
-                <Link href="/recharge">
-                  <div className="flex flex-col gap-0 px-3 py-1.5 bg-primary/10 rounded-lg border border-primary/20 hover-elevate cursor-pointer">
-                    <div className="flex items-center gap-1">
-                      <Coins className="h-4 w-4 text-primary" />
-                      <span className="font-semibold text-sm" data-testid="text-header-coins">{userCoins.toLocaleString()}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">${userCoinsUSD.toFixed(2)} USD</span>
-                  </div>
-                </Link>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link href="/guides/how-to-earn-coins">
-                        <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-coin-help">
-                          <HelpCircle className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Learn how to earn coins & level up</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              
               <Link href="/messages">
                 <Button variant="ghost" size="icon" data-testid="button-messages">
                   <MessageSquare className="h-5 w-5" />
@@ -289,7 +266,7 @@ export default function Header() {
           {isAuthLoading ? (
             <div className="h-9 w-9 rounded-full bg-muted animate-pulse" />
           ) : isAuthenticated && user ? (
-            <DropdownMenu>
+            <DropdownMenu open={isProfileDropdownOpen} onOpenChange={setIsProfileDropdownOpen}>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-user-menu">
                   <Avatar className="h-8 w-8">
@@ -304,6 +281,17 @@ export default function Header() {
                     ? `${user.firstName} ${user.lastName}` 
                     : user.username}
                 </DropdownMenuLabel>
+                <div className="px-2 py-3 border-b">
+                  <Link href="/recharge">
+                    <div className="flex items-center justify-between gap-2 p-2 rounded-md hover:bg-accent cursor-pointer transition-colors">
+                      <div className="flex items-center gap-2">
+                        <Coins className="h-5 w-5 text-yellow-500" />
+                        <span className="font-semibold">{userCoins.toLocaleString()}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">${userCoinsUSD.toFixed(2)} USD</span>
+                    </div>
+                  </Link>
+                </div>
                 <DropdownMenuSeparator />
                 <Link href="/dashboard">
                   <DropdownMenuItem data-testid="link-dashboard">
@@ -365,15 +353,19 @@ export default function Header() {
                             ? `${user.firstName} ${user.lastName}` 
                             : user.username}
                         </p>
-                        <Link href="/recharge" onClick={() => setMobileMenuOpen(false)}>
-                          <div className="flex items-center gap-1 mt-1">
-                            <Coins className="h-3 w-3 text-primary" />
-                            <span className="text-xs font-medium">{userCoins.toLocaleString()} coins</span>
-                            <span className="text-xs text-muted-foreground">(${userCoinsUSD.toFixed(2)})</span>
-                          </div>
-                        </Link>
                       </div>
                     </div>
+                    
+                    <Link href="/recharge" onClick={() => setMobileMenuOpen(false)}>
+                      <div className="flex items-center justify-between gap-2 p-3 rounded-md bg-primary/10 border border-primary/20 hover:bg-primary/20 cursor-pointer transition-colors">
+                        <div className="flex items-center gap-2">
+                          <Coins className="h-5 w-5 text-yellow-500" />
+                          <span className="font-semibold">{userCoins.toLocaleString()} coins</span>
+                        </div>
+                        <span className="text-sm text-muted-foreground">${userCoinsUSD.toFixed(2)} USD</span>
+                      </div>
+                    </Link>
+                    
                     <Separator />
                   </>
                 )}
