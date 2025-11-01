@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { KPICard } from "../shared/KPICard";
 import { ChartContainer } from "../shared/ChartContainer";
 import { DataTable } from "../shared/DataTable";
+import ActivitySummary from "@/components/ActivitySummary";
 import { DollarSign, ShoppingCart, TrendingUp, Users } from "lucide-react";
 import { Line, LineChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -105,7 +106,7 @@ export function OverviewTab() {
         </ResponsiveContainer>
       </ChartContainer>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <ChartContainer title="Recent Activity" loading={salesLoading}>
           <div className="space-y-4">
             {[1, 2, 3, 4, 5].map(i => (
@@ -143,6 +144,8 @@ export function OverviewTab() {
             )) || <p className="text-muted-foreground text-center py-8">No active goals</p>}
           </div>
         </ChartContainer>
+
+        <ActivitySummary />
       </div>
     </div>
   );

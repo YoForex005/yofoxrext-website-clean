@@ -11190,6 +11190,132 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // POST /api/admin/bots/toggle-engine - Enable/disable bot engine
+  app.post("/api/admin/bots/toggle-engine", isAdminMiddleware, async (req, res) => {
+    try {
+      const { enabled } = req.body;
+      const adminId = getAuthenticatedUserId(req);
+
+      // Update bot settings
+      await storage.updateBotSettings({ globalEnabled: enabled });
+
+      // Log admin action
+      await storage.createAdminAction({
+        adminId,
+        actionType: enabled ? 'enable_bot_engine' : 'disable_bot_engine',
+        targetType: 'system',
+        targetId: 'bot_engine',
+        details: { enabled },
+      });
+
+      res.json({ success: true, enabled });
+    } catch (error: any) {
+      console.error("[Bot Admin] Error toggling bot engine:", error);
+      res.status(500).json({ error: "Failed to toggle bot engine" });
+    }
+  });
+
+  // PATCH /api/admin/bots/aggression - Set bot count (1-15)
+  app.patch("/api/admin/bots/aggression", isAdminMiddleware, async (req, res) => {
+    try {
+      const { botCount } = req.body;
+      const adminId = getAuthenticatedUserId(req);
+
+      if (botCount < 1 || botCount > 15) {
+        return res.status(400).json({ error: "Bot count must be between 1 and 15" });
+      }
+
+      // Get all bots
+      const allBots = await storage.getAllBots();
+
+      // Activate first N bots, deactivate rest
+      for (let i = 0; i < allBots.length; i++) {
+        const shouldBeActive = i < botCount;
+        await storage.updateBot(allBots[i].id, { isActive: shouldBeActive });
+      }
+
+      // Log admin action
+      await storage.createAdminAction({
+        adminId,
+        actionType: 'set_bot_count',
+        targetType: 'system',
+        targetId: 'bot_engine',
+        details: { botCount },
+      });
+
+      res.json({ success: true, botCount, activeBotsCount: Math.min(botCount, allBots.length) });
+    } catch (error: any) {
+      console.error("[Bot Admin] Error setting bot aggression:", error);
+      res.status(500).json({ error: "Failed to set bot aggression" });
+    }
+  });
+
+  // GET /api/admin/bots/activity-log - View bot actions
+  app.get("/api/admin/bots/activity-log", isAdminMiddleware, async (req, res) => {
+    try {
+      const { botId, actionType, page = 1, limit = 50 } = req.query;
+
+      const filters: any = {};
+      if (botId) filters.botId = botId;
+      if (actionType) filters.actionType = actionType;
+
+      const offset = (Number(page) - 1) * Number(limit);
+      const actions = await storage.getBotActions({
+        ...filters,
+        limit: Number(limit),
+        offset
+      });
+
+      res.json({ actions, page: Number(page), limit: Number(limit) });
+    } catch (error: any) {
+      console.error("[Bot Admin] Error getting activity log:", error);
+      res.status(500).json({ error: "Failed to get activity log" });
+    }
+  });
+
+  // POST /api/admin/bots/pause-all - Emergency pause
+  app.post("/api/admin/bots/pause-all", isAdminMiddleware, async (req, res) => {
+    try {
+      const adminId = getAuthenticatedUserId(req);
+
+      // Disable global bot engine
+      await storage.updateBotSettings({ globalEnabled: false });
+
+      // Deactivate all bots
+      const allBots = await storage.getAllBots();
+      for (const bot of allBots) {
+        await storage.updateBot(bot.id, { isActive: false });
+      }
+
+      // Log admin action
+      await storage.createAdminAction({
+        adminId,
+        actionType: 'emergency_pause_bots',
+        targetType: 'system',
+        targetId: 'bot_engine',
+        details: { botsDeactivated: allBots.length },
+      });
+
+      res.json({ success: true, message: `Paused ${allBots.length} bots` });
+    } catch (error: any) {
+      console.error("[Bot Admin] Error pausing all bots:", error);
+      res.status(500).json({ error: "Failed to pause all bots" });
+    }
+  });
+
+  // GET /api/admin/bots/gemini-status - Check Gemini API status
+  app.get("/api/admin/bots/gemini-status", isAdminMiddleware, async (req, res) => {
+    try {
+      const { getGeminiUsageStats } = await import("./services/gemini-bot-service.js");
+      const stats = await getGeminiUsageStats();
+
+      res.json(stats);
+    } catch (error: any) {
+      console.error("[Bot Admin] Error getting Gemini status:", error);
+      res.status(500).json({ error: "Failed to get Gemini status" });
+    }
+  });
+
   // ============================================
   // ERROR TRACKING & MONITORING ROUTES
   // ============================================

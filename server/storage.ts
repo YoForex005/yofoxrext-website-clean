@@ -152,6 +152,8 @@ import {
   type InsertTreasuryAdjustment,
   type BotWalletEvent,
   type InsertBotWalletEvent,
+  type AiLog,
+  type InsertAiLog,
   users,
   userActivity,
   coinTransactions,
@@ -239,6 +241,7 @@ import {
   treasurySnapshots,
   treasuryAdjustments,
   botWalletEvents,
+  aiLogs,
   BADGE_TYPES,
   type BadgeType
 } from "@shared/schema";
@@ -2532,6 +2535,71 @@ export interface IStorage {
    * Like a forum reply (increment helpful votes)
    */
   likeReply(replyId: string, userId: string): Promise<void>;
+
+  // ============================================================================
+  // BOT WALLET MANAGEMENT - Wallet Balance & Cap Enforcement
+  // ============================================================================
+  
+  /**
+   * Get bot wallet balance from bot_wallet_events
+   */
+  getBotWalletBalance(botId: string): Promise<number>;
+  
+  /**
+   * Check if a transaction would exceed bot wallet cap
+   */
+  enforceBotWalletCap(botId: string, amount: number): Promise<boolean>;
+  
+  /**
+   * Refund all purchases for a specific bot
+   */
+  refundBotPurchases(botId: string): Promise<{ refundedCount: number; totalRefunded: number }>;
+  
+  /**
+   * Refund all bot purchases (daily job)
+   */
+  refundAllBotPurchases(): Promise<{ refundedCount: number; totalRefunded: number }>;
+  
+  /**
+   * Record bot wallet event
+   */
+  recordBotWalletEvent(event: InsertBotWalletEvent): Promise<BotWalletEvent>;
+  
+  /**
+   * Get bot wallet events
+   */
+  getBotWalletEvents(botId: string, limit?: number): Promise<BotWalletEvent[]>;
+
+  // ============================================================================
+  // AI LOGS - Gemini API Monitoring
+  // ============================================================================
+  
+  /**
+   * Log an AI API call
+   */
+  logAiCall(log: InsertAiLog): Promise<AiLog>;
+  
+  /**
+   * Get AI logs with filters
+   */
+  getAiLogs(filters?: { 
+    service?: string; 
+    operation?: string; 
+    status?: string;
+    botId?: string;
+    limit?: number;
+  }): Promise<AiLog[]>;
+  
+  /**
+   * Get Gemini API status
+   */
+  getGeminiStatus(): Promise<{
+    lastSuccess: Date | null;
+    lastFailure: Date | null;
+    consecutiveFailures: number;
+    requestsToday: number;
+    status: 'active' | 'failed' | 'rate_limited';
+  }>;
   
   /**
    * Create a follow relationship (simplified wrapper)
@@ -8074,12 +8142,13 @@ export class DrizzleStorage implements IStorage {
       return await db
         .select()
         .from(users)
+        .where(eq(users.isBot, false))
         .orderBy(desc(users.totalCoins))
         .limit(limit);
     }
     
     if (type === "contributions") {
-      const allUsers = await db.select().from(users);
+      const allUsers = await db.select().from(users).where(eq(users.isBot, false));
       const userContributions = new Map<string, number>();
       
       allUsers.forEach(u => userContributions.set(u.id, 0));
@@ -8100,7 +8169,7 @@ export class DrizzleStorage implements IStorage {
     }
     
     if (type === "uploads") {
-      const allUsers = await db.select().from(users);
+      const allUsers = await db.select().from(users).where(eq(users.isBot, false));
       const userUploads = new Map<string, number>();
       
       allUsers.forEach(u => userUploads.set(u.id, 0));
@@ -8127,6 +8196,7 @@ export class DrizzleStorage implements IStorage {
       })
       .from(userWallet)
       .innerJoin(users, eq(userWallet.userId, users.id))
+      .where(eq(users.isBot, false))
       .orderBy(desc(userWallet.balance))
       .limit(limit);
 
@@ -8143,6 +8213,7 @@ export class DrizzleStorage implements IStorage {
       })
       .from(forumReplies)
       .innerJoin(users, eq(forumReplies.userId, users.id))
+      .where(eq(users.isBot, false))
       .groupBy(forumReplies.userId, users.username)
       .orderBy(desc(sql`count(case when ${forumReplies.helpful} > 0 then 1 end) + count(case when ${forumReplies.isAccepted} then 1 end)`))
       .limit(limit);
@@ -8164,7 +8235,12 @@ export class DrizzleStorage implements IStorage {
       })
       .from(contentPurchases)
       .innerJoin(users, eq(contentPurchases.sellerId, users.id))
-      .where(gt(contentPurchases.priceCoins, 0))
+      .where(
+        and(
+          gt(contentPurchases.priceCoins, 0),
+          eq(users.isBot, false)
+        )
+      )
       .groupBy(contentPurchases.sellerId, users.username)
       .orderBy(desc(sql`sum(${contentPurchases.priceCoins})`))
       .limit(limit);
@@ -18131,6 +18207,306 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('Error liking reply:', error);
       throw error;
+    }
+  }
+
+  // ============================================================================
+  // BOT WALLET MANAGEMENT METHODS
+  // ============================================================================
+
+  async getBotWalletBalance(botId: string): Promise<number> {
+    try {
+      const result = await db
+        .select({ 
+          total: sql<number>`COALESCE(SUM(${botWalletEvents.coinAmount}), 0)` 
+        })
+        .from(botWalletEvents)
+        .where(eq(botWalletEvents.botId, botId));
+      
+      return Number(result[0]?.total || 0);
+    } catch (error) {
+      console.error('Error getting bot wallet balance:', error);
+      return 0;
+    }
+  }
+
+  async enforceBotWalletCap(botId: string, amount: number): Promise<boolean> {
+    try {
+      const settings = await this.getBotSettings();
+      if (!settings || !settings.walletCapEnabled) {
+        return true; // Cap not enforced
+      }
+
+      const currentBalance = await this.getBotWalletBalance(botId);
+      const newBalance = currentBalance + amount;
+      
+      return newBalance <= settings.walletCapAmount;
+    } catch (error) {
+      console.error('Error enforcing bot wallet cap:', error);
+      return false;
+    }
+  }
+
+  async refundBotPurchases(botId: string): Promise<{ refundedCount: number; totalRefunded: number }> {
+    try {
+      // Get all purchase events for this bot that haven't been refunded
+      const purchases = await db
+        .select()
+        .from(botWalletEvents)
+        .where(
+          and(
+            eq(botWalletEvents.botId, botId),
+            eq(botWalletEvents.eventType, 'purchase')
+          )
+        );
+
+      let refundedCount = 0;
+      let totalRefunded = 0;
+
+      for (const purchase of purchases) {
+        // Check if already refunded
+        const existingRefund = await db
+          .select()
+          .from(botWalletEvents)
+          .where(
+            and(
+              eq(botWalletEvents.botId, botId),
+              eq(botWalletEvents.eventType, 'refund'),
+              eq(botWalletEvents.targetId, purchase.targetId)
+            )
+          )
+          .limit(1);
+
+        if (existingRefund.length === 0) {
+          // Create refund event (negative of purchase amount)
+          await db.insert(botWalletEvents).values({
+            botId: purchase.botId,
+            eventType: 'refund',
+            coinAmount: -purchase.coinAmount, // Negative to reverse the deduction
+            targetType: purchase.targetType,
+            targetId: purchase.targetId,
+            metadata: {
+              originalPurchaseId: purchase.id,
+              refundedAt: new Date().toISOString()
+            }
+          });
+
+          refundedCount++;
+          totalRefunded += Math.abs(purchase.coinAmount);
+        }
+      }
+
+      return { refundedCount, totalRefunded };
+    } catch (error) {
+      console.error('Error refunding bot purchases:', error);
+      return { refundedCount: 0, totalRefunded: 0 };
+    }
+  }
+
+  async refundAllBotPurchases(): Promise<{ refundedCount: number; totalRefunded: number }> {
+    try {
+      const activeBots = await this.getAllBots({ isActive: true });
+      
+      let totalRefundedCount = 0;
+      let totalRefundedAmount = 0;
+
+      for (const bot of activeBots) {
+        const { refundedCount, totalRefunded } = await this.refundBotPurchases(bot.id);
+        totalRefundedCount += refundedCount;
+        totalRefundedAmount += totalRefunded;
+      }
+
+      console.log(`[BOT WALLET] Refunded ${totalRefundedCount} purchases totaling ${totalRefundedAmount} coins`);
+      
+      return { 
+        refundedCount: totalRefundedCount, 
+        totalRefunded: totalRefundedAmount 
+      };
+    } catch (error) {
+      console.error('Error refunding all bot purchases:', error);
+      return { refundedCount: 0, totalRefunded: 0 };
+    }
+  }
+
+  async recordBotWalletEvent(event: InsertBotWalletEvent): Promise<BotWalletEvent> {
+    try {
+      const [newEvent] = await db
+        .insert(botWalletEvents)
+        .values(event)
+        .returning();
+      return newEvent;
+    } catch (error) {
+      console.error('Error recording bot wallet event:', error);
+      throw error;
+    }
+  }
+
+  async getBotWalletEvents(botId: string, limit: number = 50): Promise<BotWalletEvent[]> {
+    try {
+      const events = await db
+        .select()
+        .from(botWalletEvents)
+        .where(eq(botWalletEvents.botId, botId))
+        .orderBy(desc(botWalletEvents.createdAt))
+        .limit(limit);
+      
+      return events;
+    } catch (error) {
+      console.error('Error getting bot wallet events:', error);
+      return [];
+    }
+  }
+
+  // ============================================================================
+  // AI LOGS METHODS
+  // ============================================================================
+
+  async logAiCall(log: InsertAiLog): Promise<AiLog> {
+    try {
+      const [newLog] = await db
+        .insert(aiLogs)
+        .values(log)
+        .returning();
+      return newLog;
+    } catch (error) {
+      console.error('Error logging AI call:', error);
+      throw error;
+    }
+  }
+
+  async getAiLogs(filters?: { 
+    service?: string; 
+    operation?: string; 
+    status?: string;
+    botId?: string;
+    limit?: number;
+  }): Promise<AiLog[]> {
+    try {
+      let query = db.select().from(aiLogs);
+
+      const conditions = [];
+      if (filters?.service) {
+        conditions.push(eq(aiLogs.service, filters.service as any));
+      }
+      if (filters?.operation) {
+        conditions.push(eq(aiLogs.operation, filters.operation));
+      }
+      if (filters?.status) {
+        conditions.push(eq(aiLogs.status, filters.status as any));
+      }
+      if (filters?.botId) {
+        conditions.push(eq(aiLogs.botId, filters.botId));
+      }
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+
+      const logs = await query
+        .orderBy(desc(aiLogs.createdAt))
+        .limit(filters?.limit || 100);
+
+      return logs;
+    } catch (error) {
+      console.error('Error getting AI logs:', error);
+      return [];
+    }
+  }
+
+  async getGeminiStatus(): Promise<{
+    lastSuccess: Date | null;
+    lastFailure: Date | null;
+    consecutiveFailures: number;
+    requestsToday: number;
+    status: 'active' | 'failed' | 'rate_limited';
+  }> {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      // Get last success
+      const lastSuccessResult = await db
+        .select()
+        .from(aiLogs)
+        .where(
+          and(
+            eq(aiLogs.service, 'gemini'),
+            eq(aiLogs.status, 'success')
+          )
+        )
+        .orderBy(desc(aiLogs.createdAt))
+        .limit(1);
+
+      // Get last failure
+      const lastFailureResult = await db
+        .select()
+        .from(aiLogs)
+        .where(
+          and(
+            eq(aiLogs.service, 'gemini'),
+            eq(aiLogs.status, 'failed')
+          )
+        )
+        .orderBy(desc(aiLogs.createdAt))
+        .limit(1);
+
+      // Count consecutive failures
+      const recentLogs = await db
+        .select()
+        .from(aiLogs)
+        .where(eq(aiLogs.service, 'gemini'))
+        .orderBy(desc(aiLogs.createdAt))
+        .limit(10);
+
+      let consecutiveFailures = 0;
+      for (const log of recentLogs) {
+        if (log.status === 'failed' || log.status === 'rate_limited') {
+          consecutiveFailures++;
+        } else {
+          break;
+        }
+      }
+
+      // Count requests today
+      const requestsTodayResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(aiLogs)
+        .where(
+          and(
+            eq(aiLogs.service, 'gemini'),
+            gte(aiLogs.createdAt, today)
+          )
+        );
+
+      const requestsToday = Number(requestsTodayResult[0]?.count || 0);
+
+      // Determine status
+      let status: 'active' | 'failed' | 'rate_limited' = 'active';
+      if (consecutiveFailures >= 3) {
+        const latestFailure = recentLogs[0];
+        if (latestFailure?.status === 'rate_limited') {
+          status = 'rate_limited';
+        } else {
+          status = 'failed';
+        }
+      }
+
+      return {
+        lastSuccess: lastSuccessResult[0]?.createdAt || null,
+        lastFailure: lastFailureResult[0]?.createdAt || null,
+        consecutiveFailures,
+        requestsToday,
+        status
+      };
+    } catch (error) {
+      console.error('Error getting Gemini status:', error);
+      return {
+        lastSuccess: null,
+        lastFailure: null,
+        consecutiveFailures: 0,
+        requestsToday: 0,
+        status: 'failed'
+      };
     }
   }
 

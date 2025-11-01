@@ -239,6 +239,74 @@ export function startBackgroundJobs(storage: IStorage) {
   
   console.log('[JOBS] Error cleanup scheduled (runs daily at 4:30 AM)');
   
+  // ============================================
+  // SWEETS ECONOMY AUTOMATION JOBS
+  // ============================================
+  
+  // Coin Expiration Job - Runs daily at 4 AM (same time as error cleanup for efficiency)
+  cron.schedule('0 4 * * *', async () => {
+    try {
+      console.log('[COIN EXPIRATION] Starting coin expiration automation...');
+      
+      const { runCoinExpiration } = await import('./coinExpiration.js');
+      const result = await runCoinExpiration();
+      
+      console.log(`[COIN EXPIRATION] Completed: ${result.usersAffected} users, ${result.coinsExpired} coins expired, ${result.errors} errors`);
+    } catch (error: any) {
+      console.error('[COIN EXPIRATION] Error during coin expiration job:', error);
+    }
+  });
+  
+  console.log('[JOBS] Coin expiration automation scheduled (runs daily at 4 AM)');
+  
+  // Fraud Detection Job - Runs hourly
+  cron.schedule('0 * * * *', async () => {
+    try {
+      console.log('[FRAUD DETECTION] Starting fraud detection scan...');
+      
+      const { runFraudDetection } = await import('./fraudDetection.js');
+      const result = await runFraudDetection();
+      
+      console.log(`[FRAUD DETECTION] Completed: ${result.signalsCreated} signals created, ${result.highSeverityAlerts} high severity alerts`);
+    } catch (error: any) {
+      console.error('[FRAUD DETECTION] Error during fraud detection:', error);
+    }
+  });
+  
+  console.log('[JOBS] Fraud detection scheduled (runs hourly)');
+  
+  // Treasury Snapshot Job - Runs daily at 6 AM
+  cron.schedule('0 6 * * *', async () => {
+    try {
+      console.log('[TREASURY SNAPSHOT] Starting treasury snapshot...');
+      
+      const { runTreasurySnapshot } = await import('./treasurySnapshot.js');
+      const result = await runTreasurySnapshot();
+      
+      console.log(`[TREASURY SNAPSHOT] Completed: ${result.totalUserBalance} user coins, ${result.botTreasuryBalance} bot coins, ${result.pendingRedemptions} pending redemptions${result.anomalyDetected ? ' ⚠️ ANOMALY DETECTED' : ''}`);
+    } catch (error: any) {
+      console.error('[TREASURY SNAPSHOT] Error during treasury snapshot:', error);
+    }
+  });
+  
+  console.log('[JOBS] Treasury snapshot scheduled (runs daily at 6 AM)');
+  
+  // Balance Reconciliation Job - Runs weekly Sunday 3 AM
+  cron.schedule('0 3 * * 0', async () => {
+    try {
+      console.log('[BALANCE RECONCILIATION] Starting weekly balance reconciliation...');
+      
+      const { runBalanceReconciliation } = await import('./balanceReconciliation.js');
+      const result = await runBalanceReconciliation();
+      
+      console.log(`[BALANCE RECONCILIATION] Completed: ${result.usersChecked} users checked, ${result.discrepanciesFound} discrepancies found, total drift: ${result.totalDrift} coins`);
+    } catch (error: any) {
+      console.error('[BALANCE RECONCILIATION] Error during balance reconciliation:', error);
+    }
+  });
+  
+  console.log('[JOBS] Balance reconciliation scheduled (runs weekly Sunday at 3 AM)');
+  
   // NOTE: All other background jobs are disabled to improve performance
   // To re-enable, uncomment the cron schedules below:
   

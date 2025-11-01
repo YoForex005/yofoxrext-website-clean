@@ -1,11 +1,13 @@
 "use client";
 
-import { Search, Menu, User, Bell, MessageSquare, Coins, LogIn, LogOut, Lightbulb, HelpCircle, TrendingUp, Settings, Code, Award, BookOpen, Activity, Wrench, FileCode, GraduationCap, MessageCircle as MessageCircleIcon, Trophy, BarChart3, Rocket, ShieldAlert, Plus, LayoutDashboard, X } from "lucide-react";
+import { Search, Menu, User, Bell, MessageSquare, Coins, LogIn, LogOut, Lightbulb, HelpCircle, TrendingUp, Settings, Code, Award, BookOpen, Activity, Wrench, FileCode, GraduationCap, MessageCircle as MessageCircleIcon, Trophy, BarChart3, Rocket, ShieldAlert, Plus, LayoutDashboard, Gift, Package, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ThemeToggle } from "./ThemeToggle";
+import CoinBalanceWidget from "./CoinBalanceWidget";
+import OnboardingRewardsModal from "./OnboardingRewardsModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -244,6 +246,9 @@ export default function Header() {
                 </Button>
               </Link>
               
+              {/* Coin Balance Widget */}
+              <CoinBalanceWidget />
+              
               <Link href="/messages">
                 <Button variant="ghost" size="icon" data-testid="button-messages">
                   <MessageSquare className="h-5 w-5" />
@@ -297,6 +302,18 @@ export default function Header() {
                   <DropdownMenuItem data-testid="link-dashboard">
                     <User className="mr-2 h-4 w-4" />
                     Dashboard
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/rewards">
+                  <DropdownMenuItem data-testid="link-rewards">
+                    <Gift className="mr-2 h-4 w-4" />
+                    Rewards Catalog
+                  </DropdownMenuItem>
+                </Link>
+                <Link href="/my-redemptions">
+                  <DropdownMenuItem data-testid="link-my-redemptions">
+                    <Package className="mr-2 h-4 w-4" />
+                    My Redemptions
                   </DropdownMenuItem>
                 </Link>
                 <Link href="/dashboard/settings">
@@ -499,6 +516,7 @@ export default function Header() {
         </div>
       </div>
       <AuthPrompt />
+      <OnboardingRewardsModal />
     </header>
   );
 }

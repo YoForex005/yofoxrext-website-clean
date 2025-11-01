@@ -11,9 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Bot, Plus, Play, Trash2, Users, Wallet, Activity, Edit, Coins } from "lucide-react";
+import { Bot, Plus, Play, Trash2, Users, Wallet, Activity, Edit, Coins, Sparkles, AlertCircle, CheckCircle, Clock } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AdminAuthCheck } from "../auth-check";
 import { BotModal } from "./BotModal";
 import { BotActionsTable } from "./BotActionsTable";
@@ -57,6 +59,8 @@ export default function BotManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [deleteBot, setDeleteBot] = useState<BotType | null>(null);
   const [filters, setFilters] = useState<{ isActive?: boolean; squad?: string; purpose?: string }>({});
+  const [botEngineEnabled, setBotEngineEnabled] = useState(true);
+  const [activeBotCount, setActiveBotCount] = useState(5);
 
   const { data, isLoading: botsLoading } = useBots(filters);
   const toggleStatus = useToggleBotStatus();
@@ -67,6 +71,13 @@ export default function BotManagementPage() {
   const botCount = (data as any)?.count || { total: 0, active: 0, inactive: 0 };
   const treasury = (treasuryData as any)?.treasury;
 
+  const { data: geminiData } = useQuery({
+    queryKey: ["/api/admin/bots/gemini-status"],
+    refetchInterval: 30000,
+  });
+
+  const geminiStatus = geminiData as any;
+
   const runEngineMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("POST", "/api/admin/bots/run-engine", {});
@@ -76,6 +87,45 @@ export default function BotManagementPage() {
     },
     onError: () => {
       toast({ title: "Failed to trigger bot engine", variant: "destructive" });
+    }
+  });
+
+  const toggleEngineMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      return apiRequest("POST", "/api/admin/bots/toggle-engine", { enabled });
+    },
+    onSuccess: (data: any) => {
+      setBotEngineEnabled(data.enabled);
+      toast({ title: `Bot engine ${data.enabled ? 'enabled' : 'disabled'}` });
+    },
+    onError: () => {
+      toast({ title: "Failed to toggle bot engine", variant: "destructive" });
+    }
+  });
+
+  const setAggressionMutation = useMutation({
+    mutationFn: async (botCount: number) => {
+      return apiRequest("PATCH", "/api/admin/bots/aggression", { botCount });
+    },
+    onSuccess: () => {
+      toast({ title: "Bot count updated successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to update bot count", variant: "destructive" });
+    }
+  });
+
+  const pauseAllMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/admin/bots/pause-all", {});
+    },
+    onSuccess: () => {
+      toast({ title: "All bots paused successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/bots"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to pause all bots", variant: "destructive" });
     }
   });
 
@@ -139,6 +189,134 @@ export default function BotManagementPage() {
               Create New Bot
             </Button>
           </div>
+        </div>
+
+        {geminiStatus?.isPaused || geminiStatus?.status === 'failed' && (
+          <Alert variant="destructive" data-testid="alert-gemini-offline">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Gemini API Offline</AlertTitle>
+            <AlertDescription>
+              The Gemini AI service is currently unavailable. Bot auto-replies have been paused.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card data-testid="card-bot-engine-control">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5" />
+                Bot Engine Control
+              </CardTitle>
+              <CardDescription>Control the bot behavior engine</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Bot Engine</p>
+                  <p className="text-sm text-muted-foreground">Enable or disable all bot activity</p>
+                </div>
+                <Switch
+                  checked={botEngineEnabled}
+                  onCheckedChange={(checked) => toggleEngineMutation.mutate(checked)}
+                  disabled={toggleEngineMutation.isPending}
+                  data-testid="switch-bot-engine"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium">Active Bots</p>
+                  <Badge data-testid="text-bot-count">{activeBotCount}</Badge>
+                </div>
+                <Slider
+                  value={[activeBotCount]}
+                  onValueChange={(value) => setActiveBotCount(value[0])}
+                  onValueCommit={(value) => setAggressionMutation.mutate(value[0])}
+                  min={1}
+                  max={15}
+                  step={1}
+                  className="w-full"
+                  data-testid="slider-bot-count"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Adjust how many bots are actively engaging (1-15)
+                </p>
+              </div>
+
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={() => pauseAllMutation.mutate()}
+                disabled={pauseAllMutation.isPending}
+                data-testid="button-pause-all"
+              >
+                <AlertCircle className="h-4 w-4 mr-2" />
+                Emergency Pause All Bots
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-gemini-status">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Gemini AI Status
+              </CardTitle>
+              <CardDescription>AI-powered bot reply monitoring</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">API Status</p>
+                  <p className="text-sm text-muted-foreground">
+                    {geminiStatus?.isPaused ? 'Paused' : geminiStatus?.status || 'Unknown'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {geminiStatus?.status === 'active' && !geminiStatus?.isPaused && (
+                    <CheckCircle className="h-5 w-5 text-green-500" data-testid="icon-gemini-active" />
+                  )}
+                  {geminiStatus?.status === 'failed' && (
+                    <AlertCircle className="h-5 w-5 text-red-500" data-testid="icon-gemini-failed" />
+                  )}
+                  {geminiStatus?.status === 'rate_limited' && (
+                    <Clock className="h-5 w-5 text-yellow-500" data-testid="icon-gemini-rate-limited" />
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Requests Today</p>
+                  <p className="text-2xl font-bold" data-testid="text-gemini-requests-today">
+                    {geminiStatus?.requestsToday || 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Success Rate</p>
+                  <p className="text-2xl font-bold" data-testid="text-gemini-success-rate">
+                    {geminiStatus?.successRate?.toFixed(1) || 0}%
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-muted-foreground">Avg Latency</p>
+                  <p className="text-lg font-semibold" data-testid="text-gemini-latency">
+                    {geminiStatus?.averageLatency?.toFixed(0) || 0}ms
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">This Week</p>
+                  <p className="text-lg font-semibold" data-testid="text-gemini-requests-week">
+                    {geminiStatus?.requestsThisWeek || 0}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         <div className="grid gap-4 md:grid-cols-4">

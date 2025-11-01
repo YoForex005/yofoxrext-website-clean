@@ -1,7 +1,7 @@
 # YoForex - Expert Advisor Forum & Marketplace
 
 ## Overview
-YoForex is a comprehensive trading community platform for forex traders, offering a central hub for sharing strategies, publishing trading tools, and engaging with a global community. It features forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy. The platform aims to enhance user retention through loyalty tiers, badges, AI nudges, abandonment emails, and an automated bot system. YoForex's business vision is to create a vibrant, self-sustaining ecosystem for forex traders, fostering community and providing valuable tools and resources.
+YoForex is a comprehensive trading community platform for forex traders, providing a central hub for sharing strategies, publishing trading tools, and engaging with a global community. It features forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets") to reward user contributions. The platform aims to enhance user retention through loyalty tiers, badges, AI nudges, and abandonment emails. YoForex's business vision is to create a vibrant, self-sustaining ecosystem for forex traders, fostering community and providing valuable tools and resources.
 
 ## User Preferences
 
@@ -68,34 +68,6 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
-## Recent Changes
-
-### November 1, 2025 - Critical Database and TypeScript Fixes
-
-**Database Schema Fixes:**
-- Fixed critical `/api/hot` endpoint error by adding missing `is_bot` column to `users` table (boolean, default false)
-- Corrected `seoFixJobs` table schema to match database (changed `prompt` → `aiPrompt`, aligned all column names)
-- Added `activity_caps` JSONB column to `bots` table for daily activity limits (likes, follows, purchases, comments)
-- Added undo functionality to `admin_actions` table: `is_undone`, `undone_at`, `undone_by` columns with index on `is_undone`
-
-**TypeScript Error Resolution:**
-- Fixed all 225 LSP TypeScript diagnostics across shared/schema.ts, server/routes.ts, and server/storage.ts
-- Added missing `activityCaps` field to bots schema with proper type definitions
-- Updated bot insert schema with activity cap validation
-- Corrected admin action types to support undo workflow
-
-**System Performance:**
-- Verified connection pool health: max 4 waiting connections, staying under 20 client limit
-- All API endpoints responding correctly (200 status codes)
-- No critical errors in server or browser console logs
-- /api/hot endpoint consistently returning 200s (was 500 before)
-
-**Files Modified:**
-- `shared/schema.ts`: Schema corrections and additions
-- Database: Direct SQL migrations for new columns (is_bot, activity_caps, is_undone, undone_at, undone_by)
-
-**Status:** ✅ All changes reviewed and approved by architect. System stable and production-ready.
-
 ## System Architecture
 
 YoForex uses a hybrid frontend and a robust backend for scalability and performance.
@@ -106,22 +78,23 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 
 ### Database Design
 - **PostgreSQL with Drizzle ORM:** Features 25+ tables, 25 critical indexes, connection pooling, SSL/TLS, and automatic retry logic.
-- **Service Credentials Storage:** Secure database storage in `service_credentials` table for API keys and service configurations for backup and recovery.
+- **Service Credentials Storage:** Secure database storage in `service_credentials` table for API keys and service configurations.
 
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
 - **Authentication System:** Email/Password (bcryptjs) + Google OAuth (Firebase Admin SDK) with PostgreSQL session storage.
 - **Email System:** Transactional and notification emails.
-- **Coin Economy:** Virtual currency rewards user contributions, with transaction history and fraud prevention.
+- **Coin Economy ("Sweets"):** Virtual currency rewards user contributions, with transaction history, expiration management, fraud prevention (rate limits, velocity checks, reconciliation), and a redemption marketplace.
 - **Production Deployment:** One-command deployment to Replit or full control via AWS EC2/VPS using Docker, PM2, Nginx, and Let's Encrypt.
 - **Zero-Touch Migration System:** Automated GitHub import for fresh Replit database setup.
 - **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails to enhance user retention.
-- **Bot Economy System:** Automated bot system for natural engagement, including likes/follows/purchases, daily auto-refunds, and wallet cap enforcement. Bot filtering boosts visible engagement metrics while identities remain hidden.
+- **Bot Economy System:** Automated bot system for natural engagement (likes, follows, purchases, forum replies) using Gemini AI, with wallet caps, daily budgets, and activity limits. Bots are excluded from user-facing metrics.
 - **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, and an admin dashboard for resolution workflow.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only workflow with human approval and async processing).
 - **Comprehensive Messaging System:** Facebook/Freelancer-style private messaging with 1-on-1 and group chats, file attachments (EA files, PDFs, images) up to 50MB, message reactions, read receipts, typing indicators, full-text search, privacy controls, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage integration.
-- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status (enabled/disabled/coming_soon), in-memory caching (60s TTL), SEO-optimized "Coming Soon" pages with email capture, and admin dashboard controls for zero-downtime feature toggles.
+- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, SEO-optimized "Coming Soon" pages, and admin dashboard controls for zero-downtime feature toggles.
+- **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies
 
@@ -138,10 +111,10 @@ YoForex uses a hybrid frontend and a robust backend for scalability and performa
 - **Google Analytics 4:** User tracking.
 - **Google Search Console, Bing Webmaster Tools, Yandex Webmaster:** SEO monitoring.
 - **Google PageSpeed Insights API:** Performance monitoring.
-- **Gemini AI:** AI-powered content suggestions.
+- **Gemini AI:** AI-powered content suggestions and bot engagement.
 
 ### CDN & Storage
-- **Google Cloud Storage:** Object storage backend (for general storage, alongside Replit Object Storage).
+- **Google Cloud Storage:** Object storage backend (for general storage).
 
 ### Development Tools
 - **Drizzle Kit:** Database migrations.

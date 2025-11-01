@@ -4314,3 +4314,42 @@ export const insertBotWalletEventSchema = createInsertSchema(botWalletEvents).om
 });
 export type InsertBotWalletEvent = z.infer<typeof insertBotWalletEventSchema>;
 export type BotWalletEvent = typeof botWalletEvents.$inferSelect;
+
+// ==================== AI LOGS SYSTEM ====================
+// Track all AI API calls (Gemini, OpenAI, etc.) for monitoring and debugging
+export const aiLogs = pgTable("ai_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  service: varchar("service", { length: 50 }).notNull().$type<"gemini" | "openai" | "anthropic">(), // AI service used
+  operation: varchar("operation", { length: 100 }).notNull(), // e.g., "generate_bot_reply", "generate_seo_content"
+  status: varchar("status", { length: 20 }).notNull().$type<"success" | "failed" | "rate_limited" | "timeout">(),
+  errorMessage: text("error_message"),
+  requestData: jsonb("request_data"), // Input parameters
+  responseData: jsonb("response_data"), // API response
+  tokensUsed: integer("tokens_used"), // For cost tracking
+  latencyMs: integer("latency_ms"), // Response time in milliseconds
+  botId: varchar("bot_id").references(() => bots.id), // If bot-related
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  serviceIdx: index("idx_ai_logs_service").on(table.service),
+  operationIdx: index("idx_ai_logs_operation").on(table.operation),
+  statusIdx: index("idx_ai_logs_status").on(table.status),
+  createdAtIdx: index("idx_ai_logs_created_at").on(table.createdAt),
+  botIdIdx: index("idx_ai_logs_bot_id").on(table.botId),
+}));
+
+export const insertAiLogSchema = createInsertSchema(aiLogs).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  service: z.enum(["gemini", "openai", "anthropic"]),
+  operation: z.string().min(1).max(100),
+  status: z.enum(["success", "failed", "rate_limited", "timeout"]),
+  errorMessage: z.string().optional(),
+  requestData: z.record(z.any()).optional(),
+  responseData: z.record(z.any()).optional(),
+  tokensUsed: z.number().int().min(0).optional(),
+  latencyMs: z.number().int().min(0).optional(),
+  botId: z.string().uuid().optional(),
+});
+export type InsertAiLog = z.infer<typeof insertAiLogSchema>;
+export type AiLog = typeof aiLogs.$inferSelect;
