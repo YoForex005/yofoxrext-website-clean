@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 export const revalidate = 10;
 
 async function getUser() {
-  const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll()
     .map(cookie => `${cookie.name}=${cookie.value}`)
@@ -56,7 +56,7 @@ async function getUser() {
 }
 
 async function getConversations(cookieHeader: string) {
-  const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
   
   try {
     const res = await fetch(`${EXPRESS_URL}/api/conversations`, {
