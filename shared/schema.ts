@@ -3169,91 +3169,6 @@ export type InsertActivityHeatmap = z.infer<typeof insertActivityHeatmapSchema>;
 export type ActivityHeatmap = typeof activityHeatmap.$inferSelect;
 
 // ============================================================================
-// BOT SYSTEM TABLES
-// ============================================================================
-
-// Bots - AI-controlled user profiles for engagement
-export const bots = pgTable("bots", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: varchar("username", { length: 50 }).notNull().unique(),
-  displayName: varchar("display_name", { length: 100 }).notNull(),
-  bio: text("bio"),
-  avatarUrl: varchar("avatar_url"),
-  purpose: varchar("purpose").$type<"engagement" | "marketplace" | "referral">().notNull(),
-  trustLevel: integer("trust_level").notNull().default(2), // 2-5
-  isActive: boolean("is_active").notNull().default(false),
-  personaProfile: jsonb("persona_profile").$type<{
-    timezone?: string;
-    favoritePairs?: string[];
-    tradingStyle?: string;
-  }>(),
-  activityCaps: jsonb("activity_caps").$type<{
-    dailyLikes: number;
-    dailyFollows: number;
-    dailyPurchases: number;
-    dailyUnlocks: number;
-  }>().default({
-    dailyLikes: 10,
-    dailyFollows: 3,
-    dailyPurchases: 2,
-    dailyUnlocks: 5
-  }),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-}, (table) => ({
-  usernameIdx: index("idx_bots_username").on(table.username),
-  purposeIdx: index("idx_bots_purpose").on(table.purpose),
-  activeIdx: index("idx_bots_active").on(table.isActive),
-}));
-
-// Bot Actions - Track all bot activities for analytics and audit
-export const botActions = pgTable("bot_actions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  botId: varchar("bot_id").notNull().references(() => bots.id, { onDelete: "cascade" }),
-  actionType: varchar("action_type").$type<"like" | "follow" | "purchase" | "referral" | "unlock">().notNull(),
-  targetType: varchar("target_type").$type<"thread" | "content" | "user" | "reply">(),
-  targetId: varchar("target_id"),
-  coinDelta: integer("coin_delta").notNull().default(0),
-  metadata: jsonb("metadata").$type<Record<string, any>>(),
-  retentionWeight: integer("retention_weight").notNull().default(0), // 0-5 boost to retention score
-  executedAt: timestamp("executed_at").notNull().defaultNow(),
-}, (table) => ({
-  botIdIdx: index("idx_bot_actions_bot_id").on(table.botId),
-  actionTypeIdx: index("idx_bot_actions_action_type").on(table.actionType),
-  targetIdx: index("idx_bot_actions_target").on(table.targetType, table.targetId),
-  executedAtIdx: index("idx_bot_actions_executed_at").on(table.executedAt),
-}));
-
-// Admin Treasury - Central coin bank for bot economy
-export const adminTreasury = pgTable("admin_treasury", {
-  id: serial("id").primaryKey(),
-  balance: integer("balance").notNull().default(100000), // Start with 100k coins
-  dailyCap: integer("daily_cap").notNull().default(500),
-  auditLog: jsonb("audit_log").$type<Array<{
-    timestamp: string;
-    action: string;
-    amount: number;
-    reason: string;
-    adminId?: string;
-    balanceBefore: number;
-    balanceAfter: number;
-  }>>().default([]),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-// Bot Economy Settings - Global configuration for bot behavior
-export const botEconomySettings = pgTable("bot_economy_settings", {
-  id: serial("id").primaryKey(),
-  walletCapDefault: integer("wallet_cap_default").notNull().default(199),
-  walletCapOverrides: jsonb("wallet_cap_overrides").$type<Record<string, number>>().default({}), // userId -> custom cap
-  aggressionLevel: integer("aggression_level").notNull().default(5), // 1-10 scale
-  referralModeEnabled: boolean("referral_mode_enabled").notNull().default(false),
-  botPurchasesEnabled: boolean("bot_purchases_enabled").notNull().default(true),
-  botUnlocksEnabled: boolean("bot_unlocks_enabled").notNull().default(true),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
-
-// ============================================================================
 // ERROR TRACKING SYSTEM TABLES
 // ============================================================================
 
@@ -3353,48 +3268,6 @@ export const errorStatusChanges = pgTable("error_status_changes", {
   changedByIdx: index("idx_error_status_changes_changed_by").on(table.changedBy),
   changedAtIdx: index("idx_error_status_changes_changed_at").on(table.changedAt),
 }));
-
-// ============================================================================
-// BOT SYSTEM SCHEMAS AND TYPES
-// ============================================================================
-
-// Bots
-export const insertBotSchema = createInsertSchema(bots).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-}).extend({
-  username: z.string().min(3).max(50).regex(/^@?[a-zA-Z0-9_]+$/),
-  displayName: z.string().min(1).max(100),
-  bio: z.string().optional(),
-  avatarUrl: z.string().url().optional(),
-  purpose: z.enum(["engagement", "marketplace", "referral"]),
-  trustLevel: z.number().int().min(2).max(5),
-  isActive: z.boolean().optional(),
-});
-export type InsertBot = z.infer<typeof insertBotSchema>;
-export type Bot = typeof bots.$inferSelect;
-
-// Bot Actions
-export const insertBotActionSchema = createInsertSchema(botActions).omit({
-  id: true,
-  executedAt: true,
-}).extend({
-  botId: z.string().uuid(),
-  actionType: z.enum(["like", "follow", "purchase", "referral", "unlock"]),
-  targetType: z.enum(["thread", "content", "user", "reply"]).optional(),
-  targetId: z.string().optional(),
-  coinDelta: z.number().int(),
-  retentionWeight: z.number().int().min(0).max(5).optional(),
-});
-export type InsertBotAction = z.infer<typeof insertBotActionSchema>;
-export type BotAction = typeof botActions.$inferSelect;
-
-// Admin Treasury
-export type AdminTreasury = typeof adminTreasury.$inferSelect;
-
-// Bot Economy Settings
-export type BotEconomySettings = typeof botEconomySettings.$inferSelect;
 
 // ============================================================================
 // ERROR TRACKING SYSTEM SCHEMAS AND TYPES
@@ -3844,3 +3717,228 @@ export const insertServiceCredentialSchema = createInsertSchema(serviceCredentia
 });
 export type InsertServiceCredential = z.infer<typeof insertServiceCredentialSchema>;
 export type ServiceCredential = typeof serviceCredentials.$inferSelect;
+
+// ==================== BOT ECONOMY SYSTEM ====================
+
+// Bots - AI-driven users that create natural engagement
+export const bots = pgTable("bots", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: varchar("username", { length: 50 }).notNull().unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  bio: text("bio"),
+  profilePictureUrl: text("profile_picture_url"),
+  isBot: boolean("is_bot").notNull().default(true),
+  isActive: boolean("is_active").notNull().default(true),
+  purpose: varchar("purpose", { length: 100 }), // like-bomber, follow-farmer, marketplace-booster, etc.
+  squad: varchar("squad", { length: 50 }), // forum, marketplace, social
+  aggressionLevel: integer("aggression_level").notNull().default(5), // 1-10 scale
+  trustLevel: integer("trust_level").notNull().default(3), // 2-5 to match real users
+  timezone: varchar("timezone", { length: 50 }).default('UTC'),
+  favoritePairs: text("favorite_pairs").array(), // ["EUR/USD", "XAU/USD", etc.]
+  createdBy: varchar("created_by").references(() => users.id), // Admin who created bot
+  joinDate: timestamp("join_date").notNull().defaultNow(),
+  lastActiveAt: timestamp("last_active_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  isActiveIdx: index("bots_is_active_idx").on(table.isActive),
+  purposeIdx: index("bots_purpose_idx").on(table.purpose),
+  squadIdx: index("bots_squad_idx").on(table.squad),
+}));
+
+export const insertBotSchema = createInsertSchema(bots).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  joinDate: true,
+}).extend({
+  username: z.string().min(3).max(50),
+  email: z.string().email().max(255),
+  bio: z.string().optional(),
+  profilePictureUrl: z.string().url().optional(),
+  isBot: z.boolean().default(true),
+  isActive: z.boolean().default(true),
+  purpose: z.string().max(100).optional(),
+  squad: z.string().max(50).optional(),
+  aggressionLevel: z.number().int().min(1).max(10).default(5),
+  trustLevel: z.number().int().min(2).max(5).default(3),
+  timezone: z.string().max(50).default('UTC'),
+  favoritePairs: z.array(z.string()).optional(),
+  createdBy: z.string().uuid().optional(),
+  lastActiveAt: z.date().optional(),
+});
+export type InsertBot = z.infer<typeof insertBotSchema>;
+export type Bot = typeof bots.$inferSelect;
+
+// Bot Actions - Track all bot interactions
+export const botActions = pgTable("bot_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  botId: varchar("bot_id").notNull().references(() => bots.id, { onDelete: "cascade" }),
+  actionType: varchar("action_type").notNull(), // like, follow, purchase, download, view, unlock, referral
+  targetType: varchar("target_type").notNull(), // thread, user, ea, reply
+  targetId: varchar("target_id").notNull(),
+  coinCost: integer("coin_cost").notNull().default(0), // Coins spent from treasury
+  wasRefunded: boolean("was_refunded").notNull().default(false),
+  refundedAt: timestamp("refunded_at"),
+  metadata: jsonb("metadata"), // Additional action data
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  botIdIdx: index("bot_actions_bot_id_idx").on(table.botId),
+  actionTypeIdx: index("bot_actions_action_type_idx").on(table.actionType),
+  targetIdx: index("bot_actions_target_idx").on(table.targetType, table.targetId),
+  createdAtIdx: index("bot_actions_created_at_idx").on(table.createdAt),
+  wasRefundedIdx: index("bot_actions_was_refunded_idx").on(table.wasRefunded),
+}));
+
+export const insertBotActionSchema = createInsertSchema(botActions).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  botId: z.string().uuid(),
+  actionType: z.enum(["like", "follow", "purchase", "download", "view", "unlock", "referral"]),
+  targetType: z.enum(["thread", "user", "ea", "reply"]),
+  targetId: z.string().uuid(),
+  coinCost: z.number().int().min(0).default(0),
+  wasRefunded: z.boolean().default(false),
+  refundedAt: z.date().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+export type InsertBotAction = z.infer<typeof insertBotActionSchema>;
+export type BotAction = typeof botActions.$inferSelect;
+
+// Bot Treasury - Central coin pool for bot economy
+export const botTreasury = pgTable("bot_treasury", {
+  id: serial("id").primaryKey(),
+  balance: integer("balance").notNull().default(10000), // Treasury coin balance
+  dailySpendLimit: integer("daily_spend_limit").notNull().default(500),
+  todaySpent: integer("today_spent").notNull().default(0),
+  lastResetAt: timestamp("last_reset_at").notNull().defaultNow(),
+  totalSpent: integer("total_spent").notNull().default(0),
+  totalRefunded: integer("total_refunded").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBotTreasurySchema = createInsertSchema(botTreasury).omit({
+  id: true,
+  updatedAt: true,
+}).extend({
+  balance: z.number().int().min(0).default(10000),
+  dailySpendLimit: z.number().int().min(0).default(500),
+  todaySpent: z.number().int().min(0).default(0),
+  lastResetAt: z.date().default(() => new Date()),
+  totalSpent: z.number().int().min(0).default(0),
+  totalRefunded: z.number().int().min(0).default(0),
+});
+export type InsertBotTreasury = z.infer<typeof insertBotTreasurySchema>;
+export type BotTreasury = typeof botTreasury.$inferSelect;
+
+// Bot Refunds - Schedule refunds to keep user wallets below cap
+export const botRefunds = pgTable("bot_refunds", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  botActionId: varchar("bot_action_id").notNull().references(() => botActions.id, { onDelete: "cascade" }),
+  botId: varchar("bot_id").notNull().references(() => bots.id, { onDelete: "cascade" }),
+  sellerId: varchar("seller_id").references(() => users.id), // User who received payment
+  originalAmount: integer("original_amount").notNull(),
+  refundAmount: integer("refund_amount").notNull(),
+  status: varchar("status").notNull().default("pending"), // pending, completed, failed
+  scheduledFor: timestamp("scheduled_for").notNull(), // 3 AM next day
+  processedAt: timestamp("processed_at"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index("bot_refunds_status_idx").on(table.status),
+  scheduledForIdx: index("bot_refunds_scheduled_for_idx").on(table.scheduledFor),
+  sellerIdIdx: index("bot_refunds_seller_id_idx").on(table.sellerId),
+}));
+
+export const insertBotRefundSchema = createInsertSchema(botRefunds).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  botActionId: z.string().uuid(),
+  botId: z.string().uuid(),
+  sellerId: z.string().uuid().optional(),
+  originalAmount: z.number().int().min(0),
+  refundAmount: z.number().int().min(0),
+  status: z.enum(["pending", "completed", "failed"]).default("pending"),
+  scheduledFor: z.date(),
+  processedAt: z.date().optional(),
+  error: z.string().optional(),
+});
+export type InsertBotRefund = z.infer<typeof insertBotRefundSchema>;
+export type BotRefund = typeof botRefunds.$inferSelect;
+
+// Bot Audit Log - Track all admin actions on bot economy
+export const botAuditLog = pgTable("bot_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminId: varchar("admin_id").notNull().references(() => users.id),
+  actionType: varchar("action_type").notNull(), // create_bot, deactivate_bot, adjust_spend_limit, drain_wallet, override_cap, undo_action
+  targetType: varchar("target_type"), // bot, user, treasury, system
+  targetId: varchar("target_id"),
+  previousValue: jsonb("previous_value"), // For undo functionality
+  newValue: jsonb("new_value"),
+  reason: text("reason"),
+  isUndone: boolean("is_undone").notNull().default(false),
+  undoneBy: varchar("undone_by").references(() => users.id),
+  undoneAt: timestamp("undone_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  adminIdIdx: index("bot_audit_log_admin_id_idx").on(table.adminId),
+  actionTypeIdx: index("bot_audit_log_action_type_idx").on(table.actionType),
+  createdAtIdx: index("bot_audit_log_created_at_idx").on(table.createdAt),
+  isUndoneIdx: index("bot_audit_log_is_undone_idx").on(table.isUndone),
+}));
+
+export const insertBotAuditLogSchema = createInsertSchema(botAuditLog).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  adminId: z.string().uuid(),
+  actionType: z.enum(["create_bot", "deactivate_bot", "adjust_spend_limit", "drain_wallet", "override_cap", "undo_action"]),
+  targetType: z.enum(["bot", "user", "treasury", "system"]).optional(),
+  targetId: z.string().uuid().optional(),
+  previousValue: z.record(z.any()).optional(),
+  newValue: z.record(z.any()).optional(),
+  reason: z.string().optional(),
+  isUndone: z.boolean().default(false),
+  undoneBy: z.string().uuid().optional(),
+  undoneAt: z.date().optional(),
+});
+export type InsertBotAuditLog = z.infer<typeof insertBotAuditLogSchema>;
+export type BotAuditLog = typeof botAuditLog.$inferSelect;
+
+// Bot Settings - Global configuration for bot economy
+export const botSettings = pgTable("bot_settings", {
+  id: serial("id").primaryKey(),
+  globalEnabled: boolean("global_enabled").notNull().default(true),
+  maxActiveBots: integer("max_active_bots").notNull().default(15),
+  scanIntervalMinutes: integer("scan_interval_minutes").notNull().default(10),
+  purchaseDelayMinutes: integer("purchase_delay_minutes").notNull().default(30),
+  likeDelayMinutes: integer("like_delay_minutes").notNull().default(5),
+  walletCapEnabled: boolean("wallet_cap_enabled").notNull().default(true),
+  walletCapAmount: integer("wallet_cap_amount").notNull().default(199),
+  refundTimeHour: integer("refund_time_hour").notNull().default(3), // 3 AM
+  enableReferralBots: boolean("enable_referral_bots").notNull().default(false),
+  maxReferralsPerWeek: integer("max_referrals_per_week").notNull().default(2),
+  retentionScoreCapPerWeek: integer("retention_score_cap_per_week").notNull().default(5),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBotSettingsSchema = createInsertSchema(botSettings).omit({
+  id: true,
+  updatedAt: true,
+}).extend({
+  globalEnabled: z.boolean().default(true),
+  maxActiveBots: z.number().int().min(0).max(50).default(15),
+  scanIntervalMinutes: z.number().int().min(1).max(1440).default(10),
+  purchaseDelayMinutes: z.number().int().min(1).max(1440).default(30),
+  likeDelayMinutes: z.number().int().min(1).max(1440).default(5),
+  walletCapEnabled: z.boolean().default(true),
+  walletCapAmount: z.number().int().min(0).max(1000).default(199),
+  refundTimeHour: z.number().int().min(0).max(23).default(3),
+  enableReferralBots: z.boolean().default(false),
+  maxReferralsPerWeek: z.number().int().min(0).max(100).default(2),
+  retentionScoreCapPerWeek: z.number().int().min(0).max(100).default(5),
+});
+export type InsertBotSettings = z.infer<typeof insertBotSettingsSchema>;
+export type BotSettings = typeof botSettings.$inferSelect;
