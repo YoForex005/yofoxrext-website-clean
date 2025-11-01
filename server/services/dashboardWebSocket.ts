@@ -14,15 +14,59 @@ export function initializeDashboardWebSocket(server: HTTPServer) {
 
   io.on('connection', (socket) => {
     console.log(`[Dashboard WS] Client connected: ${socket.id}`);
+    let currentUserId: string | null = null;
 
     // Join user-specific room
     socket.on('join', (userId: string) => {
+      currentUserId = userId;
       socket.join(`user:${userId}`);
       console.log(`[Dashboard WS] User ${userId} joined room`);
+      
+      // Emit user-online event to all conversation participants
+      emitUserOnlineStatus(userId, true);
+    });
+
+    // Join conversation room
+    socket.on('join-conversation', (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data;
+      socket.join(`conversation:${conversationId}`);
+      console.log(`[Messaging WS] User ${userId} joined conversation ${conversationId}`);
+    });
+
+    // Leave conversation room
+    socket.on('leave-conversation', (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data;
+      socket.leave(`conversation:${conversationId}`);
+      console.log(`[Messaging WS] User ${userId} left conversation ${conversationId}`);
+    });
+
+    // Typing start event
+    socket.on('typing-start', (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data;
+      socket.to(`conversation:${conversationId}`).emit('typing', {
+        conversationId,
+        userId,
+        isTyping: true,
+      });
+    });
+
+    // Typing stop event
+    socket.on('typing-stop', (data: { conversationId: string; userId: string }) => {
+      const { conversationId, userId } = data;
+      socket.to(`conversation:${conversationId}`).emit('typing', {
+        conversationId,
+        userId,
+        isTyping: false,
+      });
     });
 
     socket.on('disconnect', () => {
       console.log(`[Dashboard WS] Client disconnected: ${socket.id}`);
+      
+      // Emit user-offline event to all conversation participants
+      if (currentUserId) {
+        emitUserOnlineStatus(currentUserId, false);
+      }
     });
   });
 
@@ -45,4 +89,76 @@ export function emitVaultUnlock(userId: string, amount: number) {
 export function emitBadgeUnlock(userId: string, badge: any) {
   if (!io) return;
   io.to(`user:${userId}`).emit('badge:unlock', { badge, timestamp: new Date() });
+}
+
+// ===== MESSAGING WEBSOCKET EVENTS =====
+
+// Emit new message to all conversation participants
+export function emitNewMessage(conversationId: string, message: any) {
+  if (!io) return;
+  io.to(`conversation:${conversationId}`).emit('new-message', {
+    conversationId,
+    message,
+    timestamp: new Date(),
+  });
+}
+
+// Emit message read receipt to message sender
+export function emitMessageRead(senderId: string, messageId: string, userId: string) {
+  if (!io) return;
+  io.to(`user:${senderId}`).emit('message-read', {
+    messageId,
+    userId,
+    readAt: new Date(),
+  });
+}
+
+// Emit user online/offline status
+export function emitUserOnlineStatus(userId: string, online: boolean) {
+  if (!io) return;
+  io.emit(online ? 'user-online' : 'user-offline', {
+    userId,
+    online,
+    timestamp: new Date(),
+  });
+}
+
+// Emit reaction added to conversation participants
+export function emitReactionAdded(conversationId: string, messageId: string, reaction: any) {
+  if (!io) return;
+  io.to(`conversation:${conversationId}`).emit('reaction-added', {
+    messageId,
+    reaction,
+    timestamp: new Date(),
+  });
+}
+
+// Emit reaction removed to conversation participants
+export function emitReactionRemoved(conversationId: string, messageId: string, reactionId: string) {
+  if (!io) return;
+  io.to(`conversation:${conversationId}`).emit('reaction-removed', {
+    messageId,
+    reactionId,
+    timestamp: new Date(),
+  });
+}
+
+// Emit participant added to conversation
+export function emitParticipantAdded(conversationId: string, user: any) {
+  if (!io) return;
+  io.to(`conversation:${conversationId}`).emit('participant-added', {
+    conversationId,
+    user,
+    timestamp: new Date(),
+  });
+}
+
+// Emit participant removed from conversation
+export function emitParticipantRemoved(conversationId: string, userId: string) {
+  if (!io) return;
+  io.to(`conversation:${conversationId}`).emit('participant-removed', {
+    conversationId,
+    userId,
+    timestamp: new Date(),
+  });
 }

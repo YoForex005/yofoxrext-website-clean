@@ -179,3 +179,24 @@ export const activityTrackingLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Messaging rate limiter
+ * 10 messages per minute per user to prevent spam
+ */
+export const messagingLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 messages per minute
+  message: {
+    error: "Too many messages sent, please slow down",
+    retryAfter: "1 minute",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "You can only send 10 messages per minute. Please slow down",
+      retryAfter: "1 minute",
+    });
+  },
+});

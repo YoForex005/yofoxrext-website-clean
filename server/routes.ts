@@ -65,6 +65,7 @@ import {
   reviewReplyLimiter,
   adminOperationLimiter,
   activityTrackingLimiter,
+  messagingLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
 import { generateSlug, generateFocusKeyword, generateMetaDescription as generateMetaDescriptionOld, generateImageAltTexts } from './seo.js';
@@ -4683,7 +4684,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== PRIVATE MESSAGES ENDPOINTS =====
   
   // Send message
-  app.post("/api/messages", isAuthenticated, async (req, res) => {
+  app.post("/api/messages", isAuthenticated, messagingLimiter, async (req, res) => {
     try {
       const authenticatedUserId = getAuthenticatedUserId(req);
       
@@ -4790,7 +4791,260 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // Message reactions - COMMENTED OUT: These methods don't exist in MemStorage interface
+  // ===== GROUP CONVERSATIONS ENDPOINTS =====
+  
+  // Create group conversation
+  app.post("/api/conversations/group", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { participantIds, groupName, groupDescription } = req.body;
+      
+      if (!Array.isArray(participantIds) || participantIds.length === 0) {
+        return res.status(400).json({ error: "At least one participant required" });
+      }
+      
+      if (!groupName || typeof groupName !== 'string') {
+        return res.status(400).json({ error: "Group name required" });
+      }
+      
+      const conversation = await storage.createGroupConversation(
+        authenticatedUserId,
+        participantIds,
+        groupName,
+        groupDescription
+      );
+      
+      res.json(conversation);
+    } catch (error: any) {
+      console.error("Error creating group conversation:", error);
+      res.status(500).json({ error: "Failed to create group conversation" });
+    }
+  });
+  
+  // Add participant to group
+  app.post("/api/conversations/:conversationId/participants", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { userId } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ error: "User ID required" });
+      }
+      
+      const isParticipant = await storage.isUserInConversation(req.params.conversationId, authenticatedUserId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: "Not authorized to add participants" });
+      }
+      
+      await storage.addParticipantToConversation(req.params.conversationId, userId, authenticatedUserId);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error adding participant:", error);
+      if (error.message?.includes('already a participant')) {
+        return res.status(400).json({ error: error.message });
+      }
+      res.status(500).json({ error: "Failed to add participant" });
+    }
+  });
+  
+  // Remove participant from group
+  app.delete("/api/conversations/:conversationId/participants/:userId", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { conversationId, userId } = req.params;
+      
+      const isParticipant = await storage.isUserInConversation(conversationId, authenticatedUserId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      if (authenticatedUserId !== userId) {
+        return res.status(403).json({ error: "Can only remove yourself from conversation" });
+      }
+      
+      await storage.removeParticipantFromConversation(conversationId, userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing participant:", error);
+      res.status(500).json({ error: "Failed to remove participant" });
+    }
+  });
+  
+  // Get conversation participants
+  app.get("/api/conversations/:conversationId/participants", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      
+      const isParticipant = await storage.isUserInConversation(req.params.conversationId, authenticatedUserId);
+      if (!isParticipant) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+      
+      const participants = await storage.getConversationParticipants(req.params.conversationId);
+      res.json(participants);
+    } catch (error) {
+      console.error("Error getting participants:", error);
+      res.status(500).json({ error: "Failed to get participants" });
+    }
+  });
+  
+  // ===== MESSAGE ATTACHMENTS ENDPOINTS =====
+  
+  // Add attachment to message
+  app.post("/api/messages/:messageId/attachments", isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const file = req.file;
+      
+      if (!file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      
+      const objectStorageService = new ObjectStorageService();
+      const uploadResult = await objectStorageService.uploadFile(
+        file.buffer,
+        file.originalname,
+        file.mimetype,
+        ObjectPermission.PUBLIC,
+        {
+          userId: authenticatedUserId,
+          messageId: req.params.messageId,
+        }
+      );
+      
+      const attachment = await storage.addMessageAttachment(req.params.messageId, {
+        messageId: req.params.messageId,
+        fileUrl: uploadResult.publicUrl,
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: file.mimetype,
+        scanStatus: 'pending',
+      });
+      
+      res.json(attachment);
+    } catch (error) {
+      console.error("Error adding attachment:", error);
+      res.status(500).json({ error: "Failed to add attachment" });
+    }
+  });
+  
+  // Get message attachments
+  app.get("/api/messages/:messageId/attachments", isAuthenticated, async (req, res) => {
+    try {
+      const attachments = await storage.getMessageAttachments(req.params.messageId);
+      res.json(attachments);
+    } catch (error) {
+      console.error("Error getting attachments:", error);
+      res.status(500).json({ error: "Failed to get attachments" });
+    }
+  });
+  
+  // ===== READ RECEIPTS ENDPOINTS =====
+  
+  // Mark message as delivered
+  app.post("/api/messages/:messageId/delivered", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      await storage.markMessageDelivered(req.params.messageId, authenticatedUserId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking message as delivered:", error);
+      res.status(500).json({ error: "Failed to mark as delivered" });
+    }
+  });
+  
+  // Get message read receipts
+  app.get("/api/messages/:messageId/receipts", isAuthenticated, async (req, res) => {
+    try {
+      const receipts = await storage.getMessageReadReceipts(req.params.messageId);
+      res.json(receipts);
+    } catch (error) {
+      console.error("Error getting read receipts:", error);
+      res.status(500).json({ error: "Failed to get read receipts" });
+    }
+  });
+  
+  // ===== MESSAGE REACTIONS ENDPOINTS =====
+  
+  // Add reaction to message
+  app.post("/api/messages/:messageId/reactions", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { emoji } = req.body;
+      
+      if (!emoji || typeof emoji !== 'string') {
+        return res.status(400).json({ error: "Emoji required" });
+      }
+
+      await storage.addMessageReaction(req.params.messageId, authenticatedUserId, emoji);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error adding reaction:", error);
+      res.status(500).json({ error: "Failed to add reaction" });
+    }
+  });
+
+  // Remove reaction from message
+  app.delete("/api/reactions/:reactionId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.removeMessageReactionById(req.params.reactionId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing reaction:", error);
+      res.status(500).json({ error: "Failed to remove reaction" });
+    }
+  });
+
+  // Get message reactions
+  app.get("/api/messages/:messageId/reactions", async (req, res) => {
+    try {
+      const reactions = await storage.getMessageReactionsDetailed(req.params.messageId);
+      res.json(reactions);
+    } catch (error) {
+      console.error("Error getting reactions:", error);
+      res.status(500).json({ error: "Failed to get reactions" });
+    }
+  });
+
+  // ===== SEARCH ENDPOINTS =====
+  
+  // Search messages
+  app.get("/api/messages/search", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { q } = req.query;
+      
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ error: "Search query required" });
+      }
+
+      const results = await storage.searchMessagesExtended(authenticatedUserId, q);
+      res.json(results);
+    } catch (error) {
+      console.error("Error searching messages:", error);
+      res.status(500).json({ error: "Failed to search messages" });
+    }
+  });
+  
+  // Search conversations
+  app.get("/api/conversations/search", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { q } = req.query;
+      
+      if (!q || typeof q !== 'string') {
+        return res.status(400).json({ error: "Search query required" });
+      }
+
+      const results = await storage.searchConversations(authenticatedUserId, q);
+      res.json(results);
+    } catch (error) {
+      console.error("Error searching conversations:", error);
+      res.status(500).json({ error: "Failed to search conversations" });
+    }
+  });
+
+  // Message reactions - OLD COMMENTED OUT CODE - KEEP FOR REFERENCE
   /* app.post("/api/messages/:messageId/reactions", isAuthenticated, async (req, res) => {
     try {
       const authenticatedUserId = getAuthenticatedUserId(req);

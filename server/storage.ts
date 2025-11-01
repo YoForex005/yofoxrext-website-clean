@@ -41,6 +41,14 @@ import {
   type InsertConversation,
   type Message,
   type InsertMessage,
+  type MessageAttachment,
+  type InsertMessageAttachment,
+  type MessageReadReceipt,
+  type InsertMessageReadReceipt,
+  type MessageReaction,
+  type InsertMessageReaction,
+  type ConversationParticipant,
+  type InsertConversationParticipant,
   type Notification,
   type InsertNotification,
   type DashboardPreferences,
@@ -134,7 +142,10 @@ import {
   coinLedgerTransactions,
   coinJournalEntries,
   conversations,
+  conversationParticipants,
   messages,
+  messageAttachments,
+  messageReadReceipts,
   messageReactions,
   notifications,
   dashboardPreferences,
@@ -409,6 +420,31 @@ export interface IStorage {
   addMessageReaction(messageId: string, userId: string, emoji: string): Promise<void>;
   removeMessageReaction(messageId: string, userId: string, emoji: string): Promise<void>;
   getMessageReactions(messageId: string): Promise<Array<{ emoji: string; count: number; userIds: string[] }>>;
+  
+  // Conversation Management (Group Chats)
+  createGroupConversation(creatorId: string, participantIds: string[], groupName: string, groupDescription?: string): Promise<Conversation>;
+  addParticipantToConversation(conversationId: string, userId: string, addedByUserId: string): Promise<void>;
+  removeParticipantFromConversation(conversationId: string, userId: string): Promise<void>;
+  getConversationParticipants(conversationId: string): Promise<User[]>;
+  isUserInConversation(conversationId: string, userId: string): Promise<boolean>;
+  
+  // Message Attachments
+  addMessageAttachment(messageId: string, attachment: Omit<InsertMessageAttachment, 'id' | 'createdAt'>): Promise<MessageAttachment>;
+  getMessageAttachments(messageId: string): Promise<MessageAttachment[]>;
+  updateAttachmentScanStatus(attachmentId: string, scanStatus: string): Promise<void>;
+  
+  // Read Receipts
+  markMessageDelivered(messageId: string, userId: string): Promise<void>;
+  markMessageReadReceipt(messageId: string, userId: string): Promise<void>;
+  getMessageReadReceipts(messageId: string): Promise<MessageReadReceipt[]>;
+  
+  // Message Reactions (Extended)
+  getMessageReactionsDetailed(messageId: string): Promise<MessageReaction[]>;
+  removeMessageReactionById(reactionId: string): Promise<void>;
+  
+  // Search (Extended)
+  searchMessagesExtended(userId: string, query: string, limit?: number): Promise<Message[]>;
+  searchConversations(userId: string, query: string): Promise<Conversation[]>;
   
   // Dashboard Preferences
   getDashboardPreferences(userId: string): Promise<DashboardPreferences | null>;
@@ -3986,6 +4022,71 @@ export class MemStorage implements IStorage {
   }
 
   async getMessageReactions(messageId: string): Promise<Array<{ emoji: string; count: number; userIds: string[] }>> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  // Conversation Management (Group Chats) - Stubs
+  async createGroupConversation(creatorId: string, participantIds: string[], groupName: string, groupDescription?: string): Promise<Conversation> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async addParticipantToConversation(conversationId: string, userId: string, addedByUserId: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async removeParticipantFromConversation(conversationId: string, userId: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async getConversationParticipants(conversationId: string): Promise<User[]> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async isUserInConversation(conversationId: string, userId: string): Promise<boolean> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  // Message Attachments - Stubs
+  async addMessageAttachment(messageId: string, attachment: Omit<InsertMessageAttachment, 'id' | 'createdAt'>): Promise<MessageAttachment> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async getMessageAttachments(messageId: string): Promise<MessageAttachment[]> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async updateAttachmentScanStatus(attachmentId: string, scanStatus: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  // Read Receipts - Stubs
+  async markMessageDelivered(messageId: string, userId: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async markMessageReadReceipt(messageId: string, userId: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async getMessageReadReceipts(messageId: string): Promise<MessageReadReceipt[]> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  // Message Reactions (Extended) - Stubs
+  async getMessageReactionsDetailed(messageId: string): Promise<MessageReaction[]> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async removeMessageReactionById(reactionId: string): Promise<void> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  // Search (Extended) - Stubs
+  async searchMessagesExtended(userId: string, query: string, limit?: number): Promise<Message[]> {
+    throw new Error("MemStorage does not support messaging operations");
+  }
+
+  async searchConversations(userId: string, query: string): Promise<Conversation[]> {
     throw new Error("MemStorage does not support messaging operations");
   }
 
@@ -7966,6 +8067,267 @@ export class DrizzleStorage implements IStorage {
       .where(and(...whereConditions))
       .orderBy(desc(messages.createdAt))
       .limit(100);
+
+    return results;
+  }
+
+  // Conversation Management (Group Chats)
+  async createGroupConversation(creatorId: string, participantIds: string[], groupName: string, groupDescription?: string): Promise<Conversation> {
+    const allParticipants = [creatorId, ...participantIds];
+    const uniqueParticipants = Array.from(new Set(allParticipants));
+
+    const [conversation] = await db
+      .insert(conversations)
+      .values({
+        isGroup: true,
+        groupName,
+        groupDescription: groupDescription || null,
+        createdById: creatorId,
+      })
+      .returning();
+
+    for (const userId of uniqueParticipants) {
+      await db.insert(conversationParticipants).values({
+        conversationId: conversation.id,
+        userId,
+        addedBy: creatorId,
+        isAdmin: userId === creatorId,
+      });
+    }
+
+    return conversation;
+  }
+
+  async addParticipantToConversation(conversationId: string, userId: string, addedByUserId: string): Promise<void> {
+    const existing = await db
+      .select()
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      throw new Error('User is already a participant in this conversation');
+    }
+
+    await db.insert(conversationParticipants).values({
+      conversationId,
+      userId,
+      addedBy: addedByUserId,
+      isAdmin: false,
+    });
+  }
+
+  async removeParticipantFromConversation(conversationId: string, userId: string): Promise<void> {
+    await db
+      .delete(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.userId, userId)
+        )
+      );
+  }
+
+  async getConversationParticipants(conversationId: string): Promise<User[]> {
+    const participants = await db
+      .select({
+        user: users,
+      })
+      .from(conversationParticipants)
+      .innerJoin(users, eq(conversationParticipants.userId, users.id))
+      .where(eq(conversationParticipants.conversationId, conversationId));
+
+    return participants.map(p => p.user);
+  }
+
+  async isUserInConversation(conversationId: string, userId: string): Promise<boolean> {
+    const result = await db
+      .select()
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.userId, userId)
+        )
+      )
+      .limit(1);
+
+    return result.length > 0;
+  }
+
+  // Message Attachments
+  async addMessageAttachment(messageId: string, attachment: Omit<InsertMessageAttachment, 'id' | 'createdAt'>): Promise<MessageAttachment> {
+    const [result] = await db
+      .insert(messageAttachments)
+      .values({
+        messageId,
+        ...attachment,
+      })
+      .returning();
+
+    return result;
+  }
+
+  async getMessageAttachments(messageId: string): Promise<MessageAttachment[]> {
+    return await db
+      .select()
+      .from(messageAttachments)
+      .where(eq(messageAttachments.messageId, messageId));
+  }
+
+  async updateAttachmentScanStatus(attachmentId: string, scanStatus: string): Promise<void> {
+    await db
+      .update(messageAttachments)
+      .set({ scanStatus })
+      .where(eq(messageAttachments.id, attachmentId));
+  }
+
+  // Read Receipts
+  async markMessageDelivered(messageId: string, userId: string): Promise<void> {
+    const existing = await db
+      .select()
+      .from(messageReadReceipts)
+      .where(
+        and(
+          eq(messageReadReceipts.messageId, messageId),
+          eq(messageReadReceipts.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(messageReadReceipts).values({
+        messageId,
+        userId,
+        deliveredAt: new Date(),
+      });
+    } else {
+      await db
+        .update(messageReadReceipts)
+        .set({ deliveredAt: new Date() })
+        .where(
+          and(
+            eq(messageReadReceipts.messageId, messageId),
+            eq(messageReadReceipts.userId, userId)
+          )
+        );
+    }
+  }
+
+  async markMessageReadReceipt(messageId: string, userId: string): Promise<void> {
+    const existing = await db
+      .select()
+      .from(messageReadReceipts)
+      .where(
+        and(
+          eq(messageReadReceipts.messageId, messageId),
+          eq(messageReadReceipts.userId, userId)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      await db.insert(messageReadReceipts).values({
+        messageId,
+        userId,
+        deliveredAt: new Date(),
+        readAt: new Date(),
+      });
+    } else {
+      await db
+        .update(messageReadReceipts)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            eq(messageReadReceipts.messageId, messageId),
+            eq(messageReadReceipts.userId, userId)
+          )
+        );
+    }
+  }
+
+  async getMessageReadReceipts(messageId: string): Promise<MessageReadReceipt[]> {
+    return await db
+      .select()
+      .from(messageReadReceipts)
+      .where(eq(messageReadReceipts.messageId, messageId));
+  }
+
+  // Message Reactions (Extended)
+  async getMessageReactionsDetailed(messageId: string): Promise<MessageReaction[]> {
+    return await db
+      .select()
+      .from(messageReactions)
+      .where(eq(messageReactions.messageId, messageId));
+  }
+
+  async removeMessageReactionById(reactionId: string): Promise<void> {
+    await db
+      .delete(messageReactions)
+      .where(eq(messageReactions.id, reactionId));
+  }
+
+  // Search (Extended)
+  async searchMessagesExtended(userId: string, query: string, limit: number = 50): Promise<Message[]> {
+    const userConvs = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(
+        or(
+          eq(conversations.participant1Id, userId),
+          eq(conversations.participant2Id, userId)
+        )
+      );
+    
+    const conversationIds = userConvs.map(c => c.id);
+    if (conversationIds.length === 0) return [];
+
+    const results = await db
+      .select()
+      .from(messages)
+      .where(
+        and(
+          inArray(messages.conversationId, conversationIds),
+          sql`to_tsvector('english', ${messages.body}) @@ plainto_tsquery('english', ${query})`
+        )
+      )
+      .orderBy(desc(messages.createdAt))
+      .limit(limit);
+
+    return results;
+  }
+
+  async searchConversations(userId: string, query: string): Promise<Conversation[]> {
+    const results = await db
+      .select()
+      .from(conversations)
+      .where(
+        and(
+          or(
+            eq(conversations.participant1Id, userId),
+            eq(conversations.participant2Id, userId),
+            sql`EXISTS (
+              SELECT 1 FROM ${conversationParticipants}
+              WHERE ${conversationParticipants.conversationId} = ${conversations.id}
+              AND ${conversationParticipants.userId} = ${userId}
+            )`
+          ),
+          or(
+            sql`LOWER(${conversations.groupName}) LIKE LOWER(${`%${query}%`})`,
+            sql`EXISTS (
+              SELECT 1 FROM ${users}
+              WHERE (${users.id} = ${conversations.participant1Id} OR ${users.id} = ${conversations.participant2Id})
+              AND LOWER(${users.username}) LIKE LOWER(${`%${query}%`})
+            )`
+          )
+        )
+      )
+      .limit(20);
 
     return results;
   }
