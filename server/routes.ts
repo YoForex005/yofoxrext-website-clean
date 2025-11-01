@@ -106,7 +106,6 @@ import {
   getAuditLog,
   getEconomySettings,
   updateEconomySettings,
-  setUserWalletCap,
   getUserWalletCap,
   getTreasuryStats
 } from './services/treasuryService.js';
@@ -10683,8 +10682,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // GET /api/admin/bots - List all bots with stats
   app.get("/api/admin/bots", isAdminMiddleware, async (req, res) => {
     try {
-      const bots = await listBots();
-      const botCount = await getBotCount();
+      const bots = await storage.getAllBots();
+      const botCount = bots.length;
       
       res.json({ 
         bots, 
@@ -10718,7 +10717,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       if (trustLevel) botData.trustLevel = trustLevel;
       if (activityCaps) botData.activityCaps = activityCaps;
       
-      const bot = await createBot(botData);
+      const bot = await storage.createBot(botData);
       
       // Log admin action
       await storage.createAdminAction({
@@ -10745,7 +10744,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ error: "Invalid purpose" });
       }
       
-      const profile = generateBotProfile(purpose as any);
+      const profile = botProfileService.createBotProfile(purpose as any, 'default', 5);
       res.json({ profile });
     } catch (error: any) {
       console.error("[Bot Admin] Error generating profile:", error);
@@ -10759,7 +10758,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const adminId = getAuthenticatedUserId(req);
       const { id } = req.params;
       
-      const bot = await toggleBot(id);
+      const currentBot = await storage.getBotById(id);
+      if (!currentBot) {
+        return res.status(404).json({ error: "Bot not found" });
+      }
+      
+      const bot = await storage.toggleBotStatus(id, !currentBot.isActive);
       
       // Log admin action
       await storage.createAdminAction({
@@ -10781,7 +10785,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.get("/api/admin/bots/:id", isAdminMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
-      const bot = await getBot(id);
+      const bot = await storage.getBotById(id);
       
       if (!bot) {
         return res.status(404).json({ error: "Bot not found" });
@@ -10801,7 +10805,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const { id } = req.params;
       const updates = req.body;
       
-      const bot = await updateBot(id, updates);
+      const bot = await storage.updateBot(id, updates);
       
       // Log admin action
       await storage.createAdminAction({
@@ -10825,12 +10829,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const adminId = getAuthenticatedUserId(req);
       const { id } = req.params;
       
-      const bot = await getBot(id);
+      const bot = await storage.getBotById(id);
       if (!bot) {
         return res.status(404).json({ error: "Bot not found" });
       }
       
-      await deleteBot(id);
+      await storage.deleteBot(id);
       
       // Log admin action
       await storage.createAdminAction({
@@ -10852,7 +10856,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.post("/api/admin/bots/:id/test-run", isAdminMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
-      const bot = await getBot(id);
+      const bot = await storage.getBotById(id);
       
       if (!bot) {
         return res.status(404).json({ error: "Bot not found" });
@@ -11004,32 +11008,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
   
-  // POST /api/admin/economy/wallet-cap - Set wallet cap for a user
+  // POST /api/admin/economy/wallet-cap - DEPRECATED: Per-user wallet caps not supported
+  // The schema only has a global walletCapAmount in botSettings table
+  // Use POST /api/admin/economy/settings to update the global wallet cap instead
   app.post("/api/admin/economy/wallet-cap", isAdminMiddleware, async (req, res) => {
-    try {
-      const adminId = getAuthenticatedUserId(req);
-      const { userId, cap } = req.body;
-      
-      if (!userId) {
-        return res.status(400).json({ error: "userId is required" });
-      }
-      
-      await setUserWalletCap(userId, cap);
-      
-      // Log admin action
-      await storage.createAdminAction({
-        adminId,
-        actionType: 'set_wallet_cap',
-        targetType: 'user',
-        targetId: userId,
-        details: { cap },
-      });
-      
-      res.json({ success: true, userId, cap });
-    } catch (error: any) {
-      console.error("[Economy Admin] Error setting wallet cap:", error);
-      res.status(500).json({ error: "Failed to set wallet cap" });
-    }
+    res.status(400).json({ 
+      error: "Per-user wallet caps are not supported. Use the global walletCapAmount setting instead.",
+      hint: "Update the global wallet cap via POST /api/admin/economy/settings with { walletCapAmount: <value> }"
+    });
   });
   
   // GET /api/admin/economy/analytics - Get bot vs real user analytics
@@ -11044,13 +11030,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       }
       
       // Otherwise return general analytics
-      const activeBots = await listActiveBots();
+      const activeBots = await storage.getAllBots({ isActive: true });
       const treasuryStats = await getTreasuryStats();
+      const allBots = await storage.getAllBots();
       
       res.json({ 
         bots: {
           active: activeBots.length,
-          total: await getBotCount()
+          total: allBots.length
         },
         treasury: treasuryStats
       });

@@ -1,5 +1,5 @@
 import { db } from '../db.js';
-import { botTreasury as adminTreasury, botSettings as botEconomySettings, users, coinTransactions } from '../../shared/schema.js';
+import { botTreasury as adminTreasury, botSettings as botEconomySettings, botAuditLog, users, coinTransactions } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 
 /**
@@ -11,15 +11,15 @@ import { eq, sql } from 'drizzle-orm';
  * Get current treasury balance and settings
  */
 export async function getBalance() {
-  // Get treasury record (create if doesn't exist)
   let treasury = await db.select().from(adminTreasury).limit(1);
   
   if (treasury.length === 0) {
-    // Initialize treasury with 100,000 coins
     const result = await db.insert(adminTreasury).values({
       balance: 100000,
-      dailyCap: 500,
-      auditLog: []
+      dailySpendLimit: 500,
+      todaySpent: 0,
+      totalSpent: 0,
+      totalRefunded: 0
     }).returning();
     treasury = result;
   }
@@ -47,24 +47,12 @@ export async function spend(amount: number, reason: string, metadata?: Record<st
   }
   
   const newBalance = treasury.balance - amount;
-  const timestamp = new Date().toISOString();
   
-  // Create audit log entry
-  const auditEntry = {
-    timestamp,
-    action: 'spend',
-    amount: -amount,
-    reason,
-    balanceBefore: treasury.balance,
-    balanceAfter: newBalance,
-    ...metadata
-  };
-  
-  // Update treasury
   await db.update(adminTreasury)
     .set({
       balance: newBalance,
-      auditLog: sql`${adminTreasury.auditLog} || ${JSON.stringify(auditEntry)}::jsonb`,
+      todaySpent: treasury.todaySpent + amount,
+      totalSpent: treasury.totalSpent + amount,
       updatedAt: new Date()
     })
     .where(eq(adminTreasury.id, treasury.id));
@@ -87,27 +75,25 @@ export async function refill(amount: number, adminId?: string) {
   
   const treasury = await getBalance();
   const newBalance = treasury.balance + amount;
-  const timestamp = new Date().toISOString();
   
-  // Create audit log entry
-  const auditEntry = {
-    timestamp,
-    action: 'refill',
-    amount,
-    reason: 'Manual treasury refill',
-    adminId,
-    balanceBefore: treasury.balance,
-    balanceAfter: newBalance
-  };
-  
-  // Update treasury
   await db.update(adminTreasury)
     .set({
       balance: newBalance,
-      auditLog: sql`${adminTreasury.auditLog} || ${JSON.stringify(auditEntry)}::jsonb`,
       updatedAt: new Date()
     })
     .where(eq(adminTreasury.id, treasury.id));
+  
+  if (adminId) {
+    await db.insert(botAuditLog).values({
+      adminId,
+      actionType: 'adjust_spend_limit',
+      targetType: 'treasury',
+      targetId: treasury.id.toString(),
+      previousValue: { balance: treasury.balance },
+      newValue: { balance: newBalance },
+      reason: 'Manual treasury refill'
+    });
+  }
   
   console.log(`[TREASURY] Refilled ${amount} coins by admin ${adminId}. New balance: ${newBalance}`);
   
@@ -126,7 +112,6 @@ export async function drainUserWallet(userId: string, percentage: number, adminI
     throw new Error('Percentage must be between 0 and 100');
   }
   
-  // Get user's current balance
   const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   
   if (!user.length) {
@@ -140,14 +125,12 @@ export async function drainUserWallet(userId: string, percentage: number, adminI
     return { success: true, amount: 0, message: 'No coins to drain' };
   }
   
-  // Deduct from user
   await db.update(users)
     .set({
       totalCoins: currentBalance - drainAmount
     })
     .where(eq(users.id, userId));
   
-  // Create transaction record
   await db.insert(coinTransactions).values({
     userId,
     type: 'spend',
@@ -156,13 +139,17 @@ export async function drainUserWallet(userId: string, percentage: number, adminI
     status: 'completed'
   });
   
-  // Log in treasury
-  await logManipulation('drain_user', {
-    userId,
-    percentage,
-    amount: drainAmount,
-    adminId
-  });
+  if (adminId) {
+    await db.insert(botAuditLog).values({
+      adminId,
+      actionType: 'drain_wallet',
+      targetType: 'user',
+      targetId: userId,
+      previousValue: { totalCoins: currentBalance },
+      newValue: { totalCoins: currentBalance - drainAmount },
+      reason: `Drained ${percentage}% of wallet`
+    });
+  }
   
   console.log(`[TREASURY] Drained ${drainAmount} coins (${percentage}%) from user ${userId}`);
   
@@ -170,42 +157,16 @@ export async function drainUserWallet(userId: string, percentage: number, adminI
 }
 
 /**
- * Log economy manipulation action
- * @param action - Action type
- * @param metadata - Additional data
- */
-export async function logManipulation(action: string, metadata: Record<string, any>) {
-  const treasury = await getBalance();
-  const timestamp = new Date().toISOString();
-  
-  const auditEntry = {
-    timestamp,
-    action,
-    amount: metadata.amount || 0,
-    reason: metadata.reason || action,
-    balanceBefore: treasury.balance,
-    balanceAfter: treasury.balance,
-    ...metadata
-  };
-  
-  await db.update(adminTreasury)
-    .set({
-      auditLog: sql`${adminTreasury.auditLog} || ${JSON.stringify(auditEntry)}::jsonb`,
-      updatedAt: new Date()
-    })
-    .where(eq(adminTreasury.id, treasury.id));
-}
-
-/**
- * Get treasury audit log
+ * Get audit log entries
  * @param limit - Number of entries to return
  */
 export async function getAuditLog(limit: number = 100) {
-  const treasury = await getBalance();
-  const auditLog = treasury.auditLog || [];
+  const logs = await db.select()
+    .from(botAuditLog)
+    .orderBy(sql`${botAuditLog.createdAt} DESC`)
+    .limit(limit);
   
-  // Return most recent entries
-  return auditLog.slice(-limit).reverse();
+  return logs;
 }
 
 /**
@@ -215,14 +176,18 @@ export async function getEconomySettings() {
   let settings = await db.select().from(botEconomySettings).limit(1);
   
   if (settings.length === 0) {
-    // Initialize with defaults
     const result = await db.insert(botEconomySettings).values({
-      walletCapDefault: 199,
-      walletCapOverrides: {},
-      aggressionLevel: 5,
-      referralModeEnabled: false,
-      botPurchasesEnabled: true,
-      botUnlocksEnabled: true
+      globalEnabled: true,
+      maxActiveBots: 15,
+      scanIntervalMinutes: 10,
+      purchaseDelayMinutes: 30,
+      likeDelayMinutes: 5,
+      walletCapEnabled: true,
+      walletCapAmount: 199,
+      refundTimeHour: 3,
+      enableReferralBots: false,
+      maxReferralsPerWeek: 2,
+      retentionScoreCapPerWeek: 5
     }).returning();
     settings = result;
   }
@@ -235,11 +200,17 @@ export async function getEconomySettings() {
  * @param updates - Settings to update
  */
 export async function updateEconomySettings(updates: Partial<{
-  walletCapDefault: number;
-  aggressionLevel: number;
-  referralModeEnabled: boolean;
-  botPurchasesEnabled: boolean;
-  botUnlocksEnabled: boolean;
+  globalEnabled: boolean;
+  maxActiveBots: number;
+  scanIntervalMinutes: number;
+  purchaseDelayMinutes: number;
+  likeDelayMinutes: number;
+  walletCapEnabled: boolean;
+  walletCapAmount: number;
+  refundTimeHour: number;
+  enableReferralBots: boolean;
+  maxReferralsPerWeek: number;
+  retentionScoreCapPerWeek: number;
 }>) {
   const settings = await getEconomySettings();
   
@@ -256,40 +227,13 @@ export async function updateEconomySettings(updates: Partial<{
 }
 
 /**
- * Set wallet cap override for a specific user
- * @param userId - User ID
- * @param cap - Custom wallet cap (or null to remove override)
- */
-export async function setUserWalletCap(userId: string, cap: number | null) {
-  const settings = await getEconomySettings();
-  const overrides = settings.walletCapOverrides || {};
-  
-  if (cap === null) {
-    delete overrides[userId];
-  } else {
-    overrides[userId] = cap;
-  }
-  
-  await db.update(botEconomySettings)
-    .set({
-      walletCapOverrides: overrides,
-      updatedAt: new Date()
-    })
-    .where(eq(botEconomySettings.id, settings.id));
-  
-  console.log(`[TREASURY] Set wallet cap for user ${userId}: ${cap}`);
-}
-
-/**
- * Get wallet cap for a user (considering overrides)
- * @param userId - User ID
+ * Get wallet cap for a user
+ * @param userId - User ID (currently unused, but kept for API compatibility)
  * @returns Wallet cap
  */
 export async function getUserWalletCap(userId: string): Promise<number> {
   const settings = await getEconomySettings();
-  const overrides = settings.walletCapOverrides || {};
-  
-  return overrides[userId] || settings.walletCapDefault;
+  return settings.walletCapAmount;
 }
 
 /**
@@ -317,32 +261,32 @@ export async function wouldExceedWalletCap(userId: string, additionalCoins: numb
 export async function getTreasuryStats() {
   const treasury = await getBalance();
   const settings = await getEconomySettings();
-  const auditLog = treasury.auditLog || [];
-  
-  // Calculate today's spending
-  const today = new Date().toISOString().split('T')[0];
-  const todaySpending = auditLog
-    .filter((entry: any) => entry.action === 'spend' && entry.timestamp.startsWith(today))
-    .reduce((sum: number, entry: any) => sum + Math.abs(entry.amount), 0);
-  
-  // Calculate total spent all time
-  const totalSpent = auditLog
-    .filter((entry: any) => entry.action === 'spend')
-    .reduce((sum: number, entry: any) => sum + Math.abs(entry.amount), 0);
-  
-  // Calculate total refilled
-  const totalRefilled = auditLog
-    .filter((entry: any) => entry.action === 'refill')
-    .reduce((sum: number, entry: any) => sum + entry.amount, 0);
   
   return {
     balance: treasury.balance,
-    dailyCap: treasury.dailyCap,
-    todaySpending,
-    remainingToday: Math.max(0, treasury.dailyCap - todaySpending),
-    totalSpent,
-    totalRefilled,
-    aggressionLevel: settings.aggressionLevel,
-    walletCapDefault: settings.walletCapDefault
+    dailySpendLimit: treasury.dailySpendLimit,
+    todaySpending: treasury.todaySpent,
+    remainingToday: Math.max(0, treasury.dailySpendLimit - treasury.todaySpent),
+    totalSpent: treasury.totalSpent,
+    totalRefilled: treasury.totalRefunded,
+    walletCapAmount: settings.walletCapAmount,
+    walletCapEnabled: settings.walletCapEnabled
   };
+}
+
+/**
+ * Reset daily spending counter (called by scheduled job)
+ */
+export async function resetDailySpending() {
+  const treasury = await getBalance();
+  
+  await db.update(adminTreasury)
+    .set({
+      todaySpent: 0,
+      lastResetAt: new Date(),
+      updatedAt: new Date()
+    })
+    .where(eq(adminTreasury.id, treasury.id));
+  
+  console.log('[TREASURY] Daily spending counter reset');
 }

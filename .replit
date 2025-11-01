@@ -23,16 +23,12 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 39985
-externalPort = 8000
+localPort = 40225
+externalPort = 6800
 
 [[ports]]
 localPort = 40711
 externalPort = 5000
-
-[[ports]]
-localPort = 40737
-externalPort = 8008
 
 [[ports]]
 localPort = 41287
@@ -85,13 +81,13 @@ args = "Development Server"
 name = "Development Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev:hybrid"
+waitForPort = 5000
 
 [agent]
 integrations = ["javascript_log_in_with_replit:1.0.0", "javascript_database:1.0.0", "javascript_object_storage:1.0.0", "javascript_gemini:1.0.0"]
