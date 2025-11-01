@@ -35,28 +35,29 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Use mounted state to control stat value rendering
   const stats = [
     { 
       label: "Forum Threads", 
-      value: data?.totalThreads?.toLocaleString('en-US') || "0", 
+      value: mounted && data?.totalThreads ? data.totalThreads.toLocaleString('en-US') : "0", 
       icon: MessageSquare, 
       key: "threads" 
     },
     { 
       label: "Community Members", 
-      value: data?.totalMembers?.toLocaleString('en-US') || "0", 
+      value: mounted && data?.totalMembers ? data.totalMembers.toLocaleString('en-US') : "0", 
       icon: Users, 
       key: "members" 
     },
     { 
       label: "Total Replies", 
-      value: data?.totalPosts?.toLocaleString('en-US') || "0", 
+      value: mounted && data?.totalPosts ? data.totalPosts.toLocaleString('en-US') : "0", 
       icon: MessagesSquare, 
       key: "replies" 
     },
     { 
       label: "Active Today", 
-      value: data?.todayActivity?.threads ? `+${data.todayActivity.threads}` : "+0", 
+      value: mounted && data?.todayActivity?.threads ? `+${data.todayActivity.threads}` : "+0", 
       icon: Activity, 
       key: "activity" 
     }
@@ -101,7 +102,7 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
               </div>
               <div>
                 <div className="text-2xl font-bold" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
-                  {stat.value}
+                  {mounted ? stat.value : "0"}
                 </div>
                 <div className="text-sm text-muted-foreground font-medium truncate">{stat.label}</div>
               </div>

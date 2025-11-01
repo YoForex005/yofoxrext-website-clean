@@ -10,19 +10,14 @@ interface TimeAgoProps {
 }
 
 export function TimeAgo({ date, className }: TimeAgoProps) {
-  const [mounted, setMounted] = React.useState(false);
+  const [timeAgo, setTimeAgo] = React.useState<string>("");
   const dateObj = typeof date === 'string' ? new Date(date) : date;
-  const timeAgo = formatDistanceToNow(dateObj, { addSuffix: true });
 
   React.useEffect(() => {
-    setMounted(true);
-  }, []);
+    // Only calculate time on client side
+    setTimeAgo(formatDistanceToNow(dateObj, { addSuffix: true }));
+  }, [dateObj]);
 
-  // During SSR and initial client render, show static content
-  if (!mounted) {
-    return <span className={className} suppressHydrationWarning>{timeAgo}</span>;
-  }
-
-  // After mounting, show live updating content
-  return <span className={className}>{timeAgo}</span>;
+  // Return empty span during SSR to prevent hydration mismatch
+  return <span className={className} suppressHydrationWarning>{timeAgo}</span>;
 }
