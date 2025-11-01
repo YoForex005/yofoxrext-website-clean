@@ -73,6 +73,7 @@ import { autoGenerateSEOFields } from './seo-utils.js';
 import { emailService } from './services/emailService.js';
 import { emailQueueService, EmailPriority, EmailGroupType } from './services/emailQueue.js';
 import { fetchBrokerLogo, getPlaceholderLogo } from './services/brokerLogoService.js';
+import * as spamDetection from './services/spamDetection.js';
 import { 
   RECHARGE_PACKAGES, 
   EARNING_REWARDS, 
@@ -4719,11 +4720,69 @@ export async function registerRoutes(app: Express): Promise<Express> {
         }
       }
       
-      const message = await storage.sendMessage(
-        authenticatedUserId,
-        validated.recipientId,
-        validated.body
-      );
+      // SPAM DETECTION: Check message for spam before saving
+      const spamResult = await spamDetection.detectSpam(validated.body, authenticatedUserId);
+      
+      // High spam score (>80): Block message completely
+      if (spamResult.score > 80) {
+        // Log the spam detection
+        // Note: We can't create spam log with messageId since message wasn't created
+        // Instead, log it without messageId for tracking
+        await storage.createSpamDetectionLog({
+          messageId: 'BLOCKED', // Placeholder since message wasn't created
+          senderId: authenticatedUserId,
+          detectionMethod: spamResult.method,
+          spamScore: spamResult.score,
+          flaggedKeywords: spamResult.flaggedKeywords || [],
+          actionTaken: 'blocked',
+        });
+        
+        return res.status(403).json({ 
+          error: "Message blocked due to spam detection",
+          reason: spamResult.reason 
+        });
+      }
+      
+      // Medium spam score (50-80): Allow but flag for review
+      let message;
+      if (spamResult.score >= 50) {
+        message = await storage.sendMessage(
+          authenticatedUserId,
+          validated.recipientId,
+          validated.body
+        );
+        
+        // Log spam detection with flag
+        await storage.createSpamDetectionLog({
+          messageId: message.id,
+          senderId: authenticatedUserId,
+          detectionMethod: spamResult.method,
+          spamScore: spamResult.score,
+          flaggedKeywords: spamResult.flaggedKeywords || [],
+          actionTaken: 'flagged',
+        });
+        
+        // TODO: Optionally notify admins about flagged message
+      } else {
+        // Low spam score (<50): Allow message normally
+        message = await storage.sendMessage(
+          authenticatedUserId,
+          validated.recipientId,
+          validated.body
+        );
+        
+        // Still log for analytics (score 0-49)
+        if (spamResult.score > 0) {
+          await storage.createSpamDetectionLog({
+            messageId: message.id,
+            senderId: authenticatedUserId,
+            detectionMethod: spamResult.method,
+            spamScore: spamResult.score,
+            flaggedKeywords: spamResult.flaggedKeywords || [],
+            actionTaken: 'none',
+          });
+        }
+      }
       
       // Queue new message email (fire-and-forget) if enabled
       (async () => {
@@ -5294,6 +5353,193 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error("Error exporting messages:", error);
       res.status(500).json({ error: "Failed to export messages" });
+    }
+  });
+
+  // ===== MESSAGE MODERATION ENDPOINTS (USER-FACING) =====
+
+  // Report a message
+  app.post("/api/messages/:messageId/report", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { messageId } = req.params;
+      const { reason, description } = req.body;
+
+      // Validate reason
+      const validReasons = ['spam', 'harassment', 'inappropriate', 'scam', 'other'];
+      if (!reason || !validReasons.includes(reason)) {
+        return res.status(400).json({ error: "Invalid report reason" });
+      }
+
+      // Check if user already reported this message
+      const hasReported = await storage.hasUserReportedMessage(authenticatedUserId, messageId);
+      if (hasReported) {
+        return res.status(400).json({ error: "You have already reported this message" });
+      }
+
+      const report = await storage.createMessageReport({
+        messageId,
+        reporterId: authenticatedUserId,
+        reason,
+        description: description || null,
+        status: 'pending',
+      });
+
+      res.json({ success: true, report });
+    } catch (error) {
+      console.error("Error reporting message:", error);
+      res.status(500).json({ error: "Failed to report message" });
+    }
+  });
+
+  // Get user's submitted reports
+  app.get("/api/messages/my-reports", isAuthenticated, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const reports = await storage.getUserMessageReports(authenticatedUserId);
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching user reports:", error);
+      res.status(500).json({ error: "Failed to fetch reports" });
+    }
+  });
+
+  // ===== ADMIN MODERATION ENDPOINTS =====
+
+  // Get all message reports (admin only)
+  app.get("/api/admin/moderation/reports", isAdminMiddleware, async (req, res) => {
+    try {
+      const { status, reason, limit } = req.query;
+      const filters: any = {};
+      
+      if (status) filters.status = status as string;
+      if (reason) filters.reason = reason as string;
+      if (limit) filters.limit = parseInt(limit as string, 10);
+
+      const reports = await storage.getAllMessageReports(filters);
+      res.json(reports);
+    } catch (error) {
+      console.error("Error fetching moderation reports:", error);
+      res.status(500).json({ error: "Failed to fetch reports" });
+    }
+  });
+
+  // Get single report details (admin only)
+  app.get("/api/admin/moderation/reports/:id", isAdminMiddleware, async (req, res) => {
+    try {
+      const report = await storage.getMessageReport(req.params.id);
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+      res.json(report);
+    } catch (error) {
+      console.error("Error fetching report:", error);
+      res.status(500).json({ error: "Failed to fetch report" });
+    }
+  });
+
+  // Update report status (admin only)
+  app.put("/api/admin/moderation/reports/:id", isAdminMiddleware, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { status, resolution } = req.body;
+
+      const validStatuses = ['pending', 'reviewed', 'resolved', 'dismissed'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+
+      const updated = await storage.updateMessageReportStatus(
+        req.params.id,
+        status,
+        authenticatedUserId,
+        resolution
+      );
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating report:", error);
+      res.status(500).json({ error: "Failed to update report" });
+    }
+  });
+
+  // Create moderation action (admin only)
+  app.post("/api/admin/moderation/actions", isAdminMiddleware, async (req, res) => {
+    try {
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      const { targetType, targetId, actionType, reason, duration } = req.body;
+
+      const validTargetTypes = ['message', 'conversation', 'user'];
+      const validActionTypes = ['delete', 'hide', 'warn', 'suspend', 'ban'];
+
+      if (!validTargetTypes.includes(targetType)) {
+        return res.status(400).json({ error: "Invalid target type" });
+      }
+      if (!validActionTypes.includes(actionType)) {
+        return res.status(400).json({ error: "Invalid action type" });
+      }
+
+      const action = await storage.createModerationAction({
+        moderatorId: authenticatedUserId,
+        targetType,
+        targetId,
+        actionType,
+        reason: reason || null,
+        duration: duration || null,
+        expiresAt: duration ? new Date(Date.now() + duration * 60 * 60 * 1000) : null,
+      });
+
+      res.json(action);
+    } catch (error) {
+      console.error("Error creating moderation action:", error);
+      res.status(500).json({ error: "Failed to create action" });
+    }
+  });
+
+  // Get moderation actions (admin only)
+  app.get("/api/admin/moderation/actions", isAdminMiddleware, async (req, res) => {
+    try {
+      const { targetType, moderatorId, limit } = req.query;
+      const filters: any = {};
+
+      if (targetType) filters.targetType = targetType as string;
+      if (moderatorId) filters.moderatorId = moderatorId as string;
+      if (limit) filters.limit = parseInt(limit as string, 10);
+
+      const actions = await storage.getModerationActions(filters);
+      res.json(actions);
+    } catch (error) {
+      console.error("Error fetching moderation actions:", error);
+      res.status(500).json({ error: "Failed to fetch actions" });
+    }
+  });
+
+  // Get spam detection logs (admin only)
+  app.get("/api/admin/moderation/spam-logs", isAdminMiddleware, async (req, res) => {
+    try {
+      const { senderId, spamScoreMin, limit } = req.query;
+      const filters: any = {};
+
+      if (senderId) filters.senderId = senderId as string;
+      if (spamScoreMin) filters.spamScoreMin = parseInt(spamScoreMin as string, 10);
+      if (limit) filters.limit = parseInt(limit as string, 10);
+
+      const logs = await storage.getSpamDetectionLogs(filters);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error fetching spam logs:", error);
+      res.status(500).json({ error: "Failed to fetch spam logs" });
+    }
+  });
+
+  // Get moderation stats (admin only)
+  app.get("/api/admin/moderation/stats", isAdminMiddleware, async (req, res) => {
+    try {
+      const stats = await storage.getModerationStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching moderation stats:", error);
+      res.status(500).json({ error: "Failed to fetch stats" });
     }
   });
 

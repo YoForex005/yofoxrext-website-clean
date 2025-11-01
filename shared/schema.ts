@@ -573,6 +573,61 @@ export const blockedUsers = pgTable("blocked_users", {
   uniqueBlock: uniqueIndex("blocked_users_unique_block").on(table.blockerId, table.blockedId),
 }));
 
+// Message Reports - For user-reported messages
+export const messageReports = pgTable("message_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").notNull().references(() => messages.id, { onDelete: "cascade" }),
+  reporterId: varchar("reporter_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reason: varchar("reason").notNull(), // spam, harassment, inappropriate, scam, other
+  description: text("description"),
+  status: varchar("status").notNull().default("pending"), // pending, reviewed, resolved, dismissed
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+  resolution: text("resolution"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  messageIdIdx: index("message_reports_message_id_idx").on(table.messageId),
+  reporterIdIdx: index("message_reports_reporter_id_idx").on(table.reporterId),
+  statusIdx: index("message_reports_status_idx").on(table.status),
+  createdAtIdx: index("message_reports_created_at_idx").on(table.createdAt),
+}));
+
+// Moderation Actions - Track all moderation actions
+export const moderationActions = pgTable("moderation_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  moderatorId: varchar("moderator_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type").notNull(), // message, conversation, user
+  targetId: varchar("target_id").notNull(),
+  actionType: varchar("action_type").notNull(), // delete, hide, warn, suspend, ban
+  reason: text("reason"),
+  duration: integer("duration"), // in hours, for temporary actions
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  moderatorIdIdx: index("moderation_actions_moderator_id_idx").on(table.moderatorId),
+  targetTypeIdx: index("moderation_actions_target_type_idx").on(table.targetType),
+  targetIdIdx: index("moderation_actions_target_id_idx").on(table.targetId),
+  createdAtIdx: index("moderation_actions_created_at_idx").on(table.createdAt),
+}));
+
+// Spam Detection Logs - Track spam detection results
+export const spamDetectionLogs = pgTable("spam_detection_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  messageId: varchar("message_id").references(() => messages.id, { onDelete: "cascade" }),
+  senderId: varchar("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  detectionMethod: varchar("detection_method").notNull(), // rate_limit, keyword, pattern, ml, manual
+  spamScore: integer("spam_score").notNull(), // 0-100
+  flaggedKeywords: text("flagged_keywords").array(),
+  actionTaken: varchar("action_taken"), // flagged, blocked, deleted, none
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  messageIdIdx: index("spam_detection_logs_message_id_idx").on(table.messageId),
+  senderIdIdx: index("spam_detection_logs_sender_id_idx").on(table.senderId),
+  spamScoreIdx: index("spam_detection_logs_spam_score_idx").on(table.spamScore),
+  createdAtIdx: index("spam_detection_logs_created_at_idx").on(table.createdAt),
+}));
+
 // Notifications system
 export const notifications = pgTable("notifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1900,6 +1955,51 @@ export const insertBlockedUserSchema = createInsertSchema(blockedUsers).omit({
 });
 export type InsertBlockedUser = z.infer<typeof insertBlockedUserSchema>;
 export type BlockedUser = typeof blockedUsers.$inferSelect;
+
+// Message Reports
+export const insertMessageReportSchema = createInsertSchema(messageReports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  messageId: z.string().uuid(),
+  reporterId: z.string().uuid(),
+  reason: z.enum(["spam", "harassment", "inappropriate", "scam", "other"]),
+  description: z.string().optional(),
+  status: z.enum(["pending", "reviewed", "resolved", "dismissed"]).default("pending"),
+});
+export type InsertMessageReport = z.infer<typeof insertMessageReportSchema>;
+export type MessageReport = typeof messageReports.$inferSelect;
+
+// Moderation Actions
+export const insertModerationActionSchema = createInsertSchema(moderationActions).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  moderatorId: z.string().uuid(),
+  targetType: z.enum(["message", "conversation", "user"]),
+  targetId: z.string().uuid(),
+  actionType: z.enum(["delete", "hide", "warn", "suspend", "ban"]),
+  reason: z.string().optional(),
+  duration: z.number().int().positive().optional(),
+});
+export type InsertModerationAction = z.infer<typeof insertModerationActionSchema>;
+export type ModerationAction = typeof moderationActions.$inferSelect;
+
+// Spam Detection Logs
+export const insertSpamDetectionLogSchema = createInsertSchema(spamDetectionLogs).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  messageId: z.string().uuid().optional(),
+  senderId: z.string().uuid(),
+  detectionMethod: z.enum(["rate_limit", "keyword", "pattern", "ml", "manual"]),
+  spamScore: z.number().int().min(0).max(100),
+  flaggedKeywords: z.array(z.string()).optional(),
+  actionTaken: z.enum(["flagged", "blocked", "deleted", "none"]).optional(),
+});
+export type InsertSpamDetectionLog = z.infer<typeof insertSpamDetectionLogSchema>;
+export type SpamDetectionLog = typeof spamDetectionLogs.$inferSelect;
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;

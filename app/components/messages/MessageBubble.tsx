@@ -13,6 +13,25 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
+import {
   Check,
   CheckCheck,
   MoreVertical,
@@ -23,6 +42,7 @@ import {
   FileText,
   Copy,
   Trash,
+  Flag,
 } from 'lucide-react';
 import type { MessageWithDetails } from '@/types/messaging';
 import type { User } from '@shared/schema';
@@ -47,10 +67,58 @@ export function MessageBubble({
   onDelete,
 }: MessageBubbleProps) {
   const [showReactions, setShowReactions] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportDescription, setReportDescription] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const { toast } = useToast();
   const isSentByMe = message.senderId === currentUser?.id;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.body);
+  };
+
+  const handleReport = () => {
+    setShowReportModal(true);
+  };
+
+  const handleSubmitReport = async () => {
+    if (!reportReason) {
+      toast({
+        title: 'Error',
+        description: 'Please select a reason for reporting',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSubmittingReport(true);
+    try {
+      await apiRequest(`/api/messages/${message.id}/report`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: reportReason,
+          description: reportDescription,
+        }),
+      });
+
+      toast({
+        title: 'Report Submitted',
+        description: "Thank you for reporting. We'll review this message.",
+      });
+
+      setShowReportModal(false);
+      setReportReason('');
+      setReportDescription('');
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to submit report',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmittingReport(false);
+    }
   };
 
   const handleDownloadAttachment = async (attachmentId: string, fileName: string) => {
@@ -228,6 +296,15 @@ export function MessageBubble({
                     <Copy className="mr-2 h-4 w-4" />
                     Copy Text
                   </DropdownMenuItem>
+                  {!isSentByMe && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleReport} data-testid={`button-report-${message.id}`}>
+                        <Flag className="mr-2 h-4 w-4" />
+                        Report Message
+                      </DropdownMenuItem>
+                    </>
+                  )}
                   {isSentByMe && (
                     <>
                       <DropdownMenuSeparator />
@@ -290,6 +367,66 @@ export function MessageBubble({
           )}
         </div>
       </div>
+
+      {/* Report Modal */}
+      <Dialog open={showReportModal} onOpenChange={setShowReportModal}>
+        <DialogContent data-testid="report-modal">
+          <DialogHeader>
+            <DialogTitle>Report Message</DialogTitle>
+            <DialogDescription>
+              Help us understand why you're reporting this message. Your report will be reviewed by our moderation team.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason *</Label>
+              <Select value={reportReason} onValueChange={setReportReason}>
+                <SelectTrigger id="reason" data-testid="select-report-reason">
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spam">Spam</SelectItem>
+                  <SelectItem value="harassment">Harassment/Bullying</SelectItem>
+                  <SelectItem value="inappropriate">Inappropriate Content</SelectItem>
+                  <SelectItem value="scam">Scam/Fraud</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">Additional Details (Optional)</Label>
+              <Textarea
+                id="description"
+                placeholder="Provide any additional context..."
+                value={reportDescription}
+                onChange={(e) => setReportDescription(e.target.value)}
+                rows={4}
+                data-testid="textarea-report-description"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowReportModal(false)}
+              disabled={isSubmittingReport}
+              data-testid="button-cancel-report"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitReport}
+              disabled={isSubmittingReport || !reportReason}
+              data-testid="button-submit-report"
+            >
+              {isSubmittingReport ? 'Submitting...' : 'Submit Report'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -458,6 +458,35 @@ export interface IStorage {
     messages: Message[];
   }>>;
   
+  // Moderation - Message Reports
+  createMessageReport(report: InsertMessageReport): Promise<MessageReport>;
+  getMessageReport(reportId: string): Promise<MessageReport | null>;
+  getAllMessageReports(filters?: { status?: string; reason?: string; limit?: number }): Promise<Array<MessageReport & { message: Message; reporter: User; sender: User }>>;
+  getUserMessageReports(userId: string): Promise<Array<MessageReport & { message: Message }>>;
+  updateMessageReportStatus(reportId: string, status: string, reviewedBy: string, resolution?: string): Promise<MessageReport>;
+  hasUserReportedMessage(userId: string, messageId: string): Promise<boolean>;
+  
+  // Moderation - Actions
+  createModerationAction(action: InsertModerationAction): Promise<ModerationAction>;
+  getModerationActions(filters?: { targetType?: string; moderatorId?: string; limit?: number }): Promise<Array<ModerationAction & { moderator: User }>>;
+  getModerationActionsByTarget(targetId: string, targetType: string): Promise<ModerationAction[]>;
+  
+  // Moderation - Spam Logs
+  createSpamDetectionLog(log: InsertSpamDetectionLog): Promise<SpamDetectionLog>;
+  getSpamDetectionLogs(filters?: { senderId?: string; spamScoreMin?: number; limit?: number }): Promise<Array<SpamDetectionLog & { sender: User }>>;
+  getUserSpamLogs(userId: string, limit?: number): Promise<SpamDetectionLog[]>;
+  
+  // Moderation - Stats
+  getModerationStats(): Promise<{
+    totalReports: number;
+    pendingReports: number;
+    resolvedReports: number;
+    spamDetectedToday: number;
+    actionsTakenToday: number;
+    topReportedUsers: Array<{ userId: string; username: string; reportCount: number }>;
+    commonReportReasons: Array<{ reason: string; count: number }>;
+  }>;
+  
   // Dashboard Preferences
   getDashboardPreferences(userId: string): Promise<DashboardPreferences | null>;
   saveDashboardPreferences(userId: string, preferences: InsertDashboardPreferences): Promise<DashboardPreferences>;
@@ -8488,6 +8517,313 @@ export class DrizzleStorage implements IStorage {
     }
 
     return exportData;
+  }
+
+  // ===== MODERATION METHODS =====
+
+  async createMessageReport(report: InsertMessageReport): Promise<MessageReport> {
+    const [created] = await db.insert(messageReports).values(report).returning();
+    return created;
+  }
+
+  async getMessageReport(reportId: string): Promise<MessageReport | null> {
+    const [report] = await db
+      .select()
+      .from(messageReports)
+      .where(eq(messageReports.id, reportId))
+      .limit(1);
+    return report || null;
+  }
+
+  async getAllMessageReports(filters?: { status?: string; reason?: string; limit?: number }): Promise<Array<MessageReport & { message: Message; reporter: User; sender: User }>> {
+    let query = db
+      .select({
+        id: messageReports.id,
+        messageId: messageReports.messageId,
+        reporterId: messageReports.reporterId,
+        reason: messageReports.reason,
+        description: messageReports.description,
+        status: messageReports.status,
+        reviewedBy: messageReports.reviewedBy,
+        reviewedAt: messageReports.reviewedAt,
+        resolution: messageReports.resolution,
+        createdAt: messageReports.createdAt,
+        updatedAt: messageReports.updatedAt,
+        message: messages,
+        reporter: {
+          id: users.id,
+          username: users.username,
+          email: users.email,
+          profileImageUrl: users.profileImageUrl,
+        },
+        sender: {
+          id: sql<string>`sender_user.id`,
+          username: sql<string>`sender_user.username`,
+          email: sql<string>`sender_user.email`,
+          profileImageUrl: sql<string>`sender_user.profile_image_url`,
+        },
+      })
+      .from(messageReports)
+      .innerJoin(messages, eq(messageReports.messageId, messages.id))
+      .innerJoin(users, eq(messageReports.reporterId, users.id))
+      .innerJoin(
+        sql`users AS sender_user`,
+        sql`${messages.senderId} = sender_user.id`
+      );
+
+    if (filters?.status) {
+      query = query.where(eq(messageReports.status, filters.status));
+    }
+    if (filters?.reason) {
+      query = query.where(eq(messageReports.reason, filters.reason));
+    }
+
+    query = query.orderBy(desc(messageReports.createdAt)).limit(filters?.limit || 100);
+
+    const results = await query;
+    return results as any;
+  }
+
+  async getUserMessageReports(userId: string): Promise<Array<MessageReport & { message: Message }>> {
+    const results = await db
+      .select({
+        id: messageReports.id,
+        messageId: messageReports.messageId,
+        reporterId: messageReports.reporterId,
+        reason: messageReports.reason,
+        description: messageReports.description,
+        status: messageReports.status,
+        reviewedBy: messageReports.reviewedBy,
+        reviewedAt: messageReports.reviewedAt,
+        resolution: messageReports.resolution,
+        createdAt: messageReports.createdAt,
+        updatedAt: messageReports.updatedAt,
+        message: messages,
+      })
+      .from(messageReports)
+      .innerJoin(messages, eq(messageReports.messageId, messages.id))
+      .where(eq(messageReports.reporterId, userId))
+      .orderBy(desc(messageReports.createdAt));
+
+    return results as any;
+  }
+
+  async updateMessageReportStatus(
+    reportId: string,
+    status: string,
+    reviewedBy: string,
+    resolution?: string
+  ): Promise<MessageReport> {
+    const [updated] = await db
+      .update(messageReports)
+      .set({
+        status,
+        reviewedBy,
+        reviewedAt: new Date(),
+        resolution: resolution || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(messageReports.id, reportId))
+      .returning();
+
+    return updated;
+  }
+
+  async hasUserReportedMessage(userId: string, messageId: string): Promise<boolean> {
+    const [report] = await db
+      .select()
+      .from(messageReports)
+      .where(
+        and(
+          eq(messageReports.reporterId, userId),
+          eq(messageReports.messageId, messageId)
+        )
+      )
+      .limit(1);
+
+    return !!report;
+  }
+
+  async createModerationAction(action: InsertModerationAction): Promise<ModerationAction> {
+    const [created] = await db.insert(moderationActions).values(action).returning();
+    return created;
+  }
+
+  async getModerationActions(filters?: {
+    targetType?: string;
+    moderatorId?: string;
+    limit?: number;
+  }): Promise<Array<ModerationAction & { moderator: User }>> {
+    let query = db
+      .select({
+        id: moderationActions.id,
+        moderatorId: moderationActions.moderatorId,
+        targetType: moderationActions.targetType,
+        targetId: moderationActions.targetId,
+        actionType: moderationActions.actionType,
+        reason: moderationActions.reason,
+        duration: moderationActions.duration,
+        expiresAt: moderationActions.expiresAt,
+        createdAt: moderationActions.createdAt,
+        moderator: users,
+      })
+      .from(moderationActions)
+      .innerJoin(users, eq(moderationActions.moderatorId, users.id));
+
+    if (filters?.targetType) {
+      query = query.where(eq(moderationActions.targetType, filters.targetType));
+    }
+    if (filters?.moderatorId) {
+      query = query.where(eq(moderationActions.moderatorId, filters.moderatorId));
+    }
+
+    query = query.orderBy(desc(moderationActions.createdAt)).limit(filters?.limit || 100);
+
+    const results = await query;
+    return results as any;
+  }
+
+  async getModerationActionsByTarget(
+    targetId: string,
+    targetType: string
+  ): Promise<ModerationAction[]> {
+    const results = await db
+      .select()
+      .from(moderationActions)
+      .where(
+        and(
+          eq(moderationActions.targetId, targetId),
+          eq(moderationActions.targetType, targetType)
+        )
+      )
+      .orderBy(desc(moderationActions.createdAt));
+
+    return results;
+  }
+
+  async createSpamDetectionLog(log: InsertSpamDetectionLog): Promise<SpamDetectionLog> {
+    const [created] = await db.insert(spamDetectionLogs).values(log).returning();
+    return created;
+  }
+
+  async getSpamDetectionLogs(filters?: {
+    senderId?: string;
+    spamScoreMin?: number;
+    limit?: number;
+  }): Promise<Array<SpamDetectionLog & { sender: User }>> {
+    let query = db
+      .select({
+        id: spamDetectionLogs.id,
+        messageId: spamDetectionLogs.messageId,
+        senderId: spamDetectionLogs.senderId,
+        detectionMethod: spamDetectionLogs.detectionMethod,
+        spamScore: spamDetectionLogs.spamScore,
+        flaggedKeywords: spamDetectionLogs.flaggedKeywords,
+        actionTaken: spamDetectionLogs.actionTaken,
+        createdAt: spamDetectionLogs.createdAt,
+        sender: users,
+      })
+      .from(spamDetectionLogs)
+      .innerJoin(users, eq(spamDetectionLogs.senderId, users.id));
+
+    if (filters?.senderId) {
+      query = query.where(eq(spamDetectionLogs.senderId, filters.senderId));
+    }
+    if (filters?.spamScoreMin !== undefined) {
+      query = query.where(gte(spamDetectionLogs.spamScore, filters.spamScoreMin));
+    }
+
+    query = query.orderBy(desc(spamDetectionLogs.createdAt)).limit(filters?.limit || 100);
+
+    const results = await query;
+    return results as any;
+  }
+
+  async getUserSpamLogs(userId: string, limit = 50): Promise<SpamDetectionLog[]> {
+    const results = await db
+      .select()
+      .from(spamDetectionLogs)
+      .where(eq(spamDetectionLogs.senderId, userId))
+      .orderBy(desc(spamDetectionLogs.createdAt))
+      .limit(limit);
+
+    return results;
+  }
+
+  async getModerationStats(): Promise<{
+    totalReports: number;
+    pendingReports: number;
+    resolvedReports: number;
+    spamDetectedToday: number;
+    actionsTakenToday: number;
+    topReportedUsers: Array<{ userId: string; username: string; reportCount: number }>;
+    commonReportReasons: Array<{ reason: string; count: number }>;
+  }> {
+    // Get total reports
+    const [totalReportsResult] = await db
+      .select({ count: count() })
+      .from(messageReports);
+
+    // Get pending reports
+    const [pendingReportsResult] = await db
+      .select({ count: count() })
+      .from(messageReports)
+      .where(eq(messageReports.status, 'pending'));
+
+    // Get resolved reports
+    const [resolvedReportsResult] = await db
+      .select({ count: count() })
+      .from(messageReports)
+      .where(eq(messageReports.status, 'resolved'));
+
+    // Get spam detected today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [spamTodayResult] = await db
+      .select({ count: count() })
+      .from(spamDetectionLogs)
+      .where(gte(spamDetectionLogs.createdAt, today));
+
+    // Get actions taken today
+    const [actionsTodayResult] = await db
+      .select({ count: count() })
+      .from(moderationActions)
+      .where(gte(moderationActions.createdAt, today));
+
+    // Get top reported users (users whose messages are most reported)
+    const topReportedUsers = await db
+      .select({
+        userId: messages.senderId,
+        username: users.username,
+        reportCount: count(),
+      })
+      .from(messageReports)
+      .innerJoin(messages, eq(messageReports.messageId, messages.id))
+      .innerJoin(users, eq(messages.senderId, users.id))
+      .groupBy(messages.senderId, users.username)
+      .orderBy(desc(count()))
+      .limit(10);
+
+    // Get common report reasons
+    const commonReasons = await db
+      .select({
+        reason: messageReports.reason,
+        count: count(),
+      })
+      .from(messageReports)
+      .groupBy(messageReports.reason)
+      .orderBy(desc(count()))
+      .limit(10);
+
+    return {
+      totalReports: totalReportsResult?.count || 0,
+      pendingReports: pendingReportsResult?.count || 0,
+      resolvedReports: resolvedReportsResult?.count || 0,
+      spamDetectedToday: spamTodayResult?.count || 0,
+      actionsTakenToday: actionsTodayResult?.count || 0,
+      topReportedUsers: topReportedUsers as any,
+      commonReportReasons: commonReasons as any,
+    };
   }
 
   async getDashboardPreferences(userId: string): Promise<DashboardPreferences | null> {
