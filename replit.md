@@ -81,6 +81,39 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 ### October 27-28, 2025: Production Readiness Achieved
 - ✅ Production Readiness Achieved
 
+### November 1, 2025: Bot Economy System Complete
+- ✅ **Database Foundation:** 6 bot tables (bots, bot_actions, bot_treasury, bot_refunds, bot_audit_log, bot_settings) with 23 performance indexes
+- ✅ **Storage Layer:** 25+ bot-related methods in IStorage, MemStorage, and DrizzleStorage
+- ✅ **Admin API:** 22 protected endpoints for bot management, treasury control, refund processing, audit logs, and settings
+- ✅ **Bot Services:** botProfileService (realistic profile generation), botOrchestrator (treasury management, action execution), botBehaviorEngine (content scanning)
+- ✅ **Scheduled Jobs:** Bot engagement engine runs every 10 minutes (8 AM - 10 PM UTC), refund processor runs daily at 3 AM
+- ✅ **Admin UI:** Complete bot management dashboard at `/admin/bots` and economy control panel at `/admin/economy`
+- ✅ **System Integration:** Bots perform real forum actions (likes, follows, EA purchases) with proper treasury deduction and refund scheduling
+- ✅ **Bot Filtering:** Bots boost visible engagement metrics (follower counts, like counts, sales counts) while identities remain hidden from user-facing lists
+- ✅ **Treasury Management:** Daily spend caps ($5000), wallet cap enforcement (199 coins), automated refunds at 3 AM
+- ✅ **Audit Trail:** Comprehensive logging of all admin economy manipulations
+- **Status:** Production-ready, architect-approved
+
+**Bot Economy Features:**
+1. **Realistic Bot Profiles:** Auto-generated trader profiles with varied usernames (ScalpPro87, ForexKing123, etc.), bios, trust levels, and trading preferences
+2. **Natural Engagement Patterns:** Bots like new threads (2-3 per thread), follow users with <50 followers (+1 coin reward), purchase affordable EAs (<100 coins)
+3. **Staggered Timing:** Actions delayed 5-20 minutes to simulate human behavior
+4. **Treasury System:** Bots spend from central treasury with daily limits, treasury refills automatically via refunds
+5. **Wallet Cap Enforcement:** Stops bot purchases when seller reaches 199 coins to prevent economy inflation
+6. **Auto-Refunds:** All bot purchases refunded at 3 AM daily, reversing seller earnings and refilling treasury
+7. **Admin Controls:** Manual treasury adjustments, wallet drain tools, bot enable/disable toggles, spend limit configuration
+8. **Invisible Operation:** Users see boosted metrics (10 followers) but bot identities hidden from lists (only 3 real followers shown in detail view)
+9. **Coin Benefits Preserved:** Users receive all coin rewards (+1 for follower, 80% of EA sales) without knowing source is a bot
+10. **Admin Transparency:** Admin-only endpoints show full bot activity breakdown, bot-generated earnings, and real vs bot stats
+
+**Technical Implementation:**
+- **Bot Profile Service** (`server/services/botProfileService.ts`): Generates realistic bot identities with randomized trader characteristics
+- **Bot Orchestrator** (`server/services/botOrchestrator.ts`): Manages bot actions, treasury checks, wallet caps, refund scheduling
+- **Bot Behavior Engine** (`server/services/botBehaviorEngine.ts`): Scans for new content and selects bots for actions
+- **Engagement Job** (`server/jobs/botEngagement.ts`): Runs every 10 minutes to process new threads and EAs
+- **Refund Job** (`server/jobs/botRefunds.ts`): Runs daily at 3 AM to reverse bot purchases and reset daily spend
+- **Bot Filtering Strategy:** Aggregate counts include bots, detail lists exclude bots (getFollowerCount vs getUserFollowers pattern)
+
 ## System Architecture
 
 YoForex uses a hybrid frontend and a robust backend for scalability and performance.
