@@ -29,6 +29,15 @@ import {
   insertBotAuditLogSchema,
   insertFeatureFlagSchema,
   insertNewsletterSubscriberSchema,
+  insertRewardCatalogSchema,
+  insertRewardGrantSchema,
+  insertRedemptionOptionSchema,
+  insertRedemptionOrderSchema,
+  insertCoinExpirationSchema,
+  insertFraudSignalSchema,
+  insertTreasurySnapshotSchema,
+  insertTreasuryAdjustmentSchema,
+  insertBotWalletEventSchema,
   BADGE_METADATA,
   type BadgeType,
   type User,
@@ -12999,6 +13008,498 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       console.error('[Newsletter Subscribe] Error:', error);
       res.status(500).json({ error: 'Failed to subscribe to newsletter' });
+    }
+  });
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - API ROUTES
+  // ============================================================================
+
+  // ===== REWARD CATALOG ROUTES =====
+  
+  // GET /api/sweets/rewards - Get all active rewards
+  app.get("/api/sweets/rewards", async (req, res) => {
+    try {
+      const rewards = await storage.getAllActiveRewards();
+      res.json(rewards);
+    } catch (error) {
+      console.error('[Sweets Rewards] Error fetching rewards:', error);
+      res.status(500).json({ error: 'Failed to fetch rewards' });
+    }
+  });
+
+  // GET /api/sweets/rewards/:id - Get specific reward
+  app.get("/api/sweets/rewards/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const reward = await storage.getRewardCatalogById(id);
+      
+      if (!reward) {
+        return res.status(404).json({ error: 'Reward not found' });
+      }
+      
+      res.json(reward);
+    } catch (error) {
+      console.error('[Sweets Rewards] Error fetching reward:', error);
+      res.status(500).json({ error: 'Failed to fetch reward' });
+    }
+  });
+
+  // POST /api/sweets/rewards - Create new reward (admin only)
+  app.post("/api/sweets/rewards", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const validatedData = insertRewardCatalogSchema.parse(req.body);
+      const reward = await storage.createRewardCatalog(validatedData);
+      
+      res.status(201).json(reward);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid reward data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets Rewards] Error creating reward:', error);
+      res.status(500).json({ error: 'Failed to create reward' });
+    }
+  });
+
+  // PATCH /api/sweets/rewards/:id - Update reward (admin only)
+  app.patch("/api/sweets/rewards/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const validatedData = insertRewardCatalogSchema.partial().parse(req.body);
+      const reward = await storage.updateRewardCatalog(id, validatedData);
+      
+      if (!reward) {
+        return res.status(404).json({ error: 'Reward not found' });
+      }
+      
+      res.json(reward);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid reward data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets Rewards] Error updating reward:', error);
+      res.status(500).json({ error: 'Failed to update reward' });
+    }
+  });
+
+  // DELETE /api/sweets/rewards/:id - Deactivate reward (admin only)
+  app.delete("/api/sweets/rewards/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const reward = await storage.deactivateReward(id);
+      
+      if (!reward) {
+        return res.status(404).json({ error: 'Reward not found' });
+      }
+      
+      res.json(reward);
+    } catch (error) {
+      console.error('[Sweets Rewards] Error deactivating reward:', error);
+      res.status(500).json({ error: 'Failed to deactivate reward' });
+    }
+  });
+
+  // ===== REWARD GRANTS ROUTES =====
+  
+  // GET /api/sweets/grants/me - Get my granted rewards
+  app.get("/api/sweets/grants/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const grants = await storage.getUserRewardGrants(user.id);
+      res.json(grants);
+    } catch (error) {
+      console.error('[Sweets Grants] Error fetching grants:', error);
+      res.status(500).json({ error: 'Failed to fetch reward grants' });
+    }
+  });
+
+  // POST /api/sweets/grants/:id/claim - Claim a granted reward
+  app.post("/api/sweets/grants/:id/claim", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const { id } = req.params;
+      
+      // First verify the grant belongs to this user
+      const grants = await storage.getUserRewardGrants(user.id);
+      const grant = grants.find(g => g.id === id);
+      
+      if (!grant) {
+        return res.status(404).json({ error: 'Grant not found or does not belong to you' });
+      }
+      
+      if (grant.claimed) {
+        return res.status(400).json({ error: 'Reward already claimed' });
+      }
+      
+      const claimedGrant = await storage.claimRewardGrant(id);
+      
+      if (!claimedGrant) {
+        return res.status(400).json({ error: 'Failed to claim reward' });
+      }
+      
+      res.json(claimedGrant);
+    } catch (error) {
+      console.error('[Sweets Grants] Error claiming grant:', error);
+      res.status(500).json({ error: 'Failed to claim reward' });
+    }
+  });
+
+  // ===== REDEMPTION OPTIONS ROUTES =====
+  
+  // GET /api/sweets/redemptions/options - Get all redemption options
+  app.get("/api/sweets/redemptions/options", async (req, res) => {
+    try {
+      const { category, isActive } = req.query;
+      
+      const filters: any = {};
+      if (category) filters.category = category as string;
+      if (isActive !== undefined) filters.isActive = isActive === 'true';
+      
+      const options = await storage.getAllRedemptionOptions(filters);
+      res.json(options);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error fetching options:', error);
+      res.status(500).json({ error: 'Failed to fetch redemption options' });
+    }
+  });
+
+  // GET /api/sweets/redemptions/options/:id - Get specific redemption option
+  app.get("/api/sweets/redemptions/options/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const option = await storage.getRedemptionOptionById(id);
+      
+      if (!option) {
+        return res.status(404).json({ error: 'Redemption option not found' });
+      }
+      
+      res.json(option);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error fetching option:', error);
+      res.status(500).json({ error: 'Failed to fetch redemption option' });
+    }
+  });
+
+  // POST /api/sweets/redemptions/options - Create redemption option (admin only)
+  app.post("/api/sweets/redemptions/options", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const validatedData = insertRedemptionOptionSchema.parse(req.body);
+      const option = await storage.createRedemptionOption(validatedData);
+      
+      res.status(201).json(option);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid redemption option data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets Redemptions] Error creating option:', error);
+      res.status(500).json({ error: 'Failed to create redemption option' });
+    }
+  });
+
+  // ===== REDEMPTION ORDERS ROUTES =====
+  
+  // POST /api/sweets/redemptions/orders - Place redemption order
+  app.post("/api/sweets/redemptions/orders", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const { optionId, coinAmount } = req.body;
+      
+      if (!optionId || !coinAmount) {
+        return res.status(400).json({ error: 'optionId and coinAmount are required' });
+      }
+      
+      // Verify the redemption option exists and is active
+      const option = await storage.getRedemptionOptionById(optionId);
+      if (!option) {
+        return res.status(404).json({ error: 'Redemption option not found' });
+      }
+      
+      if (!option.isActive) {
+        return res.status(400).json({ error: 'Redemption option is not active' });
+      }
+      
+      if (option.coinCost !== coinAmount) {
+        return res.status(400).json({ error: 'Invalid coin amount' });
+      }
+      
+      // Check if user has sufficient coins
+      const userBalance = await storage.getUserCoinBalance(user.id);
+      if (userBalance < coinAmount) {
+        return res.status(400).json({ error: 'Insufficient coin balance' });
+      }
+      
+      // Check stock if applicable
+      if (option.stock !== null && option.stock < 1) {
+        return res.status(400).json({ error: 'Item out of stock' });
+      }
+      
+      // Create the order and decrement stock if applicable
+      const order = await storage.createRedemptionOrder(user.id, optionId, coinAmount);
+      
+      if (option.stock !== null) {
+        await storage.decrementStock(optionId, 1);
+      }
+      
+      res.status(201).json(order);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error creating order:', error);
+      res.status(500).json({ error: 'Failed to create redemption order' });
+    }
+  });
+
+  // GET /api/sweets/redemptions/orders/me - Get my redemption orders
+  app.get("/api/sweets/redemptions/orders/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const orders = await storage.getUserRedemptionOrders(user.id);
+      res.json(orders);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error fetching orders:', error);
+      res.status(500).json({ error: 'Failed to fetch redemption orders' });
+    }
+  });
+
+  // GET /api/sweets/redemptions/orders/:id - Get order details
+  app.get("/api/sweets/redemptions/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const { id } = req.params;
+      
+      const orders = await storage.getUserRedemptionOrders(user.id);
+      const order = orders.find(o => o.id === id);
+      
+      if (!order && !isAdmin(user)) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      
+      res.json(order);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error fetching order:', error);
+      res.status(500).json({ error: 'Failed to fetch order details' });
+    }
+  });
+
+  // PATCH /api/sweets/redemptions/orders/:id - Update order status (admin only)
+  app.patch("/api/sweets/redemptions/orders/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const { status, fulfilledBy, redemptionCode, cancellationReason } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ error: 'status is required' });
+      }
+      
+      const fulfillmentData = {
+        fulfilledBy,
+        redemptionCode,
+        cancellationReason
+      };
+      
+      const order = await storage.updateRedemptionOrderStatus(id, status, fulfillmentData);
+      
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+      
+      res.json(order);
+    } catch (error) {
+      console.error('[Sweets Redemptions] Error updating order:', error);
+      res.status(500).json({ error: 'Failed to update order' });
+    }
+  });
+
+  // ===== BALANCE & TRANSACTIONS ROUTES =====
+  
+  // GET /api/sweets/balance/me - Get my coin balance
+  app.get("/api/sweets/balance/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const balance = await storage.getUserCoinBalance(user.id);
+      res.json({ balance, userId: user.id });
+    } catch (error) {
+      console.error('[Sweets Balance] Error fetching balance:', error);
+      res.status(500).json({ error: 'Failed to fetch balance' });
+    }
+  });
+
+  // GET /api/sweets/transactions/me - Get my transactions
+  app.get("/api/sweets/transactions/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const { limit = '50', offset = '0' } = req.query;
+      
+      const transactions = await storage.getUserTransactions(
+        user.id,
+        parseInt(limit as string),
+        parseInt(offset as string)
+      );
+      
+      res.json(transactions);
+    } catch (error) {
+      console.error('[Sweets Transactions] Error fetching transactions:', error);
+      res.status(500).json({ error: 'Failed to fetch transactions' });
+    }
+  });
+
+  // GET /api/sweets/expirations/me - Get my expiring coins
+  app.get("/api/sweets/expirations/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const { daysAhead = '30' } = req.query;
+      
+      const expirations = await storage.getUserExpiringCoins(
+        user.id,
+        parseInt(daysAhead as string)
+      );
+      
+      res.json(expirations);
+    } catch (error) {
+      console.error('[Sweets Expirations] Error fetching expirations:', error);
+      res.status(500).json({ error: 'Failed to fetch coin expirations' });
+    }
+  });
+
+  // ===== ADMIN OPERATIONS ROUTES =====
+  
+  // GET /api/sweets/admin/treasury/snapshot - Get latest treasury snapshot
+  app.get("/api/sweets/admin/treasury/snapshot", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const snapshot = await storage.getLatestTreasurySnapshot();
+      res.json(snapshot);
+    } catch (error) {
+      console.error('[Sweets Admin] Error fetching treasury snapshot:', error);
+      res.status(500).json({ error: 'Failed to fetch treasury snapshot' });
+    }
+  });
+
+  // POST /api/sweets/admin/treasury/snapshot - Create treasury snapshot
+  app.post("/api/sweets/admin/treasury/snapshot", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const validatedData = insertTreasurySnapshotSchema.parse(req.body);
+      const snapshot = await storage.createTreasurySnapshot(validatedData);
+      
+      res.status(201).json(snapshot);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid snapshot data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets Admin] Error creating snapshot:', error);
+      res.status(500).json({ error: 'Failed to create treasury snapshot' });
+    }
+  });
+
+  // POST /api/sweets/admin/treasury/adjustment - Create treasury adjustment
+  app.post("/api/sweets/admin/treasury/adjustment", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const validatedData = insertTreasuryAdjustmentSchema.parse(req.body);
+      const adjustment = await storage.createTreasuryAdjustment(validatedData);
+      
+      res.status(201).json(adjustment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid adjustment data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets Admin] Error creating adjustment:', error);
+      res.status(500).json({ error: 'Failed to create treasury adjustment' });
+    }
+  });
+
+  // GET /api/sweets/admin/fraud-signals - Get pending fraud reviews
+  app.get("/api/sweets/admin/fraud-signals", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const signals = await storage.getPendingFraudReviews();
+      res.json(signals);
+    } catch (error) {
+      console.error('[Sweets Admin] Error fetching fraud signals:', error);
+      res.status(500).json({ error: 'Failed to fetch fraud signals' });
+    }
+  });
+
+  // PATCH /api/sweets/admin/fraud-signals/:id - Update fraud signal status
+  app.patch("/api/sweets/admin/fraud-signals/:id", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as User;
+      if (!isAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { id } = req.params;
+      const { status } = req.body;
+      
+      if (!status) {
+        return res.status(400).json({ error: 'status is required' });
+      }
+      
+      const signal = await storage.updateFraudSignalStatus(id, status, user.id);
+      
+      if (!signal) {
+        return res.status(404).json({ error: 'Fraud signal not found' });
+      }
+      
+      res.json(signal);
+    } catch (error) {
+      console.error('[Sweets Admin] Error updating fraud signal:', error);
+      res.status(500).json({ error: 'Failed to update fraud signal' });
     }
   });
 

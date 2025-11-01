@@ -133,6 +133,25 @@ import {
   type InsertBotSettings,
   type NewsletterSubscriber,
   type InsertNewsletterSubscriber,
+  // Sweets Economy types
+  type RewardCatalog,
+  type InsertRewardCatalog,
+  type RewardGrant,
+  type InsertRewardGrant,
+  type RedemptionOption,
+  type InsertRedemptionOption,
+  type RedemptionOrder,
+  type InsertRedemptionOrder,
+  type CoinExpiration,
+  type InsertCoinExpiration,
+  type FraudSignal,
+  type InsertFraudSignal,
+  type TreasurySnapshot,
+  type InsertTreasurySnapshot,
+  type TreasuryAdjustment,
+  type InsertTreasuryAdjustment,
+  type BotWalletEvent,
+  type InsertBotWalletEvent,
   users,
   userActivity,
   coinTransactions,
@@ -210,6 +229,16 @@ import {
   botRefunds,
   botAuditLog,
   botSettings,
+  // Sweets Economy tables
+  rewardCatalog,
+  rewardGrants,
+  redemptionOptions,
+  redemptionOrders,
+  coinExpirations,
+  fraudSignals,
+  treasurySnapshots,
+  treasuryAdjustments,
+  botWalletEvents,
   BADGE_TYPES,
   type BadgeType
 } from "@shared/schema";
@@ -2513,6 +2542,203 @@ export interface IStorage {
    * Create a content purchase (simplified wrapper)
    */
   createContentPurchase(purchase: { contentId: string; buyerId: string; priceCoins: number; purchaseType: string }): Promise<ContentPurchase>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Reward Catalog Management
+  // ============================================================================
+  
+  /**
+   * Create a new reward in the catalog
+   */
+  createRewardCatalog(data: InsertRewardCatalog): Promise<RewardCatalog>;
+  
+  /**
+   * Get a reward by ID
+   */
+  getRewardCatalogById(id: string): Promise<RewardCatalog | null>;
+  
+  /**
+   * Get all active rewards
+   */
+  getAllActiveRewards(): Promise<RewardCatalog[]>;
+  
+  /**
+   * Update a reward in the catalog
+   */
+  updateRewardCatalog(id: string, data: Partial<InsertRewardCatalog>): Promise<RewardCatalog | null>;
+  
+  /**
+   * Deactivate a reward
+   */
+  deactivateReward(id: string): Promise<RewardCatalog | null>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Reward Grants
+  // ============================================================================
+  
+  /**
+   * Grant a reward to a user
+   */
+  grantRewardToUser(userId: string, rewardId: string, source: "onboarding" | "daily_login" | "achievement" | "admin_manual" | "streak" | "referral"): Promise<RewardGrant>;
+  
+  /**
+   * Get all reward grants for a user
+   */
+  getUserRewardGrants(userId: string): Promise<RewardGrant[]>;
+  
+  /**
+   * Claim a reward grant
+   */
+  claimRewardGrant(grantId: string): Promise<RewardGrant | null>;
+  
+  /**
+   * Expire old unclaimed reward grants
+   */
+  expireRewardGrants(): Promise<number>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Redemption Options
+  // ============================================================================
+  
+  /**
+   * Create a new redemption option
+   */
+  createRedemptionOption(data: InsertRedemptionOption): Promise<RedemptionOption>;
+  
+  /**
+   * Get all redemption options with filters
+   */
+  getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean }): Promise<RedemptionOption[]>;
+  
+  /**
+   * Get a redemption option by ID
+   */
+  getRedemptionOptionById(id: string): Promise<RedemptionOption | null>;
+  
+  /**
+   * Update a redemption option
+   */
+  updateRedemptionOption(id: string, data: Partial<InsertRedemptionOption>): Promise<RedemptionOption | null>;
+  
+  /**
+   * Decrement stock for a redemption option
+   */
+  decrementStock(id: string, quantity: number): Promise<RedemptionOption | null>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Redemption Orders
+  // ============================================================================
+  
+  /**
+   * Create a redemption order
+   */
+  createRedemptionOrder(userId: string, optionId: string, coinAmount: number): Promise<RedemptionOrder>;
+  
+  /**
+   * Get all redemption orders for a user
+   */
+  getUserRedemptionOrders(userId: string): Promise<RedemptionOrder[]>;
+  
+  /**
+   * Update redemption order status
+   */
+  updateRedemptionOrderStatus(id: string, status: "pending" | "processing" | "fulfilled" | "cancelled" | "expired", fulfillmentData?: { fulfilledBy?: string; redemptionCode?: string; cancellationReason?: string }): Promise<RedemptionOrder | null>;
+  
+  /**
+   * Get all pending redemption orders (admin)
+   */
+  getPendingRedemptions(): Promise<RedemptionOrder[]>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Coin Expirations
+  // ============================================================================
+  
+  /**
+   * Create a coin expiration record
+   */
+  createCoinExpiration(data: InsertCoinExpiration): Promise<CoinExpiration>;
+  
+  /**
+   * Get user's coins expiring soon
+   */
+  getUserExpiringCoins(userId: string, daysAhead: number): Promise<CoinExpiration[]>;
+  
+  /**
+   * Process expired coins (cron job)
+   */
+  processExpiredCoins(): Promise<number>;
+  
+  /**
+   * Cancel a scheduled expiration
+   */
+  cancelExpiration(id: string): Promise<CoinExpiration | null>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Fraud Signals
+  // ============================================================================
+  
+  /**
+   * Create a fraud signal
+   */
+  createFraudSignal(userId: string, signalType: "rate_limit_breach" | "velocity_anomaly" | "duplicate_device" | "suspicious_pattern", severity: "low" | "medium" | "high" | "critical", details: Record<string, any>): Promise<FraudSignal>;
+  
+  /**
+   * Get all fraud signals for a user
+   */
+  getUserFraudSignals(userId: string): Promise<FraudSignal[]>;
+  
+  /**
+   * Get all pending fraud reviews (admin)
+   */
+  getPendingFraudReviews(): Promise<FraudSignal[]>;
+  
+  /**
+   * Update fraud signal review status
+   */
+  updateFraudSignalStatus(id: string, status: "pending" | "reviewed" | "false_positive" | "confirmed", reviewedBy: string): Promise<FraudSignal | null>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Treasury Management
+  // ============================================================================
+  
+  /**
+   * Create a treasury snapshot
+   */
+  createTreasurySnapshot(data: InsertTreasurySnapshot): Promise<TreasurySnapshot>;
+  
+  /**
+   * Get the latest treasury snapshot
+   */
+  getLatestTreasurySnapshot(): Promise<TreasurySnapshot | null>;
+  
+  /**
+   * Create a treasury adjustment
+   */
+  createTreasuryAdjustment(data: InsertTreasuryAdjustment): Promise<TreasuryAdjustment>;
+  
+  /**
+   * Get treasury adjustments with filters
+   */
+  getTreasuryAdjustments(filters?: { adjustmentType?: string; startDate?: Date; endDate?: Date }): Promise<TreasuryAdjustment[]>;
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Bot Wallet Events
+  // ============================================================================
+  
+  /**
+   * Create a bot wallet event
+   */
+  createBotWalletEvent(data: InsertBotWalletEvent): Promise<BotWalletEvent>;
+  
+  /**
+   * Get bot wallet events with filters
+   */
+  getBotWalletEvents(botId: string, filters?: { eventType?: string; startDate?: Date; endDate?: Date }): Promise<BotWalletEvent[]>;
+  
+  /**
+   * Get bot's daily spending
+   */
+  getBotDailySpending(botId: string, date: Date): Promise<number>;
 }
 
 export class MemStorage implements IStorage {
@@ -17931,6 +18157,610 @@ export class DrizzleStorage implements IStorage {
       return newPurchase;
     } catch (error) {
       console.error('Error creating content purchase:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Reward Catalog Management
+  // ============================================================================
+
+  async createRewardCatalog(data: InsertRewardCatalog): Promise<RewardCatalog> {
+    try {
+      const [reward] = await db
+        .insert(rewardCatalog)
+        .values(data)
+        .returning();
+      return reward;
+    } catch (error) {
+      console.error('Error creating reward catalog:', error);
+      throw error;
+    }
+  }
+
+  async getRewardCatalogById(id: string): Promise<RewardCatalog | null> {
+    try {
+      const [reward] = await db
+        .select()
+        .from(rewardCatalog)
+        .where(eq(rewardCatalog.id, id))
+        .limit(1);
+      return reward || null;
+    } catch (error) {
+      console.error('Error getting reward catalog:', error);
+      throw error;
+    }
+  }
+
+  async getAllActiveRewards(): Promise<RewardCatalog[]> {
+    try {
+      const rewards = await db
+        .select()
+        .from(rewardCatalog)
+        .where(eq(rewardCatalog.isActive, true))
+        .orderBy(desc(rewardCatalog.createdAt));
+      return rewards;
+    } catch (error) {
+      console.error('Error getting active rewards:', error);
+      throw error;
+    }
+  }
+
+  async updateRewardCatalog(id: string, data: Partial<InsertRewardCatalog>): Promise<RewardCatalog | null> {
+    try {
+      const [updatedReward] = await db
+        .update(rewardCatalog)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(rewardCatalog.id, id))
+        .returning();
+      return updatedReward || null;
+    } catch (error) {
+      console.error('Error updating reward catalog:', error);
+      throw error;
+    }
+  }
+
+  async deactivateReward(id: string): Promise<RewardCatalog | null> {
+    try {
+      const [deactivatedReward] = await db
+        .update(rewardCatalog)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(rewardCatalog.id, id))
+        .returning();
+      return deactivatedReward || null;
+    } catch (error) {
+      console.error('Error deactivating reward:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Reward Grants
+  // ============================================================================
+
+  async grantRewardToUser(userId: string, rewardId: string, source: "onboarding" | "daily_login" | "achievement" | "admin_manual" | "streak" | "referral"): Promise<RewardGrant> {
+    try {
+      const [grant] = await db
+        .insert(rewardGrants)
+        .values({
+          userId,
+          rewardId,
+          source,
+          claimed: false,
+        })
+        .returning();
+      return grant;
+    } catch (error) {
+      console.error('Error granting reward to user:', error);
+      throw error;
+    }
+  }
+
+  async getUserRewardGrants(userId: string): Promise<RewardGrant[]> {
+    try {
+      const grants = await db
+        .select()
+        .from(rewardGrants)
+        .where(eq(rewardGrants.userId, userId))
+        .orderBy(desc(rewardGrants.grantedAt));
+      return grants;
+    } catch (error) {
+      console.error('Error getting user reward grants:', error);
+      throw error;
+    }
+  }
+
+  async claimRewardGrant(grantId: string): Promise<RewardGrant | null> {
+    try {
+      const [claimedGrant] = await db
+        .update(rewardGrants)
+        .set({ claimed: true, claimedAt: new Date() })
+        .where(and(eq(rewardGrants.id, grantId), eq(rewardGrants.claimed, false)))
+        .returning();
+      return claimedGrant || null;
+    } catch (error) {
+      console.error('Error claiming reward grant:', error);
+      throw error;
+    }
+  }
+
+  async expireRewardGrants(): Promise<number> {
+    try {
+      const now = new Date();
+      const expiredGrants = await db
+        .update(rewardGrants)
+        .set({ claimed: true, claimedAt: now })
+        .where(
+          and(
+            eq(rewardGrants.claimed, false),
+            isNotNull(rewardGrants.expiresAt),
+            lt(rewardGrants.expiresAt, now)
+          )
+        )
+        .returning();
+      return expiredGrants.length;
+    } catch (error) {
+      console.error('Error expiring reward grants:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Redemption Options
+  // ============================================================================
+
+  async createRedemptionOption(data: InsertRedemptionOption): Promise<RedemptionOption> {
+    try {
+      const [option] = await db
+        .insert(redemptionOptions)
+        .values(data)
+        .returning();
+      return option;
+    } catch (error) {
+      console.error('Error creating redemption option:', error);
+      throw error;
+    }
+  }
+
+  async getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean }): Promise<RedemptionOption[]> {
+    try {
+      let query = db.select().from(redemptionOptions);
+      
+      const conditions = [];
+      if (filters?.category) {
+        conditions.push(eq(redemptionOptions.category, filters.category as any));
+      }
+      if (filters?.isActive !== undefined) {
+        conditions.push(eq(redemptionOptions.isActive, filters.isActive));
+      }
+      
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+      
+      const options = await query.orderBy(desc(redemptionOptions.createdAt));
+      return options;
+    } catch (error) {
+      console.error('Error getting redemption options:', error);
+      throw error;
+    }
+  }
+
+  async getRedemptionOptionById(id: string): Promise<RedemptionOption | null> {
+    try {
+      const [option] = await db
+        .select()
+        .from(redemptionOptions)
+        .where(eq(redemptionOptions.id, id))
+        .limit(1);
+      return option || null;
+    } catch (error) {
+      console.error('Error getting redemption option:', error);
+      throw error;
+    }
+  }
+
+  async updateRedemptionOption(id: string, data: Partial<InsertRedemptionOption>): Promise<RedemptionOption | null> {
+    try {
+      const [updated] = await db
+        .update(redemptionOptions)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(redemptionOptions.id, id))
+        .returning();
+      return updated || null;
+    } catch (error) {
+      console.error('Error updating redemption option:', error);
+      throw error;
+    }
+  }
+
+  async decrementStock(id: string, quantity: number): Promise<RedemptionOption | null> {
+    try {
+      const [updated] = await db
+        .update(redemptionOptions)
+        .set({ 
+          stock: sql`${redemptionOptions.stock} - ${quantity}`,
+          updatedAt: new Date()
+        })
+        .where(
+          and(
+            eq(redemptionOptions.id, id),
+            isNotNull(redemptionOptions.stock),
+            gte(redemptionOptions.stock, quantity)
+          )
+        )
+        .returning();
+      return updated || null;
+    } catch (error) {
+      console.error('Error decrementing stock:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Redemption Orders
+  // ============================================================================
+
+  async createRedemptionOrder(userId: string, optionId: string, coinAmount: number): Promise<RedemptionOrder> {
+    try {
+      const [order] = await db
+        .insert(redemptionOrders)
+        .values({
+          userId,
+          optionId,
+          coinAmount,
+          status: "pending",
+        })
+        .returning();
+      return order;
+    } catch (error) {
+      console.error('Error creating redemption order:', error);
+      throw error;
+    }
+  }
+
+  async getUserRedemptionOrders(userId: string): Promise<RedemptionOrder[]> {
+    try {
+      const orders = await db
+        .select()
+        .from(redemptionOrders)
+        .where(eq(redemptionOrders.userId, userId))
+        .orderBy(desc(redemptionOrders.createdAt));
+      return orders;
+    } catch (error) {
+      console.error('Error getting user redemption orders:', error);
+      throw error;
+    }
+  }
+
+  async updateRedemptionOrderStatus(id: string, status: "pending" | "processing" | "fulfilled" | "cancelled" | "expired", fulfillmentData?: { fulfilledBy?: string; redemptionCode?: string; cancellationReason?: string }): Promise<RedemptionOrder | null> {
+    try {
+      const updateData: any = { 
+        status, 
+        updatedAt: new Date() 
+      };
+      
+      if (status === "fulfilled" && fulfillmentData) {
+        updateData.fulfilledAt = new Date();
+        if (fulfillmentData.fulfilledBy) {
+          updateData.fulfilledBy = fulfillmentData.fulfilledBy;
+        }
+        if (fulfillmentData.redemptionCode) {
+          updateData.redemptionCode = fulfillmentData.redemptionCode;
+        }
+      }
+      
+      if (status === "cancelled" && fulfillmentData?.cancellationReason) {
+        updateData.cancellationReason = fulfillmentData.cancellationReason;
+      }
+      
+      const [updated] = await db
+        .update(redemptionOrders)
+        .set(updateData)
+        .where(eq(redemptionOrders.id, id))
+        .returning();
+      return updated || null;
+    } catch (error) {
+      console.error('Error updating redemption order status:', error);
+      throw error;
+    }
+  }
+
+  async getPendingRedemptions(): Promise<RedemptionOrder[]> {
+    try {
+      const orders = await db
+        .select()
+        .from(redemptionOrders)
+        .where(eq(redemptionOrders.status, "pending"))
+        .orderBy(desc(redemptionOrders.createdAt));
+      return orders;
+    } catch (error) {
+      console.error('Error getting pending redemptions:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Coin Expirations
+  // ============================================================================
+
+  async createCoinExpiration(data: InsertCoinExpiration): Promise<CoinExpiration> {
+    try {
+      const [expiration] = await db
+        .insert(coinExpirations)
+        .values(data)
+        .returning();
+      return expiration;
+    } catch (error) {
+      console.error('Error creating coin expiration:', error);
+      throw error;
+    }
+  }
+
+  async getUserExpiringCoins(userId: string, daysAhead: number): Promise<CoinExpiration[]> {
+    try {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + daysAhead);
+      
+      const expirations = await db
+        .select()
+        .from(coinExpirations)
+        .where(
+          and(
+            eq(coinExpirations.userId, userId),
+            eq(coinExpirations.status, "pending"),
+            lte(coinExpirations.scheduledExpiryDate, futureDate)
+          )
+        )
+        .orderBy(asc(coinExpirations.scheduledExpiryDate));
+      return expirations;
+    } catch (error) {
+      console.error('Error getting user expiring coins:', error);
+      throw error;
+    }
+  }
+
+  async processExpiredCoins(): Promise<number> {
+    try {
+      const now = new Date();
+      const expired = await db
+        .update(coinExpirations)
+        .set({ 
+          status: "processed",
+          actualExpiredAt: now
+        })
+        .where(
+          and(
+            eq(coinExpirations.status, "pending"),
+            lte(coinExpirations.scheduledExpiryDate, now)
+          )
+        )
+        .returning();
+      return expired.length;
+    } catch (error) {
+      console.error('Error processing expired coins:', error);
+      throw error;
+    }
+  }
+
+  async cancelExpiration(id: string): Promise<CoinExpiration | null> {
+    try {
+      const [cancelled] = await db
+        .update(coinExpirations)
+        .set({ status: "cancelled" })
+        .where(eq(coinExpirations.id, id))
+        .returning();
+      return cancelled || null;
+    } catch (error) {
+      console.error('Error cancelling expiration:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Fraud Signals
+  // ============================================================================
+
+  async createFraudSignal(userId: string, signalType: "rate_limit_breach" | "velocity_anomaly" | "duplicate_device" | "suspicious_pattern", severity: "low" | "medium" | "high" | "critical", details: Record<string, any>): Promise<FraudSignal> {
+    try {
+      const [signal] = await db
+        .insert(fraudSignals)
+        .values({
+          userId,
+          signalType,
+          severity,
+          details,
+          reviewStatus: "pending",
+        })
+        .returning();
+      return signal;
+    } catch (error) {
+      console.error('Error creating fraud signal:', error);
+      throw error;
+    }
+  }
+
+  async getUserFraudSignals(userId: string): Promise<FraudSignal[]> {
+    try {
+      const signals = await db
+        .select()
+        .from(fraudSignals)
+        .where(eq(fraudSignals.userId, userId))
+        .orderBy(desc(fraudSignals.detectedAt));
+      return signals;
+    } catch (error) {
+      console.error('Error getting user fraud signals:', error);
+      throw error;
+    }
+  }
+
+  async getPendingFraudReviews(): Promise<FraudSignal[]> {
+    try {
+      const signals = await db
+        .select()
+        .from(fraudSignals)
+        .where(eq(fraudSignals.reviewStatus, "pending"))
+        .orderBy(desc(fraudSignals.detectedAt));
+      return signals;
+    } catch (error) {
+      console.error('Error getting pending fraud reviews:', error);
+      throw error;
+    }
+  }
+
+  async updateFraudSignalStatus(id: string, status: "pending" | "reviewed" | "false_positive" | "confirmed", reviewedBy: string): Promise<FraudSignal | null> {
+    try {
+      const [updated] = await db
+        .update(fraudSignals)
+        .set({ 
+          reviewStatus: status,
+          reviewedBy,
+          reviewedAt: new Date()
+        })
+        .where(eq(fraudSignals.id, id))
+        .returning();
+      return updated || null;
+    } catch (error) {
+      console.error('Error updating fraud signal status:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Treasury Management
+  // ============================================================================
+
+  async createTreasurySnapshot(data: InsertTreasurySnapshot): Promise<TreasurySnapshot> {
+    try {
+      const [snapshot] = await db
+        .insert(treasurySnapshots)
+        .values(data)
+        .returning();
+      return snapshot;
+    } catch (error) {
+      console.error('Error creating treasury snapshot:', error);
+      throw error;
+    }
+  }
+
+  async getLatestTreasurySnapshot(): Promise<TreasurySnapshot | null> {
+    try {
+      const [snapshot] = await db
+        .select()
+        .from(treasurySnapshots)
+        .orderBy(desc(treasurySnapshots.snapshotDate))
+        .limit(1);
+      return snapshot || null;
+    } catch (error) {
+      console.error('Error getting latest treasury snapshot:', error);
+      throw error;
+    }
+  }
+
+  async createTreasuryAdjustment(data: InsertTreasuryAdjustment): Promise<TreasuryAdjustment> {
+    try {
+      const [adjustment] = await db
+        .insert(treasuryAdjustments)
+        .values(data)
+        .returning();
+      return adjustment;
+    } catch (error) {
+      console.error('Error creating treasury adjustment:', error);
+      throw error;
+    }
+  }
+
+  async getTreasuryAdjustments(filters?: { adjustmentType?: string; startDate?: Date; endDate?: Date }): Promise<TreasuryAdjustment[]> {
+    try {
+      let query = db.select().from(treasuryAdjustments);
+      
+      const conditions = [];
+      if (filters?.adjustmentType) {
+        conditions.push(eq(treasuryAdjustments.adjustmentType, filters.adjustmentType as any));
+      }
+      if (filters?.startDate) {
+        conditions.push(gte(treasuryAdjustments.createdAt, filters.startDate));
+      }
+      if (filters?.endDate) {
+        conditions.push(lte(treasuryAdjustments.createdAt, filters.endDate));
+      }
+      
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+      
+      const adjustments = await query.orderBy(desc(treasuryAdjustments.createdAt));
+      return adjustments;
+    } catch (error) {
+      console.error('Error getting treasury adjustments:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // SWEETS ECONOMY SYSTEM - Bot Wallet Events
+  // ============================================================================
+
+  async createBotWalletEvent(data: InsertBotWalletEvent): Promise<BotWalletEvent> {
+    try {
+      const [event] = await db
+        .insert(botWalletEvents)
+        .values(data)
+        .returning();
+      return event;
+    } catch (error) {
+      console.error('Error creating bot wallet event:', error);
+      throw error;
+    }
+  }
+
+  async getBotWalletEvents(botId: string, filters?: { eventType?: string; startDate?: Date; endDate?: Date }): Promise<BotWalletEvent[]> {
+    try {
+      const conditions = [eq(botWalletEvents.botId, botId)];
+      
+      if (filters?.eventType) {
+        conditions.push(eq(botWalletEvents.eventType, filters.eventType as any));
+      }
+      if (filters?.startDate) {
+        conditions.push(gte(botWalletEvents.createdAt, filters.startDate));
+      }
+      if (filters?.endDate) {
+        conditions.push(lte(botWalletEvents.createdAt, filters.endDate));
+      }
+      
+      const events = await db
+        .select()
+        .from(botWalletEvents)
+        .where(and(...conditions))
+        .orderBy(desc(botWalletEvents.createdAt));
+      return events;
+    } catch (error) {
+      console.error('Error getting bot wallet events:', error);
+      throw error;
+    }
+  }
+
+  async getBotDailySpending(botId: string, date: Date): Promise<number> {
+    try {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      const [result] = await db
+        .select({ total: sql<number>`COALESCE(SUM(${botWalletEvents.coinAmount}), 0)` })
+        .from(botWalletEvents)
+        .where(
+          and(
+            eq(botWalletEvents.botId, botId),
+            gte(botWalletEvents.createdAt, startOfDay),
+            lte(botWalletEvents.createdAt, endOfDay)
+          )
+        );
+      return result?.total || 0;
+    } catch (error) {
+      console.error('Error getting bot daily spending:', error);
       throw error;
     }
   }
