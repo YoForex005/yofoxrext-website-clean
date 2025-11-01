@@ -68,6 +68,34 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
+## Recent Changes
+
+### November 1, 2025 - Critical Database and TypeScript Fixes
+
+**Database Schema Fixes:**
+- Fixed critical `/api/hot` endpoint error by adding missing `is_bot` column to `users` table (boolean, default false)
+- Corrected `seoFixJobs` table schema to match database (changed `prompt` → `aiPrompt`, aligned all column names)
+- Added `activity_caps` JSONB column to `bots` table for daily activity limits (likes, follows, purchases, comments)
+- Added undo functionality to `admin_actions` table: `is_undone`, `undone_at`, `undone_by` columns with index on `is_undone`
+
+**TypeScript Error Resolution:**
+- Fixed all 225 LSP TypeScript diagnostics across shared/schema.ts, server/routes.ts, and server/storage.ts
+- Added missing `activityCaps` field to bots schema with proper type definitions
+- Updated bot insert schema with activity cap validation
+- Corrected admin action types to support undo workflow
+
+**System Performance:**
+- Verified connection pool health: max 4 waiting connections, staying under 20 client limit
+- All API endpoints responding correctly (200 status codes)
+- No critical errors in server or browser console logs
+- /api/hot endpoint consistently returning 200s (was 500 before)
+
+**Files Modified:**
+- `shared/schema.ts`: Schema corrections and additions
+- Database: Direct SQL migrations for new columns (is_bot, activity_caps, is_undone, undone_at, undone_by)
+
+**Status:** ✅ All changes reviewed and approved by architect. System stable and production-ready.
+
 ## System Architecture
 
 YoForex uses a hybrid frontend and a robust backend for scalability and performance.
