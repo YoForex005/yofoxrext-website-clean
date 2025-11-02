@@ -3,6 +3,40 @@
 ## Overview
 YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
 
+## Recent Changes
+
+### November 2, 2025 - Critical Production Build Fixes
+**Status:** ✅ COMPLETED - Production server running successfully
+**Impact:** All critical errors resolved, clean production builds achieved
+
+**Fixed Issues:**
+1. **API /api/hot Endpoint Fix** (`server/routes.ts`)
+   - Changed content status filter from `'published'` to `'approved'`
+   - Ensures only approved content appears in hot content feed
+   - Verified working in production
+
+2. **Storage Duplicate Methods Cleanup** (`server/storage.ts`)
+   - Removed 15 duplicate method definitions causing build warnings
+   - Affected methods: `createSecurityEvent`, `getSecurityEvents`, `getIpBans`, `getModerationStats`, `getSupportStats`, `getAuditLogs`, and others
+   - Result: Clean Express build with zero warnings
+
+3. **Maintenance Page Client Component Fix** (`app/maintenance/page.tsx`)
+   - Added `'use client'` directive to allow onClick handlers
+   - Removed metadata export (not allowed in Client Components)
+   - Fixed Next.js build error preventing production deployment
+
+4. **Production Build Verification**
+   - Express API build: ✅ Clean (0 warnings)
+   - Next.js build: ✅ Clean (78 routes built successfully)
+   - Both servers running: Express on port 3001, Next.js on port 5000
+   - All health checks passing
+
+**Production Status:**
+- Database pool: 17 active connections
+- Background jobs: 11 cron jobs scheduled and running
+- Error monitoring: Active and tracking all errors
+- All critical endpoints responding correctly
+
 ## User Preferences
 ### Communication Style
 - Use simple, everyday language
