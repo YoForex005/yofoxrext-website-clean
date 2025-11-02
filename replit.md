@@ -1,7 +1,7 @@
 # YoForex - Expert Advisor Forum & Marketplace
 
 ## Overview
-YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions, boosting retention through loyalty tiers, badges, AI nudges, and abandonment emails, and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
+YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
 
 ## User Preferences
 ### Communication Style
@@ -67,36 +67,6 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
-## Recent Changes
-
-### Database & Error Resolution (November 2, 2025)
-**Critical /api/hot Endpoint Fix:**
-- Fixed Drizzle ORM "Cannot convert undefined or null to object" error in `/api/hot` endpoint
-- Issue: Direct field selection from joined tables caused orderSelectedFields error
-- Solution: Changed to `db.select()` without field specification, then destructure joined results
-- Updated result mapping to handle `row.forum_threads` and `row.users` structure
-- Endpoint now returns 200 OK with proper hot content aggregation
-
-**Content Table Schema Fixes:**
-- Added missing columns to content table that existed in schema but not database:
-  - `sales_count INTEGER DEFAULT 0` - Track total sales/purchases
-  - `purchase_count INTEGER DEFAULT 0` - Track individual purchases
-  - `revenue DECIMAL(10,2) DEFAULT '0'` - Track total revenue
-- Created indexes for new columns for query optimization
-- Fixed schema-database mismatch preventing proper Drizzle queries
-
-**Audit Logs System Deployment:**
-- Created `audit_logs` table with 12 fields and 4 performance indexes
-- Implemented middleware-driven automatic logging of all admin actions
-- Route mapping system translates HTTP requests to canonical action names
-- Admin dashboard at `/admin/audit` with filters, CSV export, real-time updates
-
-**Error Database Cleanup:**
-- Removed 22,906 old error events (errors prior to fix deployment)
-- Reduced from 4,008 error groups to 19 active monitoring groups
-- Current error count: 53 events (mostly hydration warnings, non-critical)
-- System stability significantly improved
-
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.
@@ -112,9 +82,8 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
 - **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage.
-- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace.
+- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning mechanisms (publishing, community engagement, backtests, referrals, marketplace sales), spending mechanisms (marketplace purchases, redemptions, withdrawals), XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement using Gemini AI.
 - **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails to enhance user engagement.
-- **Bot Economy System:** Automated bot system for natural engagement using Gemini AI, with wallet caps, daily budgets, and activity limits.
 - **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, and an admin dashboard for resolution.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
 - **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
@@ -123,10 +92,10 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **User Management Admin Dashboard:** Comprehensive user management dashboard at `/admin/users` with admin-only access, featuring KPI cards, real-time search, advanced filtering, sorting, paginated data table, ban/unban functionality, CSV export, and URL param synchronization.
 - **Marketplace Management Admin Dashboard:** Full-featured marketplace moderation dashboard at `/admin/marketplace` with admin-only access, featuring KPI cards, revenue trend chart, items table with pagination and filtering, approve/reject workflows, and email notifications to sellers.
 - **Content Moderation Admin Dashboard:** Comprehensive forum content moderation system at `/admin/moderation` with admin-only access, featuring tab navigation, content type filtering, moderation queue table, approve/reject workflows with mandatory reasons, and immutable audit logging.
-- **Security & Safety Admin Dashboard:** Enterprise-grade security monitoring and IP ban management system at `/admin/security` with admin-only access. Includes database tables for security events and IP bans, a centralized security service for event logging and auto-blocking, middleware for IP banning and login security, and admin API endpoints. Auto-blocking is triggered by 5 failed login attempts within 15 minutes, with severity escalation.
-- **Communications Admin Dashboard:** Enterprise-grade announcement and email campaign management system at `/admin/communications` with admin-only access. Features database tables, DrizzleStorage CRUD, services for announcement lifecycle and email delivery, admin API endpoints, public tracking routes for open/click tracking, and WebSocket integration for real-time broadcasts. Frontend includes UI for managing announcements and email campaigns with audience targeting and scheduling.
-- **Support & Tickets Admin System:** Enterprise-grade customer support and ticket management system with dual interfaces at `/support` (user) and `/admin/support` (admin). Includes database tables, DrizzleStorage CRUD, services for ticket lifecycle management and KPI calculations, API endpoints, and comprehensive user and admin UIs.
-- **Audit Logs Admin System:** Enterprise-grade audit logging system for comprehensive tracking of all administrative actions at `/admin/audit` with admin-only access. Includes database table, DrizzleStorage CRUD, middleware for automatic logging of admin API requests, explicit logging utility, and an admin UI with filters and an expandable events table.
+- **Security & Safety Admin Dashboard:** Enterprise-grade security monitoring and IP ban management system at `/admin/security` with admin-only access. Auto-blocking is triggered by 5 failed login attempts within 15 minutes, with severity escalation.
+- **Communications Admin Dashboard:** Enterprise-grade announcement and email campaign management system at `/admin/communications` with admin-only access.
+- **Support & Tickets Admin System:** Enterprise-grade customer support and ticket management system with dual interfaces at `/support` (user) and `/admin/support` (admin).
+- **Audit Logs Admin System:** Enterprise-grade audit logging system for comprehensive tracking of all administrative actions at `/admin/audit` with admin-only access.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies
