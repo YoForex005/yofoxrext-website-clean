@@ -243,11 +243,16 @@ export const coinTransactions = pgTable("coin_transactions", {
   expiresAtIdx: index("idx_coin_transactions_expires_at").on(table.expiresAt),
   reconciledAtIdx: index("idx_coin_transactions_reconciled_at").on(table.reconciledAt),
   idempotencyKeyIdx: index("idx_coin_transactions_idempotency_key").on(table.idempotencyKey),
+  // Unique constraint for idempotency
+  idempotencyKeyUnique: uniqueIndex("idx_coin_transactions_idempotency_unique").on(table.idempotencyKey),
   // Composite indexes for analytics
   userCreatedIdx: index("idx_coin_tx_user_created").on(table.userId, table.createdAt),
   triggerChannelIdx: index("idx_coin_tx_trigger_channel").on(table.trigger, table.channel),
   // Performance optimization: Revenue trend queries
   dateTypeAmountIdx: index("idx_coin_transactions_date_type").on(table.createdAt, table.type, table.amount),
+  // CHECK constraints for transaction integrity
+  spendAmountCheck: check("chk_coin_tx_spend_negative", sql`(${table.type} = 'spend' AND ${table.amount} < 0) OR ${table.type} != 'spend'`),
+  earnAmountCheck: check("chk_coin_tx_earn_positive", sql`(${table.type} = 'earn' AND ${table.amount} > 0) OR ${table.type} != 'earn'`),
 }));
 
 export const rechargeOrders = pgTable("recharge_orders", {

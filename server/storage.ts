@@ -12938,35 +12938,60 @@ export class DrizzleStorage implements IStorage {
           .from(withdrawalRequests)
           .where(eq(withdrawalRequests.id, withdrawalId));
         
-        if (withdrawal) {
-          await tx
-            .update(withdrawalRequests)
-            .set({ 
-              status: 'failed',
-              adminNotes: reason,
-              processedAt: new Date(),
-            })
-            .where(eq(withdrawalRequests.id, withdrawalId));
-          
-          // Refund coins
-          await tx
-            .update(users)
-            .set({ 
-              totalCoins: sql`${users.totalCoins} + ${withdrawal.amount}`,
-              level: sql`FLOOR((${users.totalCoins} + ${withdrawal.amount}) / 1000)`
-            })
-            .where(eq(users.id, withdrawal.userId));
-          
-          await tx.insert(adminActions).values({
-            adminId: rejectedBy,
-            actionType: 'withdrawal_reject',
-            targetType: 'withdrawal',
-            targetId: withdrawalId,
-            details: { reason },
-            ipAddress: '0.0.0.0',
-            userAgent: 'admin-dashboard',
-          });
+        if (!withdrawal) {
+          throw new Error('Withdrawal request not found');
         }
+        
+        // Update withdrawal status
+        await tx
+          .update(withdrawalRequests)
+          .set({ 
+            status: 'rejected',
+            rejectedBy: rejectedBy,
+            rejectedAt: new Date(),
+            rejectionReason: reason,
+            adminNotes: reason,
+            processedAt: new Date(),
+          })
+          .where(eq(withdrawalRequests.id, withdrawalId));
+        
+        // Create refund transaction record (CRITICAL FIX)
+        const [transaction] = await tx.insert(coinTransactions).values({
+          userId: withdrawal.userId,
+          type: 'earn',
+          amount: withdrawal.amount,
+          description: `Withdrawal refund: ${reason}`,
+          status: 'completed',
+          channel: 'treasury',
+          trigger: 'treasury.withdraw.rejected',
+          metadata: { 
+            withdrawalId,
+            rejectedBy,
+            originalAmount: withdrawal.amount,
+            reason 
+          },
+          createdAt: new Date()
+        }).returning();
+        
+        // Refund coins to user
+        await tx
+          .update(users)
+          .set({ 
+            totalCoins: sql`${users.totalCoins} + ${withdrawal.amount}`,
+            level: sql`FLOOR((${users.totalCoins} + ${withdrawal.amount}) / 1000)`
+          })
+          .where(eq(users.id, withdrawal.userId));
+        
+        // Log admin action
+        await tx.insert(adminActions).values({
+          adminId: rejectedBy,
+          actionType: 'withdrawal_reject',
+          targetType: 'withdrawal',
+          targetId: withdrawalId,
+          details: { reason, transactionId: transaction.id },
+          ipAddress: '0.0.0.0',
+          userAgent: 'admin-dashboard',
+        });
       });
     } catch (error) {
       console.error("Error rejecting withdrawal:", error);
