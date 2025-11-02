@@ -561,9 +561,22 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   useEffect(() => {
     if (editor) {
       const html = editor.getHTML();
+      const plainText = editor.getText();
+      
+      console.log('[Editor] Content changed:', {
+        htmlLength: html?.length || 0,
+        plainTextLength: plainText?.length || 0,
+        htmlPreview: html?.substring(0, 100),
+      });
+      
       form.setValue('contentHtml', html);
+      
+      // Also set body as plain text for backward compatibility
+      if (plainText) {
+        form.setValue('body', plainText);
+      }
     }
-  }, [editor?.state]);
+  }, [editor?.state, form]);
 
   const createThreadMutation = useMutation({
     mutationFn: async (data: ThreadFormData) => {
@@ -586,6 +599,15 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           downloads: 0,
         })),
       };
+
+      console.log('[Thread Submit] Sending payload:', {
+        hasContentHtml: !!payload.contentHtml,
+        contentHtmlLength: payload.contentHtml?.length || 0,
+        hasBody: !!payload.body,
+        bodyLength: payload.body?.length || 0,
+        attachmentsCount: payload.attachments?.length || 0,
+        title: payload.title?.substring(0, 50),
+      });
 
       const res = await apiRequest("POST", "/api/threads", payload);
       return await res.json() as { thread: any; coinsEarned: number; message: string };

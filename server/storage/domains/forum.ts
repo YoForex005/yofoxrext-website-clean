@@ -25,6 +25,14 @@ export class ForumStorage {
     const [user] = await db.select().from(users).where(eq(users.id, authorId));
     if (!user) throw new Error("User not found");
     
+    // Debug logging to track contentHtml and attachments
+    console.log('[ForumStorage] Creating thread with:', {
+      hasContentHtml: !!insertThread.contentHtml,
+      contentHtmlLength: insertThread.contentHtml?.length || 0,
+      attachmentsCount: insertThread.attachments?.length || 0,
+      title: insertThread.title?.substring(0, 50),
+    });
+    
     // Note: Slug, focusKeyword, metaDescription are now passed from routes.ts
     // This method just stores whatever is provided, with fallbacks for required fields
     const [thread] = await db.insert(forumThreads).values({

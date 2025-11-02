@@ -4589,6 +4589,15 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // 2. Sanitize inputs - allow HTML in body and contentHtml
       const validated = sanitizeRequestBody(validationResult.data, ['body', 'contentHtml']);
       
+      // Debug logging to track contentHtml and attachments
+      console.log('[Thread Creation] Validated data:', {
+        hasContentHtml: !!validated.contentHtml,
+        contentHtmlLength: validated.contentHtml?.length || 0,
+        attachmentsCount: validated.attachments?.length || 0,
+        attachments: validated.attachments?.map(a => ({ filename: a.filename, price: a.price })),
+        bodyLength: validated.body?.length || 0,
+      });
+      
       // If contentHtml is provided (from TipTap editor), sanitize it with DOMPurify
       if (validated.contentHtml) {
         validated.contentHtml = DOMPurify.sanitize(validated.contentHtml, {

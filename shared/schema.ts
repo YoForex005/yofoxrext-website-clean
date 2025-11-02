@@ -2540,7 +2540,21 @@ export const insertForumThreadSchema = createInsertSchema(forumThreads).omit({
   // Question-specific fields (conditional)
   questionSummary: z.string().max(200).optional(),
   
-  // Attachments
+  // Rich content from editor (optional)
+  contentHtml: z.string().optional(),
+  
+  // File attachments with pricing
+  attachments: z.array(z.object({
+    id: z.string(),
+    filename: z.string(),
+    size: z.number(),
+    url: z.string(),
+    mimeType: z.string(),
+    price: z.number().min(0).max(10000),
+    downloads: z.number().default(0)
+  })).optional().default([]),
+  
+  // Legacy attachment URLs (kept for backward compatibility)
   attachmentUrls: z.array(z.string()).optional().default([]),
   
   // Status flags
