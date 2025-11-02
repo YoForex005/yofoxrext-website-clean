@@ -354,14 +354,28 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   }
 };
 
-const upload = multer({
+// Single file upload configuration - for endpoints that only need 1 file
+const uploadSingle = multer({
   storage: multer.memoryStorage(),
   fileFilter: fileFilter,
   limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB max file size for EA files, PDFs, and trading files (reduced from 50MB for security)
+    fileSize: 20 * 1024 * 1024, // 20MB max file size
     files: 1 // Only 1 file per upload to prevent memory exhaustion
   }
 });
+
+// Multiple file upload configuration - for endpoints that need multiple files
+const uploadMultiple = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max file size per image (smaller than single uploads)
+    files: 10 // Allow up to 10 files for batch uploads
+  }
+});
+
+// Backward compatibility - default to single file upload
+const upload = uploadSingle;
 
 export async function registerRoutes(app: Express): Promise<Express> {
   // Authentication is now set up in server/index.ts before routes
@@ -1002,7 +1016,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // FILE UPLOAD ENDPOINT with enhanced metadata and image resizing (using object storage)
-  app.post("/api/upload", isAuthenticated, upload.array('files', 10), async (req, res) => {
+  app.post("/api/upload", isAuthenticated, uploadMultiple.array('files', 10), async (req, res) => {
     try {
       if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
         return res.status(400).json({ error: "No files uploaded" });
@@ -4455,7 +4469,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== IMAGE UPLOAD ENDPOINT =====
   
   // Upload images for thread creation
-  app.post("/api/upload/images", isAuthenticated, upload.array('files', 10), async (req, res) => {
+  app.post("/api/upload/images", isAuthenticated, uploadMultiple.array('files', 10), async (req, res) => {
     try {
       const authenticatedUserId = getAuthenticatedUserId(req);
       
