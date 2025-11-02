@@ -1,12 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +43,13 @@ import type { ConversationWithDetails, MessageWithDetails, TypingEvent } from '@
 import type { User } from '@shared/schema';
 import { toast } from 'sonner';
 
+// Message validation schema matching backend
+const messageSchema = z.object({
+  body: z.string().min(1, "Message cannot be empty").max(5000, "Message is too long"),
+});
+
+type MessageFormValues = z.infer<typeof messageSchema>;
+
 interface ChatWindowProps {
   conversation: ConversationWithDetails | null;
   messages: MessageWithDetails[];
@@ -60,7 +71,6 @@ export function ChatWindow({
   onLeaveConversation,
   onMuteConversation,
 }: ChatWindowProps) {
-  const [messageText, setMessageText] = useState('');
   const [showFileUpload, setShowFileUpload] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
   const [lastMessageId, setLastMessageId] = useState<string | null>(null);
@@ -73,6 +83,14 @@ export function ChatWindow({
   const markReadMutation = useMarkRead();
   const addReactionMutation = useAddReaction();
   const removeReactionMutation = useRemoveReaction();
+
+  // Message form with validation
+  const form = useForm<MessageFormValues>({
+    resolver: zodResolver(messageSchema),
+    defaultValues: {
+      body: '',
+    },
+  });
 
   const { startTyping, stopTyping, joinConversation, leaveConversation: socketLeaveConversation } = useMessagingSocket({
     userId: currentUser?.id,
@@ -138,22 +156,23 @@ export function ChatWindow({
     if (conversation?.id) {
       const draft = localStorage.getItem(`draft-${conversation.id}`);
       if (draft) {
-        setMessageText(draft);
+        form.setValue('body', draft);
       } else {
-        setMessageText('');
+        form.reset();
       }
     }
-  }, [conversation?.id]);
+  }, [conversation?.id, form]);
 
   // Save draft to localStorage
   useEffect(() => {
+    const messageText = form.watch('body');
     if (conversation?.id && messageText) {
       localStorage.setItem(`draft-${conversation.id}`, messageText);
     }
-  }, [conversation?.id, messageText]);
+  }, [conversation?.id, form.watch('body')]);
 
-  const handleSendMessage = async () => {
-    if (!messageText.trim() || !conversation) return;
+  const handleSendMessage = async (data: MessageFormValues) => {
+    if (!conversation) return;
 
     const recipientId = conversation.isGroup
       ? conversation.participant1Id // For groups, we'll need to handle this differently in the backend
@@ -167,10 +186,10 @@ export function ChatWindow({
     try {
       await sendMessageMutation.mutateAsync({
         recipientId,
-        body: messageText.trim(),
+        body: data.body,
       });
 
-      setMessageText('');
+      form.reset();
       localStorage.removeItem(`draft-${conversation.id}`);
       
       // Stop typing indicator
@@ -188,13 +207,11 @@ export function ChatWindow({
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSendMessage();
+      form.handleSubmit(handleSendMessage)();
     }
   };
 
-  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessageText(e.target.value);
-
+  const handleTextChange = (value: string) => {
     // Emit typing indicator
     if (conversation?.id) {
       startTyping(conversation.id);
@@ -403,40 +420,58 @@ export function ChatWindow({
 
         {/* Message Input */}
         <div className="p-4 border-t flex-shrink-0">
-          <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => toast.info('Emoji picker coming soon')}
-              data-testid="button-emoji-picker"
-            >
-              <Smile className="h-5 w-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowFileUpload(!showFileUpload)}
-              data-testid="button-attach-file"
-            >
-              <Paperclip className="h-5 w-5" />
-            </Button>
-            <Textarea
-              ref={textareaRef}
-              placeholder="Type a message..."
-              value={messageText}
-              onChange={handleTextChange}
-              onKeyPress={handleKeyPress}
-              className="min-h-[60px] max-h-[200px] resize-none"
-              data-testid="input-message"
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={!messageText.trim() || sendMessageMutation.isPending}
-              data-testid="button-send-message"
-            >
-              <Send className="h-5 w-5" />
-            </Button>
-          </div>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSendMessage)} className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => toast.info('Emoji picker coming soon')}
+                data-testid="button-emoji-picker"
+              >
+                <Smile className="h-5 w-5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowFileUpload(!showFileUpload)}
+                data-testid="button-attach-file"
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+              <FormField
+                control={form.control}
+                name="body"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormControl>
+                      <Textarea
+                        {...field}
+                        ref={textareaRef}
+                        placeholder="Type a message..."
+                        onChange={(e) => {
+                          field.onChange(e);
+                          handleTextChange(e.target.value);
+                        }}
+                        onKeyPress={handleKeyPress}
+                        className="min-h-[60px] max-h-[200px] resize-none"
+                        data-testid="input-message"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="submit"
+                disabled={sendMessageMutation.isPending}
+                data-testid="button-send-message"
+              >
+                <Send className="h-5 w-5" />
+              </Button>
+            </form>
+          </Form>
         </div>
       </CardContent>
     </Card>

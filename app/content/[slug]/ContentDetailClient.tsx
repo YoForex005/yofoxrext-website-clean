@@ -48,7 +48,7 @@ interface PurchaseResponse {
 // Review form schema
 const reviewFormSchema = z.object({
   rating: z.number().min(1).max(5),
-  review: z.string().min(50, "Review must be at least 50 characters").max(1000, "Review must be less than 1000 characters"),
+  review: z.string().min(100, "Review must be at least 100 characters").max(1000, "Review must be at most 1000 characters"),
 });
 
 type ReviewFormValues = z.infer<typeof reviewFormSchema>;

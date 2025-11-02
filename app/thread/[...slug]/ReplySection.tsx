@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import type { ForumReply } from '../../../shared/schema';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { ThumbsUp, CheckCircle2, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import Link from 'next/link';
@@ -15,6 +19,13 @@ import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 
 // FIXED: Use relative URLs for client-side API calls (works with Next.js rewrites)
 // No hardcoded localhost URLs in client components!
+
+// Reply validation schema matching backend
+const replySchema = z.object({
+  body: z.string().min(10, "Reply must be at least 10 characters").max(10000, "Reply is too long"),
+});
+
+type ReplyFormValues = z.infer<typeof replySchema>;
 
 interface ReplySectionProps {
   threadId: string;
@@ -32,11 +43,26 @@ export function ReplySection({
   threadAuthorId,
 }: ReplySectionProps) {
   const [replies, setReplies] = useState(initialReplies);
-  const [replyBody, setReplyBody] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [user, setUser] = useState<any>(null);
   const { requireAuth, AuthPrompt } = useAuthPrompt("participate in discussions");
+
+  // Main reply form
+  const mainForm = useForm<ReplyFormValues>({
+    resolver: zodResolver(replySchema),
+    defaultValues: {
+      body: '',
+    },
+  });
+
+  // Nested reply form
+  const nestedForm = useForm<ReplyFormValues>({
+    resolver: zodResolver(replySchema),
+    defaultValues: {
+      body: '',
+    },
+  });
 
   // Fetch current user on mount
   useState(() => {
@@ -46,17 +72,12 @@ export function ReplySection({
       .catch(() => setUser(null));
   });
 
-  const handleSubmitReply = async () => {
+  const handleSubmitReply = async (data: ReplyFormValues, isNested = false) => {
     if (!user) {
       requireAuth(async () => {
         // User is now authenticated, reload to get updated user state
         window.location.reload();
       });
-      return;
-    }
-
-    if (!replyBody.trim()) {
-      alert('Reply cannot be empty');
       return;
     }
 
@@ -68,7 +89,7 @@ export function ReplySection({
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          body: replyBody,
+          body: data.body,
           userId: user.id,
           ...(replyingTo && { parentId: replyingTo }),
         }),
@@ -220,28 +241,43 @@ export function ReplySection({
             {/* Nested Reply Form */}
             {replyingTo === reply.id && (
               <div className="mt-4 pt-4 border-t">
-                <Textarea
-                  placeholder="Write your reply..."
-                  value={replyBody}
-                  onChange={(e) => setReplyBody(e.target.value)}
-                  className="mb-2"
-                  rows={3}
-                />
-                <div className="flex gap-2">
-                  <Button onClick={handleSubmitReply} disabled={isSubmitting} size="sm">
-                    {isSubmitting ? 'Posting...' : 'Post Reply'}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setReplyingTo(null);
-                      setReplyBody('');
-                    }}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    Cancel
-                  </Button>
-                </div>
+                <Form {...nestedForm}>
+                  <form onSubmit={nestedForm.handleSubmit((data) => handleSubmitReply(data, true))} className="space-y-2">
+                    <FormField
+                      control={nestedForm.control}
+                      name="body"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Textarea
+                              placeholder="Write your reply..."
+                              rows={3}
+                              data-testid="textarea-nested-reply"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={isSubmitting} size="sm" data-testid="button-submit-nested-reply">
+                        {isSubmitting ? 'Posting...' : 'Post Reply'}
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          setReplyingTo(null);
+                          nestedForm.reset();
+                        }}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
               </div>
             )}
           </CardContent>
@@ -260,35 +296,51 @@ export function ReplySection({
         <Card>
           <CardContent className="p-4">
             <h3 className="font-semibold mb-3">Write a Reply</h3>
-            <Textarea
-              placeholder={
-                user
-                  ? 'Share your thoughts or solution...'
-                  : 'Please log in to reply'
-              }
-              value={replyBody}
-              onChange={(e) => setReplyBody(e.target.value)}
-              disabled={!user || replyingTo !== null}
-              rows={5}
-              className="mb-3"
-            />
-            <Button
-              onClick={handleSubmitReply}
-              disabled={!user || isSubmitting || replyingTo !== null}
-            >
-              {isSubmitting ? 'Posting...' : 'Post Reply'}
-            </Button>
-            {!user && (
-              <p className="text-sm text-muted-foreground mt-2">
-                <button
-                  onClick={() => requireAuth(() => window.location.reload())}
-                  className="text-primary hover:underline"
+            <Form {...mainForm}>
+              <form onSubmit={mainForm.handleSubmit((data) => handleSubmitReply(data, false))} className="space-y-3">
+                <FormField
+                  control={mainForm.control}
+                  name="body"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Textarea
+                          placeholder={
+                            user
+                              ? 'Share your thoughts or solution...'
+                              : 'Please log in to reply'
+                          }
+                          disabled={!user || replyingTo !== null}
+                          rows={5}
+                          data-testid="textarea-main-reply"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  disabled={!user || isSubmitting || replyingTo !== null}
+                  data-testid="button-submit-main-reply"
                 >
-                  Log in
-                </button>{' '}
-                to participate in the discussion
-              </p>
-            )}
+                  {isSubmitting ? 'Posting...' : 'Post Reply'}
+                </Button>
+                {!user && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    <button
+                      type="button"
+                      onClick={() => requireAuth(() => window.location.reload())}
+                      className="text-primary hover:underline"
+                    >
+                      Log in
+                    </button>{' '}
+                    to participate in the discussion
+                  </p>
+                )}
+              </form>
+            </Form>
           </CardContent>
         </Card>
       )}

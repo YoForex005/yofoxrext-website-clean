@@ -32,8 +32,8 @@ import { apiRequest } from "@/lib/queryClient";
 
 const feedbackSchema = z.object({
   type: z.enum(["bug", "feature", "improvement", "other"]),
-  subject: z.string().min(5, "Subject must be at least 5 characters").max(100),
-  message: z.string().min(20, "Message must be at least 20 characters").max(2000),
+  subject: z.string().min(10, "Subject must be at least 10 characters").max(200, "Subject must be at most 200 characters"),
+  message: z.string().min(50, "Message must be at least 50 characters").max(5000, "Message must be at most 5000 characters"),
   email: z.string().email("Invalid email address").optional().or(z.literal("")),
 });
 
