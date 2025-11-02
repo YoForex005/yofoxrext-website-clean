@@ -73,7 +73,11 @@ import {
   contentReports,
   userRankProgress,
   rankTiers,
-  weeklyEarnings
+  weeklyEarnings,
+  SWEETS_TRIGGERS,
+  SWEETS_CHANNELS,
+  COIN_TRIGGERS,
+  COIN_CHANNELS
 } from "../shared/schema.js";
 import { z } from "zod";
 import { db } from "./db.js";
@@ -101,6 +105,63 @@ const banIpSchema = z.object({
   ipAddress: z.string().ip(),
   reason: z.string().min(1).max(500),
   hours: z.number().int().min(1).max(8760).optional()
+});
+
+// ===== PHASE 3: SWEETS ECONOMY VALIDATION SCHEMAS =====
+
+// Generic validation middleware for request bodies
+const validateRequest = (schema: z.ZodSchema) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = schema.safeParse(req.body);
+      if (!result.success) {
+        return res.status(400).json({ 
+          error: 'Validation failed', 
+          details: result.error.errors 
+        });
+      }
+      req.body = result.data; // Use validated data
+      next();
+    } catch (error) {
+      console.error('[Validation] Unexpected error:', error);
+      return res.status(500).json({ error: 'Validation error occurred' });
+    }
+  };
+};
+
+// Onboarding endpoint schemas
+const completeOnboardingStepSchema = z.object({
+  stepId: z.string().min(1, "Step ID is required"),
+});
+
+// Referral endpoint schemas
+const claimReferralSignupRewardSchema = z.object({
+  referredUserId: z.string().uuid("Invalid user ID format"),
+});
+
+const claimReferralPurchaseRewardSchema = z.object({
+  referredUserId: z.string().uuid("Invalid user ID format"),
+  purchaseId: z.string().uuid("Invalid purchase ID format"),
+});
+
+// Marketplace endpoint schemas
+const marketplacePurchaseSchema = z.object({
+  itemId: z.string().uuid("Invalid item ID format"),
+  quantity: z.number().int().min(1).max(100).optional().default(1),
+});
+
+const marketplacePublishSchema = z.object({
+  title: z.string().min(3).max(200),
+  description: z.string().min(10).max(5000),
+  price: z.number().int().min(0),
+  category: z.string().min(1),
+});
+
+// Admin adjustment schema
+const adminCoinAdjustmentSchema = z.object({
+  userId: z.string().uuid("Invalid user ID format"),
+  amount: z.number().int().min(-10000).max(10000),
+  reason: z.string().min(5).max(500),
 });
 
 import {
@@ -194,6 +255,7 @@ import { getSecurityService } from './services/securityService.js';
 import { publishAnnouncement, getAudiencePreview, scheduleAnnouncement, expireAnnouncement } from './services/communicationsService.js';
 import { sendCampaign, updateCampaignStats } from './services/campaignService.js';
 import { insertAnnouncementSchema, insertEmailCampaignSchema } from "../shared/schema.js";
+import { coinTransactionService } from './services/coinTransactionService.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -1793,6 +1855,63 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // POST /api/me/onboarding/complete-step - Complete onboarding step and earn coins
+  app.post("/api/me/onboarding/complete-step", isAuthenticated, validateRequest(completeOnboardingStepSchema), async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const { stepId } = req.body;
+      
+      // Verify step hasn't been completed yet
+      const progress = await storage.getOnboardingProgress(userId);
+      if (progress?.progress?.[stepId as keyof typeof progress.progress]) {
+        return res.status(400).json({ error: "Step already completed" });
+      }
+      
+      // Mark step as complete in database
+      await storage.markOnboardingStep(userId, stepId);
+      
+      // Award coins using Phase 3 CoinTransactionService
+      const stepRewards = {
+        profilePicture: 10,
+        firstReply: 5,
+        twoReviews: 6,
+        firstThread: 10,
+        firstPublish: 30,
+        fiftyFollowers: 200
+      };
+      
+      const coinsToAward = stepRewards[stepId as keyof typeof stepRewards] || 10;
+      
+      const coinResult = await coinTransactionService.executeTransaction({
+        userId,
+        amount: coinsToAward,
+        trigger: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
+        channel: COIN_CHANNELS.ONBOARDING,
+        description: `Completed onboarding step: ${stepId}`,
+        metadata: { stepId, reward: coinsToAward },
+        idempotencyKey: `onboarding-${stepId}-${userId}`
+      });
+      
+      if (!coinResult.success) {
+        console.error('Failed to award onboarding coins:', coinResult.error);
+        return res.status(400).json({ error: coinResult.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        coins: coinResult.newBalance,
+        stepCompleted: stepId,
+        reward: coinsToAward
+      });
+    } catch (error: any) {
+      console.error('Onboarding step completion failed:', error);
+      if (error.message === "No authenticated user") {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      res.status(500).json({ error: error.message || "Failed to complete onboarding step" });
+    }
+  });
+
   // PATCH /api/user/notifications - Update user notification preferences
   app.patch("/api/user/notifications", isAuthenticated, async (req, res) => {
     const userId = getAuthenticatedUserId(req);
@@ -2651,6 +2770,107 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // POST /api/referrals/claim-signup-reward - Claim coins for friend signup
+  app.post("/api/referrals/claim-signup-reward", isAuthenticated, validateRequest(claimReferralSignupRewardSchema), async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const { referredUserId } = req.body;
+      
+      // Verify referral exists (basic check - can be enhanced with DB tracking)
+      const referredUser = await storage.getUserById(referredUserId);
+      if (!referredUser) {
+        return res.status(404).json({ error: 'Referred user not found' });
+      }
+      
+      // Check if referred user actually used this user's referral code
+      if (referredUser.referredBy !== userId) {
+        return res.status(400).json({ error: 'This user was not referred by you' });
+      }
+      
+      // Award coins to referrer using Phase 3 CoinTransactionService
+      const coinResult = await coinTransactionService.executeTransaction({
+        userId, // Referrer gets coins
+        amount: 50, // 50 coins for successful referral signup
+        trigger: COIN_TRIGGERS.REFERRAL_SIGNUP_COMPLETED,
+        channel: COIN_CHANNELS.REFERRAL,
+        description: `Your referral @${referredUser.username} signed up`,
+        metadata: { 
+          referredUserId,
+          referredUsername: referredUser.username
+        },
+        idempotencyKey: `referral-signup-${referredUserId}`
+      });
+      
+      if (!coinResult.success) {
+        console.error('Failed to award referral signup coins:', coinResult.error);
+        return res.status(400).json({ error: coinResult.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        coins: coinResult.newBalance,
+        reward: 50,
+        referredUser: referredUser.username
+      });
+    } catch (error: any) {
+      console.error('Referral signup reward claim failed:', error);
+      if (error.message === "No authenticated user") {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      res.status(500).json({ error: error.message || "Failed to claim referral reward" });
+    }
+  });
+
+  // POST /api/referrals/claim-purchase-reward - Claim coins for friend purchase
+  app.post("/api/referrals/claim-purchase-reward", isAuthenticated, validateRequest(claimReferralPurchaseRewardSchema), async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const { referredUserId, purchaseId } = req.body;
+      
+      // Verify referral and purchase exist
+      const referredUser = await storage.getUserById(referredUserId);
+      if (!referredUser) {
+        return res.status(404).json({ error: 'Referred user not found' });
+      }
+      
+      if (referredUser.referredBy !== userId) {
+        return res.status(400).json({ error: 'This user was not referred by you' });
+      }
+      
+      // Award bonus coins to referrer
+      const coinResult = await coinTransactionService.executeTransaction({
+        userId, // Referrer gets bonus coins
+        amount: 25, // 25 bonus coins for friend's first purchase
+        trigger: COIN_TRIGGERS.REFERRAL_PURCHASE_COMPLETED,
+        channel: COIN_CHANNELS.REFERRAL,
+        description: `Your referral @${referredUser.username} made a purchase`,
+        metadata: { 
+          referredUserId,
+          purchaseId,
+          referredUsername: referredUser.username
+        },
+        idempotencyKey: `referral-purchase-${purchaseId}`
+      });
+      
+      if (!coinResult.success) {
+        console.error('Failed to award referral purchase coins:', coinResult.error);
+        return res.status(400).json({ error: coinResult.error });
+      }
+      
+      res.json({ 
+        success: true, 
+        coins: coinResult.newBalance,
+        reward: 25
+      });
+    } catch (error: any) {
+      console.error('Referral purchase reward claim failed:', error);
+      if (error.message === "No authenticated user") {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      res.status(500).json({ error: error.message || "Failed to claim referral purchase reward" });
+    }
+  });
+
   // ===== LEDGER SYSTEM ENDPOINTS =====
   
   // Admin-only endpoint to backfill opening balances (run once)
@@ -2719,56 +2939,43 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
   
-  // POST /api/daily-checkin - Award daily active bonus
+  // POST /api/daily-checkin - Award daily active bonus (Phase 3)
   app.post("/api/daily-checkin", isAuthenticated, async (req, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
+      const today = new Date().toISOString().split('T')[0];
 
-      // Check if user already checked in today
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const existingCheckin = await storage.getLedgerTransactionHistory(userId, 100);
-      const checkedInToday = existingCheckin.some(entry => {
-        const entryDate = new Date(entry.createdAt);
-        entryDate.setHours(0, 0, 0, 0);
-        return entry.memo?.includes('Daily active bonus') && entryDate.getTime() === today.getTime();
+      // Award daily login bonus using Phase 3 CoinTransactionService
+      const coinResult = await coinTransactionService.executeTransaction({
+        userId,
+        amount: 10, // 10 coins for daily login
+        trigger: COIN_TRIGGERS.ENGAGEMENT_DAILY_LOGIN,
+        channel: COIN_CHANNELS.ENGAGEMENT,
+        description: "Daily login bonus",
+        metadata: { date: today },
+        idempotencyKey: `daily-login-${userId}-${today}`
       });
 
-      if (checkedInToday) {
-        return res.status(400).json({ error: 'Already checked in today' });
+      if (!coinResult.success) {
+        // Most likely already claimed today (duplicate idempotency key)
+        return res.status(400).json({ 
+          error: coinResult.error || 'Already checked in today',
+          code: 'ALREADY_CLAIMED'
+        });
       }
 
-      // AWARD COINS: +5 for daily active
-      await storage.beginLedgerTransaction(
-        'earn',
-        userId,
-        [
-          {
-            userId,
-            direction: 'credit',
-            amount: 5,
-            memo: 'Daily active bonus',
-          },
-          {
-            userId: 'system',
-            direction: 'debit',
-            amount: 5,
-            memo: 'Platform daily reward',
-          },
-        ],
-        { date: today.toISOString() }
-      );
-
-      res.json({ message: 'Daily bonus claimed', coins: 5 });
+      res.json({ 
+        success: true,
+        message: 'Daily bonus claimed', 
+        coins: coinResult.newBalance,
+        reward: 10
+      });
     } catch (error: any) {
+      console.error('Daily check-in error:', error);
       if (error.message === "No authenticated user") {
         return res.status(401).json({ error: "Not authenticated" });
       }
-      if (error.message.includes("does not support ledger operations")) {
-        return res.status(400).json({ error: "Ledger operations not available (MemStorage in use)" });
-      }
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message || 'Failed to claim daily bonus' });
     }
   });
   
@@ -3526,6 +3733,32 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const like = await storage.likeContent(validated);
       if (!like) {
         return res.status(400).json({ error: "Already liked" });
+      }
+      
+      // Award coins to content AUTHOR for receiving like using Phase 3 CoinTransactionService
+      try {
+        const content = await storage.getContent(validated.contentId);
+        if (content && content.authorId !== authenticatedUserId) { // Don't reward self-likes
+          const coinResult = await coinTransactionService.executeTransaction({
+            userId: content.authorId, // Author receives coins, not liker
+            amount: 2, // 2 coins per like received
+            trigger: COIN_TRIGGERS.FORUM_LIKE_RECEIVED,
+            channel: COIN_CHANNELS.FORUM,
+            description: `Your ${content.type} "${content.title}" was liked`,
+            metadata: {
+              contentId: content.id,
+              likerId: authenticatedUserId,
+              contentSlug: content.slug
+            },
+            idempotencyKey: `content-like-${content.id}-${authenticatedUserId}`
+          });
+          
+          if (!coinResult.success) {
+            console.error('Failed to award coins for like:', coinResult.error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to award coins for like:', error);
       }
       
       // Queue like notification email (fire-and-forget)
@@ -4300,23 +4533,29 @@ export async function registerRoutes(app: Express): Promise<Express> {
         engagementScore: 0, // Initial score
       }, authenticatedUserId);
       
-      // Award coins for thread creation
+      // Award coins for thread creation using Phase 3 CoinTransactionService
       try {
-        await storage.beginLedgerTransaction(
-          'thread_creation',
-          authenticatedUserId,
-          [
-            {
-              userId: authenticatedUserId,
-              direction: 'credit',
-              amount: coinReward,
-              memo: hasOptionalDetails 
-                ? `Thread created with bonus details: ${thread.title}`
-                : `Thread created: ${thread.title}`,
-            },
-          ],
-          { threadId: thread.id, baseReward: 10, bonusReward: hasOptionalDetails ? 2 : 0 }
-        );
+        const coinResult = await coinTransactionService.executeTransaction({
+          userId: authenticatedUserId,
+          amount: coinReward,
+          trigger: COIN_TRIGGERS.FORUM_THREAD_CREATED,
+          channel: COIN_CHANNELS.FORUM,
+          description: hasOptionalDetails 
+            ? `Thread created with bonus details: ${thread.title}`
+            : `Thread created: ${thread.title}`,
+          metadata: {
+            threadId: thread.id,
+            threadSlug: thread.slug,
+            baseReward: 10,
+            bonusReward: hasOptionalDetails ? 2 : 0,
+            categorySlug: validated.categorySlug
+          },
+          idempotencyKey: `thread-${thread.id}`
+        });
+        
+        if (!coinResult.success) {
+          console.error('Failed to award coins for thread creation:', coinResult.error);
+        }
       } catch (error) {
         console.error('Failed to award coins for thread creation:', error);
       }
@@ -4874,6 +5113,30 @@ export async function registerRoutes(app: Express): Promise<Express> {
         await storage.updateCategoryStats(thread.categorySlug);
       }
       
+      // Award coins for reply creation using Phase 3 CoinTransactionService
+      let coinsEarned = 5; // Base reward for reply
+      try {
+        const coinResult = await coinTransactionService.executeTransaction({
+          userId: authenticatedUserId,
+          amount: coinsEarned,
+          trigger: COIN_TRIGGERS.FORUM_REPLY_POSTED,
+          channel: COIN_CHANNELS.FORUM,
+          description: `Posted reply to thread "${thread?.title || 'Unknown'}"`,
+          metadata: {
+            threadId: req.params.threadId,
+            replyId: reply.id,
+            threadSlug: thread?.slug
+          },
+          idempotencyKey: `reply-${reply.id}`
+        });
+        
+        if (!coinResult.success) {
+          console.error('Failed to award coins for reply:', coinResult.error);
+        }
+      } catch (error) {
+        console.error('Failed to award coins for reply:', error);
+      }
+      
       // Create activity feed entry
       await storage.createActivity({
         userId: authenticatedUserId,
@@ -5008,27 +5271,21 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const reply = await storage.markReplyAsAccepted(req.params.replyId);
       
       if (reply) {
-        // AWARD COINS: +25 for accepted answer
+        // AWARD COINS: +25 for accepted answer using Phase 3 CoinTransactionService
         try {
-          await storage.beginLedgerTransaction(
-            'earn',
-            reply.userId,
-            [
-              {
-                userId: reply.userId,
-                direction: 'credit',
-                amount: 25,
-                memo: 'Answer accepted by thread author',
-              },
-              {
-                userId: 'system',
-                direction: 'debit',
-                amount: 25,
-                memo: 'Platform reward for accepted answer',
-              },
-            ],
-            { replyId: reply.id, threadId: reply.threadId }
-          );
+          const coinResult = await coinTransactionService.executeTransaction({
+            userId: reply.userId,
+            amount: 25,
+            trigger: COIN_TRIGGERS.FORUM_REPLY_POSTED, // Using reply trigger as we don't have accepted-answer specific trigger
+            channel: COIN_CHANNELS.FORUM,
+            description: 'Answer accepted by thread author',
+            metadata: {
+              replyId: reply.id,
+              threadId: reply.threadId,
+              isAcceptedAnswer: true
+            },
+            idempotencyKey: `accepted-answer-${reply.id}`
+          });
           
           // Queue best answer notification email (fire-and-forget)
           (async () => {
@@ -9316,26 +9573,38 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // 7. POST /api/admin/users/:id/coins - Adjust user coins
+  // 7. POST /api/admin/users/:id/coins - Adjust user coins (Phase 3)
   app.post('/api/admin/users/:id/coins', isAuthenticated, adminOperationLimiter, async (req, res) => {
     if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
     try {
       const adminUserId = getAuthenticatedUserId(req);
       const validated = adjustCoinsSchema.parse(req.body);
+      const targetUserId = req.params.id;
       
-      await storage.adjustUserCoins(
-        req.params.id,
-        validated.amount,
-        validated.reason,
-        validated.adjustedBy || adminUserId
-      );
+      // Award/deduct coins using Phase 3 CoinTransactionService
+      const coinResult = await coinTransactionService.executeTransaction({
+        userId: targetUserId,
+        amount: validated.amount, // Can be positive (add) or negative (deduct)
+        trigger: COIN_TRIGGERS.ADMIN_MANUAL_ADJUSTMENT,
+        channel: COIN_CHANNELS.ADMIN,
+        description: `Admin adjustment: ${validated.reason}`,
+        metadata: {
+          adjustedBy: validated.adjustedBy || adminUserId,
+          reason: validated.reason,
+          adminAction: true
+        },
+        idempotencyKey: `admin-adjust-${targetUserId}-${Date.now()}`
+      });
       
-      // Fetch updated user to get new balance
-      const user = await storage.getUserById(req.params.id);
+      if (!coinResult.success) {
+        console.error('Failed to adjust user coins:', coinResult.error);
+        return res.status(400).json({ error: coinResult.error });
+      }
       
       res.json({ 
         success: true, 
-        newBalance: user?.totalCoins || 0 
+        newBalance: coinResult.newBalance,
+        adjustment: validated.amount
       });
     } catch (error: any) {
       console.error('Error adjusting user coins:', error);

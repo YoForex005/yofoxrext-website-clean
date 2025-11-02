@@ -386,3 +386,29 @@ export const financeExportSchema = z.object({
   to: z.string().optional(),
   type: z.enum(['all', 'marketplace_sale', 'coin_recharge', 'premium_purchase', 'withdrawal', 'refund', 'adjustment']).default('all'),
 });
+
+// ============================================================================
+// Phase 3 Sweets Economy Validation Schemas
+// ============================================================================
+
+/**
+ * Complete onboarding step schema for POST /api/me/onboarding/complete-step
+ */
+export const completeOnboardingStepSchema = z.object({
+  stepId: z.enum(['profilePicture', 'firstReply', 'twoReviews', 'firstThread', 'firstPublish', 'fiftyFollowers']),
+});
+
+/**
+ * Claim referral signup reward schema for POST /api/referrals/claim-signup-reward
+ */
+export const claimReferralSignupRewardSchema = z.object({
+  referredUserId: z.string().uuid('Invalid user ID format'),
+});
+
+/**
+ * Claim referral purchase reward schema for POST /api/referrals/claim-purchase-reward
+ */
+export const claimReferralPurchaseRewardSchema = z.object({
+  referredUserId: z.string().uuid('Invalid user ID format'),
+  purchaseId: z.string().uuid('Invalid purchase ID format'),
+});
