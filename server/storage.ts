@@ -154,6 +154,15 @@ import {
   type InsertBotWalletEvent,
   type AiLog,
   type InsertAiLog,
+  // Rank/Sweets System types
+  type RankTier,
+  type InsertRankTier,
+  type UserRankProgress,
+  type InsertUserRankProgress,
+  type WeeklyEarnings,
+  type InsertWeeklyEarnings,
+  type FeatureUnlock,
+  type InsertFeatureUnlock,
   users,
   userActivity,
   coinTransactions,
@@ -243,6 +252,11 @@ import {
   treasuryAdjustments,
   botWalletEvents,
   aiLogs,
+  // Rank/Sweets System tables
+  rankTiers,
+  userRankProgress,
+  weeklyEarnings,
+  featureUnlocks,
   BADGE_TYPES,
   type BadgeType
 } from "@shared/schema";
@@ -2838,6 +2852,40 @@ export interface IStorage {
    * Get bot's daily spending
    */
   getBotDailySpending(botId: string, date: Date): Promise<number>;
+  
+  // ============================================================================
+  // RANK/SWEETS SYSTEM - Rank Progress & Feature Unlocks
+  // ============================================================================
+  
+  /**
+   * Get user's rank progress
+   */
+  getRankProgress(userId: string): Promise<UserRankProgress | null>;
+  
+  /**
+   * Upsert user's rank progress
+   */
+  upsertRankProgress(progress: InsertUserRankProgress): Promise<UserRankProgress>;
+  
+  /**
+   * Append weekly earnings entry
+   */
+  appendWeeklyEarning(entry: InsertWeeklyEarnings): Promise<WeeklyEarnings>;
+  
+  /**
+   * Get feature unlocks by rank ID
+   */
+  getFeatureUnlocksByRank(rankId: number): Promise<FeatureUnlock[]>;
+  
+  /**
+   * Log XP event in weekly earnings
+   */
+  logXpEvent(userId: string, activity: string, xpDelta: number, metadata?: Record<string, any>): Promise<void>;
+  
+  /**
+   * Get all rank tiers (sorted by sortOrder)
+   */
+  getAllRankTiers(): Promise<RankTier[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -19247,6 +19295,138 @@ export class DrizzleStorage implements IStorage {
       return result?.total || 0;
     } catch (error) {
       console.error('Error getting bot daily spending:', error);
+      throw error;
+    }
+  }
+  
+  // ============================================================================
+  // RANK/SWEETS SYSTEM - Rank Progress & Feature Unlocks
+  // ============================================================================
+  
+  async getRankProgress(userId: string): Promise<UserRankProgress | null> {
+    try {
+      const [progress] = await db
+        .select()
+        .from(userRankProgress)
+        .where(eq(userRankProgress.userId, userId))
+        .limit(1);
+      return progress || null;
+    } catch (error) {
+      console.error('Error getting rank progress:', error);
+      throw error;
+    }
+  }
+  
+  async upsertRankProgress(progress: InsertUserRankProgress): Promise<UserRankProgress> {
+    try {
+      const [result] = await db
+        .insert(userRankProgress)
+        .values({
+          ...progress,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: userRankProgress.userId,
+          set: {
+            currentRankId: progress.currentRankId,
+            currentXp: progress.currentXp,
+            weeklyXp: progress.weeklyXp,
+            weekStartDate: progress.weekStartDate,
+            lastXpEarnedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return result;
+    } catch (error) {
+      console.error('Error upserting rank progress:', error);
+      throw error;
+    }
+  }
+  
+  async appendWeeklyEarning(entry: InsertWeeklyEarnings): Promise<WeeklyEarnings> {
+    try {
+      const [result] = await db
+        .insert(weeklyEarnings)
+        .values({
+          ...entry,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [weeklyEarnings.userId, weeklyEarnings.weekStartDate],
+          set: {
+            xpEarned: sql`${weeklyEarnings.xpEarned} + ${entry.xpEarned}`,
+            coinsEarned: sql`${weeklyEarnings.coinsEarned} + ${entry.coinsEarned}`,
+            transactionCount: sql`${weeklyEarnings.transactionCount} + ${entry.transactionCount}`,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return result;
+    } catch (error) {
+      console.error('Error appending weekly earning:', error);
+      throw error;
+    }
+  }
+  
+  async getFeatureUnlocksByRank(rankId: number): Promise<FeatureUnlock[]> {
+    try {
+      const unlocks = await db
+        .select()
+        .from(featureUnlocks)
+        .where(eq(featureUnlocks.rankId, rankId))
+        .orderBy(asc(featureUnlocks.featureKey));
+      return unlocks;
+    } catch (error) {
+      console.error('Error getting feature unlocks by rank:', error);
+      throw error;
+    }
+  }
+  
+  async logXpEvent(userId: string, activity: string, xpDelta: number, metadata?: Record<string, any>): Promise<void> {
+    try {
+      const now = new Date();
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+      weekStart.setHours(0, 0, 0, 0);
+      
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      weekEnd.setHours(23, 59, 59, 999);
+      
+      await db
+        .insert(weeklyEarnings)
+        .values({
+          userId,
+          weekStartDate: weekStart.toISOString().split('T')[0],
+          weekEndDate: weekEnd.toISOString().split('T')[0],
+          xpEarned: xpDelta,
+          coinsEarned: 0,
+          transactionCount: 1,
+        })
+        .onConflictDoUpdate({
+          target: [weeklyEarnings.userId, weeklyEarnings.weekStartDate],
+          set: {
+            xpEarned: sql`${weeklyEarnings.xpEarned} + ${xpDelta}`,
+            transactionCount: sql`${weeklyEarnings.transactionCount} + 1`,
+            updatedAt: new Date(),
+          },
+        });
+    } catch (error) {
+      console.error('Error logging XP event:', error);
+      throw error;
+    }
+  }
+  
+  async getAllRankTiers(): Promise<RankTier[]> {
+    try {
+      const tiers = await db
+        .select()
+        .from(rankTiers)
+        .orderBy(asc(rankTiers.sortOrder));
+      return tiers;
+    } catch (error) {
+      console.error('Error getting all rank tiers:', error);
       throw error;
     }
   }
