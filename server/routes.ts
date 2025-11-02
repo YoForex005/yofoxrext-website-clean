@@ -4205,65 +4205,105 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const safeMarketplaceContent = marketplaceContent || [];
       const safeTopBrokers = topBrokers || [];
       
-      // Prepare thread items (normalized score) - handle joined structure
-      const threadItems = safeThreads.map((row) => {
-        const thread = row.forum_threads;
-        const user = row.users;
-        return {
-          id: thread.id,
-          type: 'thread' as const,
-          title: thread.title,
-          slug: thread.slug,
-          categorySlug: thread.categorySlug,
-          views: thread.views || 0,
-          createdAt: thread.createdAt,
-          normalizedScore: thread.engagementScore || 0,
-          replyCount: thread.replyCount || 0,
-          author: {
-            id: thread.authorId,
-            username: user?.username || 'Unknown',
-            profileImageUrl: user?.profileImageUrl || null
+      // Prepare thread items (normalized score) - handle joined structure with comprehensive null checks
+      const threadItems = safeThreads
+        .filter((row) => row && row.forum_threads) // Filter out null/undefined rows
+        .map((row) => {
+          try {
+            const thread = row.forum_threads;
+            const user = row.users;
+            
+            // Additional null check for thread object
+            if (!thread || !thread.id) {
+              console.warn('[/api/hot] Invalid thread object:', thread);
+              return null;
+            }
+            
+            return {
+              id: thread.id,
+              type: 'thread' as const,
+              title: thread.title || 'Untitled',
+              slug: thread.slug || '',
+              categorySlug: thread.categorySlug || '',
+              views: thread.views || 0,
+              createdAt: thread.createdAt || new Date(),
+              normalizedScore: thread.engagementScore || 0,
+              replyCount: thread.replyCount || 0,
+              author: {
+                id: thread.authorId || '',
+                username: user?.username || 'Unknown',
+                profileImageUrl: user?.profileImageUrl || null
+              }
+            };
+          } catch (error) {
+            console.error('[/api/hot] Error processing thread:', error);
+            return null;
           }
-        };
-      });
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
       
-      // Prepare marketplace items (normalized score) - handle joined structure
-      const marketplaceItems = safeMarketplaceContent.map((row) => {
-        const item = row.content;
-        const user = row.users;
-        return {
-          id: item.id,
-          type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
-          title: item.title,
-          slug: item.slug,
-          categorySlug: item.category,
-          views: item.downloads || 0,
-          createdAt: item.createdAt,
-          priceCoins: item.priceCoins || 0,
-          isFree: item.isFree,
-          normalizedScore: (item.salesScore || 0) / 2,
-          purchaseCount: item.purchaseCount || 0,
-          author: {
-            id: item.authorId,
-            username: user?.username || 'Unknown',
-            profileImageUrl: user?.profileImageUrl || null
+      // Prepare marketplace items (normalized score) - handle joined structure with comprehensive null checks
+      const marketplaceItems = safeMarketplaceContent
+        .filter((row) => row && row.content) // Filter out null/undefined rows
+        .map((row) => {
+          try {
+            const item = row.content;
+            const user = row.users;
+            
+            // Additional null check for content object
+            if (!item || !item.id) {
+              console.warn('[/api/hot] Invalid content object:', item);
+              return null;
+            }
+            
+            return {
+              id: item.id,
+              type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
+              title: item.title || 'Untitled',
+              slug: item.slug || '',
+              categorySlug: item.category || '',
+              views: item.downloads || 0,
+              createdAt: item.createdAt || new Date(),
+              priceCoins: item.priceCoins || 0,
+              isFree: item.isFree || false,
+              normalizedScore: (item.salesScore || 0) / 2,
+              purchaseCount: item.purchaseCount || 0,
+              author: {
+                id: item.authorId || '',
+                username: user?.username || 'Unknown',
+                profileImageUrl: user?.profileImageUrl || null
+              }
+            };
+          } catch (error) {
+            console.error('[/api/hot] Error processing marketplace item:', error);
+            return null;
           }
-        };
-      });
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
       
-      // Prepare broker items (normalized score)
-      const brokerItems = safeTopBrokers.map((broker) => ({
-        id: broker.id,
-        type: 'broker' as const,
-        title: broker.name,
-        slug: broker.slug,
-        categorySlug: 'brokers',
-        views: broker.reviewCount || 0,
-        createdAt: broker.createdAt,
-        normalizedScore: ((broker.overallRating || 0) / 100) * (broker.reviewCount || 0),
-        reviewCount: broker.reviewCount || 0,
-        overallRating: broker.overallRating || 0
-      }));
+      // Prepare broker items (normalized score) with comprehensive null checks
+      const brokerItems = safeTopBrokers
+        .filter((broker) => broker && broker.id) // Filter out null/undefined brokers
+        .map((broker) => {
+          try {
+            return {
+              id: broker.id,
+              type: 'broker' as const,
+              title: broker.name || 'Unknown Broker',
+              slug: broker.slug || '',
+              categorySlug: 'brokers',
+              views: broker.reviewCount || 0,
+              createdAt: broker.createdAt || new Date(),
+              normalizedScore: ((broker.overallRating || 0) / 100) * (broker.reviewCount || 0),
+              reviewCount: broker.reviewCount || 0,
+              overallRating: broker.overallRating || 0
+            };
+          } catch (error) {
+            console.error('[/api/hot] Error processing broker:', error);
+            return null;
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
       
       // Combine all items and sort by normalized score
       const allHotItems = [...threadItems, ...marketplaceItems, ...brokerItems]
@@ -12467,7 +12507,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   // Schema for bulk error ingestion
   const bulkErrorIngestionSchema = z.object({
-    errors: z.array(errorEventIngestionSchema).min(1).max(50), // Max 50 errors per batch
+    errors: z.array(errorEventIngestionSchema).min(1).max(20), // Max 20 errors per batch (reduced from 50 to prevent "request entity too large" errors)
   });
 
   // Helper function to sanitize sensitive data

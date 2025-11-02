@@ -593,8 +593,8 @@ export class ErrorTracker {
         return sanitizedError;
       });
       
-      // Chunk validated errors into batches of 50 (API limit)
-      const BATCH_SIZE = 50;
+      // Chunk validated errors into batches of 20 (API limit - reduced from 50 to prevent "request entity too large" errors)
+      const BATCH_SIZE = 20;
       const batches = [];
       for (let i = 0; i < validatedErrors.length; i += BATCH_SIZE) {
         batches.push(validatedErrors.slice(i, i + BATCH_SIZE));
