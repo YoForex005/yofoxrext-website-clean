@@ -3,6 +3,70 @@ import { pgTable, text, varchar, integer, timestamp, boolean, index, jsonb, json
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// ============================================================================
+// SWEETS ECONOMY: TRIGGER & CHANNEL TAXONOMY
+// ============================================================================
+// Standardized taxonomy for coin transaction classification and analytics
+
+/**
+ * TRIGGERS: How/why coins were earned or spent
+ * Format: {domain}.{action}.{result}
+ */
+export const COIN_TRIGGERS = {
+  // Forum Activity
+  FORUM_REPLY_POSTED: 'forum.reply.posted',
+  FORUM_THREAD_CREATED: 'forum.thread.created',
+  FORUM_LIKE_RECEIVED: 'forum.like.received',
+  FORUM_LIKE_GIVEN: 'forum.like.given',
+  
+  // Onboarding
+  ONBOARDING_PROFILE_COMPLETE: 'onboarding.profile.complete',
+  ONBOARDING_EMAIL_VERIFIED: 'onboarding.email.verified',
+  ONBOARDING_FIRST_POST: 'onboarding.first.post',
+  
+  // Referrals
+  REFERRAL_SIGNUP_COMPLETED: 'referral.signup.completed',
+  REFERRAL_PURCHASE_COMPLETED: 'referral.purchase.completed',
+  
+  // Engagement
+  ENGAGEMENT_DAILY_LOGIN: 'engagement.daily.login',
+  ENGAGEMENT_STREAK_BONUS: 'engagement.streak.bonus',
+  
+  // Marketplace
+  MARKETPLACE_PURCHASE_ITEM: 'marketplace.purchase.item',
+  MARKETPLACE_EA_PUBLISHED: 'marketplace.ea.published',
+  
+  // Treasury
+  TREASURY_WITHDRAW_REQUESTED: 'treasury.withdraw.requested',
+  
+  // Admin Actions
+  ADMIN_ADJUSTMENT_MANUAL: 'admin.adjustment.manual',
+  ADMIN_BONUS_REWARD: 'admin.bonus.reward',
+  
+  // System
+  SYSTEM_WELCOME_BONUS: 'system.welcome.bonus',
+  SYSTEM_UNKNOWN: 'system.unknown',
+} as const;
+
+/**
+ * CHANNELS: Where the action originated
+ * Top-level categorization for analytics and filtering
+ */
+export const COIN_CHANNELS = {
+  FORUM: 'forum',
+  MARKETPLACE: 'marketplace',
+  ONBOARDING: 'onboarding',
+  REFERRAL: 'referral',
+  ENGAGEMENT: 'engagement',
+  TREASURY: 'treasury',
+  ADMIN: 'admin',
+  SYSTEM: 'system',
+} as const;
+
+// Type inference from constants
+export type CoinTrigger = typeof COIN_TRIGGERS[keyof typeof COIN_TRIGGERS];
+export type CoinChannel = typeof COIN_CHANNELS[keyof typeof COIN_CHANNELS];
+
 // Session storage table - REQUIRED for Replit Auth
 export const sessions = pgTable(
   "sessions",
@@ -169,6 +233,9 @@ export const coinTransactions = pgTable("coin_transactions", {
   triggerIdx: index("idx_coin_transactions_trigger").on(table.trigger),
   expiresAtIdx: index("idx_coin_transactions_expires_at").on(table.expiresAt),
   reconciledAtIdx: index("idx_coin_transactions_reconciled_at").on(table.reconciledAt),
+  // Composite indexes for analytics
+  userCreatedIdx: index("idx_coin_tx_user_created").on(table.userId, table.createdAt),
+  triggerChannelIdx: index("idx_coin_tx_trigger_channel").on(table.trigger, table.channel),
 }));
 
 export const rechargeOrders = pgTable("recharge_orders", {
@@ -975,6 +1042,7 @@ export const userWallet = pgTable("user_wallet", {
   balance: integer("balance").notNull().default(0),
   availableBalance: integer("available_balance").notNull().default(0),
   status: text("status").notNull().default("active"),
+  version: integer("version").notNull().default(1), // For optimistic concurrency control
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
   userIdIdx: uniqueIndex("idx_user_wallet_user_id").on(table.userId),
