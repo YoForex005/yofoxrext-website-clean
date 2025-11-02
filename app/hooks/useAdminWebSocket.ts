@@ -35,8 +35,7 @@ export function useAdminWebSocket(user?: { id: string; role: string } | null): U
       : 'http://localhost:3001';
 
     // Connect to admin namespace
-    const adminSocket: Socket = io(apiUrl, {
-      path: '/ws/admin',
+    const adminSocket: Socket = io(`${apiUrl}/ws/admin`, {
       auth: {
         userId: user.id,
         userRole: user.role

@@ -17,8 +17,7 @@ export function useDashboardWebSocket(userId?: string) {
       ? `${window.location.protocol}//${window.location.hostname}:3001`
       : 'http://localhost:3001';
       
-    const socket: Socket = io(apiUrl, {
-      path: '/ws/dashboard',
+    const socket: Socket = io(`${apiUrl}/ws/dashboard`, {
       autoConnect: true,
       transports: ['websocket', 'polling'], // Try WebSocket first, fallback to polling
       reconnection: true,
