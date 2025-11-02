@@ -7231,6 +7231,84 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // ============================================
+  // ADMIN AUDIT LOGS ENDPOINTS
+  // ============================================
+
+  // Helper function to convert logs to CSV format
+  function convertLogsToCSV(logs: any[]): string {
+    if (logs.length === 0) return 'No data';
+    
+    const headers = ['Timestamp', 'Admin', 'Action', 'Category', 'Target', 'IP Address', 'Status', 'Duration (ms)', 'Metadata'];
+    const rows = logs.map(log => [
+      log.createdAt,
+      log.users?.email || log.adminId,
+      log.action,
+      log.actionCategory,
+      log.targetType ? `${log.targetType}#${log.targetId}` : '',
+      log.ipAddress || '',
+      log.statusCode || '',
+      log.durationMs || '',
+      JSON.stringify(log.metadata || {}),
+    ]);
+    
+    const csvRows = [headers, ...rows];
+    return csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  }
+
+  // GET /api/admin/audit-logs - List audit logs with filters
+  app.get('/api/admin/audit-logs', isAdminMiddleware, async (req, res) => {
+    try {
+      const filters = {
+        action: req.query.action as string,
+        category: req.query.category as string,
+        adminId: req.query.adminId as string,
+        targetType: req.query.targetType as string,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        search: req.query.search as string,
+        limit: parseInt(req.query.limit as string) || 50,
+        offset: parseInt(req.query.offset as string) || 0,
+      };
+      
+      const logs = await storage.listAuditLogs(filters);
+      const total = await storage.countAuditLogs(filters);
+      
+      res.json({ logs, total });
+    } catch (error) {
+      console.error('[Audit Logs] Error fetching logs:', error);
+      res.status(500).json({ error: 'Failed to fetch audit logs' });
+    }
+  });
+
+  // GET /api/admin/audit-logs/export - Export audit logs as CSV
+  app.get('/api/admin/audit-logs/export', isAdminMiddleware, async (req, res) => {
+    try {
+      const filters = {
+        action: req.query.action as string,
+        category: req.query.category as string,
+        adminId: req.query.adminId as string,
+        targetType: req.query.targetType as string,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        search: req.query.search as string,
+      };
+      
+      const logs = await storage.exportAuditLogs(filters);
+      
+      // Convert to CSV
+      const csv = convertLogsToCSV(logs);
+      
+      const filename = `audit-logs-${new Date().toISOString().split('T')[0]}.csv`;
+      res.header('Content-Type', 'text/csv');
+      res.header('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+    } catch (error) {
+      console.error('[Audit Logs] Error exporting logs:', error);
+      res.status(500).json({ error: 'Failed to export audit logs' });
+    }
+  });
+
+  // ============================================
   // ADMIN ANALYTICS DASHBOARD ENDPOINTS
   // ============================================
 

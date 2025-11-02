@@ -14,6 +14,7 @@ import { initializeDashboardWebSocket } from "./services/dashboardWebSocket";
 import { serverErrorTracker, errorTrackingMiddleware } from "./middleware/errorTracking";
 import { ipBanMiddleware, loginSecurityMiddleware } from './middleware/security';
 import { getSecurityService } from './services/securityService';
+import { auditLogger } from './middleware/auditLogger';
 
 // Initialize security service
 const securityService = getSecurityService(storage);
@@ -162,6 +163,9 @@ async function initializeServer() {
     // Setup local authentication (includes password reset endpoints)
     const { setupLocalAuth } = await import('./localAuth');
     await setupLocalAuth(app);
+    
+    // Add audit logging middleware after authentication setup
+    app.use(auditLogger);
     
     const expressApp = await registerRoutes(app);
     

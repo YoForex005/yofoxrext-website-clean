@@ -169,6 +169,8 @@ import {
   type InsertWeeklyEarnings,
   type FeatureUnlock,
   type InsertFeatureUnlock,
+  type AuditLog,
+  type InsertAuditLog,
   users,
   userActivity,
   coinTransactions,
@@ -266,6 +268,7 @@ import {
   userRankProgress,
   weeklyEarnings,
   featureUnlocks,
+  auditLogs,
   BADGE_TYPES,
   type BadgeType
 } from "@shared/schema";
@@ -1374,6 +1377,45 @@ export interface IStorage {
    * Check if an IP is currently banned (not expired)
    */
   checkIpBanned(ipAddress: string): Promise<boolean>;
+  
+  // ============================================================================
+  // AUDIT LOGS SYSTEM - Comprehensive admin action tracking
+  // ============================================================================
+  
+  /**
+   * Create a new audit log entry
+   */
+  createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
+  
+  /**
+   * List audit logs with optional filters
+   */
+  listAuditLogs(filters?: {
+    action?: string;
+    category?: string;
+    adminId?: string;
+    targetType?: string;
+    startDate?: Date;
+    endDate?: Date;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditLog[]>;
+  
+  /**
+   * Get a single audit log by ID
+   */
+  getAuditLogById(id: number): Promise<AuditLog | null>;
+  
+  /**
+   * Count audit logs matching filters
+   */
+  countAuditLogs(filters?: any): Promise<number>;
+  
+  /**
+   * Export audit logs for CSV download
+   */
+  exportAuditLogs(filters?: any): Promise<AuditLog[]>;
   
   /**
    * List all page controls
@@ -20605,6 +20647,234 @@ export class DrizzleStorage implements IStorage {
         .where(and(...conditions));
     } catch (error) {
       console.error('Error getting users by audience:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // AUDIT LOGS SYSTEM - Complete Implementation
+  // ============================================================================
+
+  async createAuditLog(data: InsertAuditLog): Promise<AuditLog> {
+    try {
+      const [log] = await db
+        .insert(auditLogs)
+        .values(data)
+        .returning();
+      return log;
+    } catch (error) {
+      console.error('Error creating audit log:', error);
+      throw error;
+    }
+  }
+
+  async listAuditLogs(filters?: {
+    action?: string;
+    category?: string;
+    adminId?: string;
+    targetType?: string;
+    startDate?: Date;
+    endDate?: Date;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<AuditLog[]> {
+    try {
+      const conditions = [];
+
+      if (filters?.action) {
+        conditions.push(eq(auditLogs.action, filters.action));
+      }
+      if (filters?.category) {
+        conditions.push(eq(auditLogs.actionCategory, filters.category));
+      }
+      if (filters?.adminId) {
+        conditions.push(eq(auditLogs.adminId, filters.adminId));
+      }
+      if (filters?.targetType) {
+        conditions.push(eq(auditLogs.targetType, filters.targetType));
+      }
+      if (filters?.startDate) {
+        conditions.push(gte(auditLogs.createdAt, filters.startDate));
+      }
+      if (filters?.endDate) {
+        conditions.push(lte(auditLogs.createdAt, filters.endDate));
+      }
+      if (filters?.search) {
+        conditions.push(
+          or(
+            ilike(auditLogs.action, `%${filters.search}%`),
+            ilike(auditLogs.targetId, `%${filters.search}%`)
+          )
+        );
+      }
+
+      const query = db
+        .select({
+          id: auditLogs.id,
+          adminId: auditLogs.adminId,
+          action: auditLogs.action,
+          actionCategory: auditLogs.actionCategory,
+          targetType: auditLogs.targetType,
+          targetId: auditLogs.targetId,
+          ipAddress: auditLogs.ipAddress,
+          userAgent: auditLogs.userAgent,
+          requestMethod: auditLogs.requestMethod,
+          requestPath: auditLogs.requestPath,
+          statusCode: auditLogs.statusCode,
+          durationMs: auditLogs.durationMs,
+          metadata: auditLogs.metadata,
+          createdAt: auditLogs.createdAt,
+          users: {
+            id: users.id,
+            email: users.email,
+            username: users.username,
+          },
+        })
+        .from(auditLogs)
+        .leftJoin(users, eq(auditLogs.adminId, users.id))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(filters?.limit || 50)
+        .offset(filters?.offset || 0);
+
+      if (conditions.length > 0) {
+        query.where(and(...conditions));
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error listing audit logs:', error);
+      throw error;
+    }
+  }
+
+  async getAuditLogById(id: number): Promise<AuditLog | null> {
+    try {
+      const [log] = await db
+        .select()
+        .from(auditLogs)
+        .where(eq(auditLogs.id, id))
+        .limit(1);
+      return log || null;
+    } catch (error) {
+      console.error('Error getting audit log by ID:', error);
+      throw error;
+    }
+  }
+
+  async countAuditLogs(filters?: any): Promise<number> {
+    try {
+      const conditions = [];
+
+      if (filters?.action) {
+        conditions.push(eq(auditLogs.action, filters.action));
+      }
+      if (filters?.category) {
+        conditions.push(eq(auditLogs.actionCategory, filters.category));
+      }
+      if (filters?.adminId) {
+        conditions.push(eq(auditLogs.adminId, filters.adminId));
+      }
+      if (filters?.targetType) {
+        conditions.push(eq(auditLogs.targetType, filters.targetType));
+      }
+      if (filters?.startDate) {
+        conditions.push(gte(auditLogs.createdAt, filters.startDate));
+      }
+      if (filters?.endDate) {
+        conditions.push(lte(auditLogs.createdAt, filters.endDate));
+      }
+      if (filters?.search) {
+        conditions.push(
+          or(
+            ilike(auditLogs.action, `%${filters.search}%`),
+            ilike(auditLogs.targetId, `%${filters.search}%`)
+          )
+        );
+      }
+
+      const query = db
+        .select({ count: count() })
+        .from(auditLogs);
+
+      if (conditions.length > 0) {
+        query.where(and(...conditions));
+      }
+
+      const [result] = await query;
+      return Number(result?.count) || 0;
+    } catch (error) {
+      console.error('Error counting audit logs:', error);
+      throw error;
+    }
+  }
+
+  async exportAuditLogs(filters?: any): Promise<AuditLog[]> {
+    try {
+      // Same as listAuditLogs but without limit/offset for full export
+      const conditions = [];
+
+      if (filters?.action) {
+        conditions.push(eq(auditLogs.action, filters.action));
+      }
+      if (filters?.category) {
+        conditions.push(eq(auditLogs.actionCategory, filters.category));
+      }
+      if (filters?.adminId) {
+        conditions.push(eq(auditLogs.adminId, filters.adminId));
+      }
+      if (filters?.targetType) {
+        conditions.push(eq(auditLogs.targetType, filters.targetType));
+      }
+      if (filters?.startDate) {
+        conditions.push(gte(auditLogs.createdAt, filters.startDate));
+      }
+      if (filters?.endDate) {
+        conditions.push(lte(auditLogs.createdAt, filters.endDate));
+      }
+      if (filters?.search) {
+        conditions.push(
+          or(
+            ilike(auditLogs.action, `%${filters.search}%`),
+            ilike(auditLogs.targetId, `%${filters.search}%`)
+          )
+        );
+      }
+
+      const query = db
+        .select({
+          id: auditLogs.id,
+          adminId: auditLogs.adminId,
+          action: auditLogs.action,
+          actionCategory: auditLogs.actionCategory,
+          targetType: auditLogs.targetType,
+          targetId: auditLogs.targetId,
+          ipAddress: auditLogs.ipAddress,
+          userAgent: auditLogs.userAgent,
+          requestMethod: auditLogs.requestMethod,
+          requestPath: auditLogs.requestPath,
+          statusCode: auditLogs.statusCode,
+          durationMs: auditLogs.durationMs,
+          metadata: auditLogs.metadata,
+          createdAt: auditLogs.createdAt,
+          users: {
+            id: users.id,
+            email: users.email,
+            username: users.username,
+          },
+        })
+        .from(auditLogs)
+        .leftJoin(users, eq(auditLogs.adminId, users.id))
+        .orderBy(desc(auditLogs.createdAt))
+        .limit(10000); // Max export limit
+
+      if (conditions.length > 0) {
+        query.where(and(...conditions));
+      }
+
+      return await query;
+    } catch (error) {
+      console.error('Error exporting audit logs:', error);
       throw error;
     }
   }

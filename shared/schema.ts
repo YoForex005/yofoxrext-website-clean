@@ -1703,6 +1703,29 @@ export const dashboardLayouts = pgTable("dashboard_layouts", {
   isDefaultIdx: index("idx_dashboard_layouts_is_default").on(table.isDefault),
 }));
 
+// Audit Logs - Comprehensive admin action tracking
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  adminId: varchar("admin_id").notNull().references(() => users.id),
+  action: varchar("action", { length: 100 }).notNull(), // e.g., "USER_CREATE", "TICKET_REPLY"
+  actionCategory: varchar("action_category", { length: 50 }).notNull(), // e.g., "USER_MANAGEMENT", "SUPPORT"
+  targetType: varchar("target_type", { length: 50 }), // e.g., "user", "ticket", "setting"
+  targetId: varchar("target_id", { length: 100 }), // The ID of the target entity
+  ipAddress: varchar("ip_address", { length: 45 }), // IPv4 or IPv6
+  userAgent: text("user_agent"),
+  requestMethod: varchar("request_method", { length: 10 }), // GET, POST, PUT, DELETE
+  requestPath: varchar("request_path", { length: 255 }),
+  statusCode: integer("status_code"),
+  durationMs: integer("duration_ms"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(), // Request body, query params, etc.
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  createdAtIdx: index("idx_audit_logs_created_at").on(table.createdAt),
+  categoryCreatedIdx: index("idx_audit_logs_category_created").on(table.actionCategory, table.createdAt),
+  adminCreatedIdx: index("idx_audit_logs_admin_created").on(table.adminId, table.createdAt),
+  targetIdx: index("idx_audit_logs_target").on(table.targetType, table.targetId),
+}));
+
 // ==================== SWEETS (COIN ECONOMY) SYSTEM TABLES ====================
 
 // Rank Tiers - Define rank levels and their requirements
@@ -2034,6 +2057,27 @@ export const insertWeeklyEarningsSchema = createInsertSchema(weeklyEarnings).omi
   coinsEarned: z.number().int().min(0).default(0),
   xpEarned: z.number().int().min(0).default(0),
 });
+
+// Audit Logs schemas
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  adminId: z.string().min(1),
+  action: z.string().min(1).max(100),
+  actionCategory: z.string().min(1).max(50),
+  targetType: z.string().max(50).optional().nullable(),
+  targetId: z.string().max(100).optional().nullable(),
+  ipAddress: z.string().max(45).optional().nullable(),
+  userAgent: z.string().optional().nullable(),
+  requestMethod: z.string().max(10).optional().nullable(),
+  requestPath: z.string().max(255).optional().nullable(),
+  statusCode: z.number().int().optional().nullable(),
+  durationMs: z.number().int().optional().nullable(),
+  metadata: z.record(z.any()).optional().nullable(),
+});
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
 
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
