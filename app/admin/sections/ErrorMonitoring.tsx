@@ -24,6 +24,7 @@ import {
   Monitor,
   Globe,
   User,
+  Download,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -122,6 +123,8 @@ export default function ErrorMonitoring() {
   const [newStatus, setNewStatus] = useState<string>('');
   const [statusReason, setStatusReason] = useState<string>('');
   const [statsPeriod, setStatsPeriod] = useState<'24h' | '7d' | '30d'>('24h');
+  const [activeTab, setActiveTab] = useState<string>('to-be-solved');
+  const [exportingCSV, setExportingCSV] = useState(false);
 
   // Filters
   const [filters, setFilters] = useState({
@@ -133,7 +136,7 @@ export default function ErrorMonitoring() {
   });
 
   // Fetch error groups
-  const { data: errorGroups, isLoading: loadingGroups, refetch: refetchGroups } = useQuery({
+  const { data: errorGroups, isLoading: loadingGroups, error: groupsError, refetch: refetchGroups } = useQuery({
     queryKey: ['/api/admin/errors/groups', filters],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -146,17 +149,19 @@ export default function ErrorMonitoring() {
       const response = await apiRequest('GET', `/api/admin/errors/groups?${params}`);
       return response.json();
     },
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    retry: false,
   });
 
   // Fetch error stats
-  const { data: stats, isLoading: loadingStats } = useQuery({
+  const { data: stats, isLoading: loadingStats, error: statsError } = useQuery({
     queryKey: ['/api/admin/errors/stats', statsPeriod],
     queryFn: async () => {
       const response = await apiRequest('GET', `/api/admin/errors/stats?period=${statsPeriod}`);
       return response.json();
     },
-    refetchInterval: 10000, // Auto-refresh every 10 seconds
+    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    retry: false,
   });
 
   // Fetch error group details
@@ -297,6 +302,179 @@ export default function ErrorMonitoring() {
 
   const COLORS = ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'];
 
+  // CSV Export functionality
+  const handleExportCSV = async () => {
+    try {
+      setExportingCSV(true);
+
+      // Fetch all pages
+      let allGroups: ErrorGroup[] = [];
+      let offset = 0;
+      const pageSize = 200; // Backend max
+      let hasMore = true;
+
+      while (hasMore) {
+        const response = await fetch(
+          `/api/admin/errors/groups?limit=${pageSize}&offset=${offset}` +
+          `&severity=${filters.severity}&status=${filters.status}&search=${filters.search}`,
+          { credentials: 'include' }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch page: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        allGroups = allGroups.concat(data.groups);
+
+        if (data.groups.length < pageSize) {
+          hasMore = false; // Last page
+        } else {
+          offset += pageSize;
+        }
+
+        // Safety: max 10,000 records (50 pages)
+        if (offset >= 10000) {
+          hasMore = false;
+        }
+      }
+
+      if (allGroups.length === 0) {
+        toast({ 
+          title: 'No data to export', 
+          description: 'There are no error groups matching your filters.',
+          variant: 'destructive' 
+        });
+        return;
+      }
+
+      // Generate CSV with all collected groups
+      const headers = ['ID', 'Message', 'Component', 'Severity', 'Status', 'Occurrences', 'First Seen', 'Last Seen'];
+      const rows = allGroups.map(group => [
+        group.id,
+        group.message,
+        group.component || '',
+        group.severity,
+        group.status,
+        group.occurrenceCount,
+        new Date(group.firstSeen).toLocaleString(),
+        new Date(group.lastSeen).toLocaleString(),
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')),
+      ].join('\n');
+
+      // Download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `error-groups-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+
+      toast({ title: `CSV exported successfully (${allGroups.length} records)` });
+    } catch (error) {
+      console.error('CSV export error:', error);
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setExportingCSV(false);
+    }
+  };
+
+  // Handle 401 errors - redirect to login
+  useEffect(() => {
+    if (statsError || groupsError) {
+      const error: any = statsError || groupsError;
+      if (error && 'status' in error && (error as any).status === 401) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Redirecting to admin login...',
+          variant: 'destructive',
+        });
+        setTimeout(() => {
+          window.location.href = '/admin/login';
+        }, 2000);
+      }
+    }
+  }, [statsError, groupsError, toast]);
+
+  // Update filters when tab changes
+  useEffect(() => {
+    if (activeTab === 'to-be-solved') {
+      setFilters(prev => ({ ...prev, status: 'active', severity: 'critical' }));
+    } else if (activeTab === 'unsolved') {
+      setFilters(prev => ({ ...prev, status: 'active', severity: '' }));
+    } else if (activeTab === 'solved') {
+      setFilters(prev => ({ ...prev, status: 'resolved', severity: '' }));
+    } else if (activeTab === 'all') {
+      setFilters(prev => ({ ...prev, status: '', severity: '' }));
+    }
+  }, [activeTab]);
+
+  // Show loading state
+  if (loadingStats && loadingGroups) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Error Monitoring</h2>
+            <p className="text-muted-foreground">Loading...</p>
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+          {[...Array(5)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-20" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (statsError || groupsError) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Error Monitoring</h2>
+            <p className="text-muted-foreground">Error loading dashboard</p>
+          </div>
+        </div>
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardHeader>
+            <CardTitle className="text-red-600 dark:text-red-400 flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              Authentication Required
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm">
+              {(statsError as any)?.message || (groupsError as any)?.message || 'Failed to load error monitoring data. Please log in as an administrator.'}
+            </p>
+            <Button 
+              className="mt-4" 
+              onClick={() => window.location.href = '/admin/login'}
+            >
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -336,6 +514,16 @@ export default function ErrorMonitoring() {
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Cleanup
+          </Button>
+          <Button
+            onClick={handleExportCSV}
+            disabled={exportingCSV}
+            variant="outline"
+            size="sm"
+            data-testid="button-export-csv"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            {exportingCSV ? 'Exporting...' : 'Export CSV'}
           </Button>
         </div>
       </div>
@@ -419,7 +607,7 @@ export default function ErrorMonitoring() {
       </div>
 
       {/* Tabs with Clear Categorization */}
-      <Tabs defaultValue="to-be-solved" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="to-be-solved" data-testid="tab-to-be-solved" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
