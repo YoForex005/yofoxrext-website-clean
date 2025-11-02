@@ -83,7 +83,7 @@ export class ErrorTracker {
   // Deduplication
   private sentFingerprints: Set<string> = new Set();
   private fingerprintExpiry: Map<string, number> = new Map();
-  private readonly fingerprintTTL = 60 * 60 * 1000; // 1 hour
+  private readonly fingerprintTTL = 24 * 60 * 60 * 1000; // 24 hours
 
   private constructor() {
     // Check if we're in a browser environment
@@ -348,6 +348,37 @@ export class ErrorTracker {
     responseText?: string,
     headers?: Record<string, string>
   ): void {
+    // Whitelist of known 404 endpoints that shouldn't be tracked
+    const expected404Endpoints = [
+      '/api/user/onboarding-progress',
+      '/api/me/onboarding',
+      '/api/auth/session',
+      '/api/user/profile',
+      '/api/threads/by-slug/',  // Any thread slug not found
+      '/api/content/by-slug/',  // Any content slug not found
+    ];
+    
+    // Check if this is an expected 404 error
+    if (status === 404) {
+      // Check if URL matches any of the expected 404 patterns
+      const isExpected404 = expected404Endpoints.some(pattern => url.includes(pattern));
+      if (isExpected404) {
+        console.debug('[API] Expected 404, not tracking:', url);
+        return;
+      }
+    }
+    
+    // Don't track client errors (4xx) except for 500+ errors
+    // Client errors are expected (validation failures, auth issues, etc.)
+    if (status >= 400 && status < 500) {
+      // Only track severe client errors (403 forbidden, 402 payment required) 
+      // Skip common ones like 404, 401, 400, 422
+      if ([400, 401, 404, 422, 429].includes(status)) {
+        console.debug(`[API] Expected client error ${status}, not tracking:`, url);
+        return;
+      }
+    }
+    
     // Parse the response body to extract the actual error message
     let parsedError: any = null;
     let actualErrorMessage = '';
@@ -370,6 +401,12 @@ export class ErrorTracker {
     // Check if this is a CORS error - don't track these as they're handled by the browser
     if (actualErrorMessage.includes('CORS') || actualErrorMessage.includes('Not allowed by CORS')) {
       console.info('[API] CORS error detected, not tracking:', actualErrorMessage);
+      return;
+    }
+    
+    // Filter out "User not found" errors specifically
+    if (actualErrorMessage.toLowerCase().includes('user not found')) {
+      console.debug('[API] User not found error, not tracking:', url);
       return;
     }
 

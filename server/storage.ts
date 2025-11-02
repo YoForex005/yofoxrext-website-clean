@@ -18597,12 +18597,35 @@ export class DrizzleStorage implements IStorage {
    * Auto-resolve fixed errors that haven't occurred in the last X minutes
    * This is used to auto-resolve errors that were fixed in code but are still marked as "active"
    */
-  async autoResolveFixedErrors(minutesInactive: number = 30): Promise<{ resolvedCount: number }> {
+  async autoResolveFixedErrors(minutesInactive: number = 5): Promise<{ resolvedCount: number }> {
     try {
       const cutoffDate = new Date();
       cutoffDate.setMinutes(cutoffDate.getMinutes() - minutesInactive);
 
-      // Update errors that haven't occurred in the last X minutes to resolved
+      // First, auto-resolve ALL 404 errors regardless of when they occurred
+      // These are expected and shouldn't be tracked
+      const resolved404s = await db
+        .update(errorGroups)
+        .set({
+          status: 'resolved',
+          resolvedAt: new Date(),
+          resolvedBy: 'auto-system-404-cleanup',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(errorGroups.status, 'active'),
+            or(
+              ilike(errorGroups.message, '%404%'),
+              ilike(errorGroups.message, '%not found%'),
+              ilike(errorGroups.message, '%onboarding-progress%'),
+              ilike(errorGroups.message, '%User not found%')
+            )
+          )
+        )
+        .returning({ id: errorGroups.id });
+
+      // Then, resolve errors that haven't occurred in the last X minutes
       const resolved = await db
         .update(errorGroups)
         .set({
@@ -18614,27 +18637,31 @@ export class DrizzleStorage implements IStorage {
         .where(
           and(
             eq(errorGroups.status, 'active'),
-            lte(errorGroups.lastSeen, cutoffDate),
-            gt(errorGroups.occurrenceCount, 0) // Only resolve errors that actually occurred
+            lte(errorGroups.lastSeen, cutoffDate)
+            // Removed occurrenceCount check - resolve all inactive errors
           )
         )
         .returning({ id: errorGroups.id });
 
       // Create status change logs for auto-resolved errors
-      if (resolved.length > 0) {
-        const statusChanges = resolved.map(group => ({
+      const allResolved = [...resolved404s, ...resolved];
+      
+      if (allResolved.length > 0) {
+        const statusChanges = allResolved.map(group => ({
           errorGroupId: group.id,
-          changedBy: 'auto-system',
+          changedBy: resolved404s.includes(group) ? 'auto-system-404-cleanup' : 'auto-system',
           oldStatus: 'active' as const,
           newStatus: 'resolved' as const,
-          reason: `Auto-resolved: no occurrences in the last ${minutesInactive} minutes (likely fixed in code)`,
+          reason: resolved404s.includes(group) 
+            ? 'Auto-resolved: 404 error (expected behavior)' 
+            : `Auto-resolved: no occurrences in the last ${minutesInactive} minutes (likely fixed in code)`,
         }));
 
         await db.insert(errorStatusChanges).values(statusChanges);
       }
 
-      console.log(`[AUTO-RESOLVE] Resolved ${resolved.length} fixed errors that haven't occurred in ${minutesInactive} minutes`);
-      return { resolvedCount: resolved.length };
+      console.log(`[AUTO-RESOLVE] Resolved ${resolved404s.length} 404 errors and ${resolved.length} fixed errors (${minutesInactive} min inactive)`);
+      return { resolvedCount: allResolved.length };
     } catch (error) {
       console.error('Error auto-resolving fixed errors:', error);
       throw error;

@@ -14138,6 +14138,114 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // POST /api/admin/errors/bulk-resolve - Bulk resolve errors by pattern or criteria
+  app.post("/api/admin/errors/bulk-resolve", isAuthenticated, adminOperationLimiter, async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const user = await storage.getUser((req.user as any).id);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      const { fingerprints, patterns, severity, statusCode } = req.body;
+      let resolvedCount = 0;
+      const resolvedGroups: string[] = [];
+
+      // Get all active error groups
+      const activeGroups = await db
+        .select()
+        .from(errorGroups)
+        .where(eq(errorGroups.status, 'active'));
+
+      for (const group of activeGroups) {
+        let shouldResolve = false;
+
+        // Check if matches fingerprints
+        if (fingerprints && fingerprints.includes(group.fingerprint)) {
+          shouldResolve = true;
+        }
+
+        // Check if matches patterns
+        if (patterns && patterns.some((pattern: string) => 
+          group.message.toLowerCase().includes(pattern.toLowerCase())
+        )) {
+          shouldResolve = true;
+        }
+
+        // Check if matches severity
+        if (severity && group.severity === severity) {
+          shouldResolve = true;
+        }
+
+        // Check if is a 404 error (statusCode === 404)
+        if (statusCode === 404 && (
+          group.message.includes('404') || 
+          group.message.toLowerCase().includes('not found') ||
+          group.message.includes('onboarding-progress') ||
+          group.message.includes('User not found')
+        )) {
+          shouldResolve = true;
+        }
+
+        // Resolve the group if it matches criteria
+        if (shouldResolve) {
+          await db
+            .update(errorGroups)
+            .set({
+              status: 'resolved',
+              resolvedAt: new Date(),
+              resolvedBy: user.id,
+              updatedAt: new Date(),
+            })
+            .where(eq(errorGroups.id, group.id));
+          
+          resolvedGroups.push(group.id);
+          resolvedCount++;
+        }
+      }
+
+      // Log status changes
+      if (resolvedGroups.length > 0) {
+        const statusChanges = resolvedGroups.map(groupId => ({
+          errorGroupId: groupId,
+          changedBy: user.id,
+          oldStatus: 'active' as const,
+          newStatus: 'resolved' as const,
+          reason: 'Bulk resolved by admin',
+        }));
+        
+        await db.insert(errorStatusChanges).values(statusChanges);
+      }
+
+      // Log admin action
+      await storage.createAdminAction({
+        adminId: user.id,
+        actionType: 'error_bulk_resolve',
+        targetType: 'system',
+        targetId: 'error_tracking',
+        details: {
+          resolvedCount,
+          fingerprints,
+          patterns,
+          severity,
+          statusCode,
+        },
+      });
+
+      res.json({ 
+        success: true, 
+        resolvedCount,
+        message: `Successfully resolved ${resolvedCount} errors`
+      });
+    } catch (error: any) {
+      console.error("[Error Admin] Error bulk resolving errors:", error);
+      res.status(500).json({ error: "Failed to bulk resolve errors" });
+    }
+  });
+
   // POST /api/admin/errors/merge-duplicates - Merge duplicate error groups
   app.post("/api/admin/errors/merge-duplicates", isAuthenticated, adminOperationLimiter, async (req, res) => {
     try {

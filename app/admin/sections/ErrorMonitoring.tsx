@@ -825,8 +825,8 @@ export default function ErrorMonitoring() {
                             </TableCell>
                             <TableCell>
                               <div className="text-sm">
-                                <p>{formatDistanceToNow(new Date(group.lastSeen), { addSuffix: true })}</p>
-                                <p className="text-xs text-muted-foreground">
+                                <p suppressHydrationWarning>{formatDistanceToNow(new Date(group.lastSeen), { addSuffix: true })}</p>
+                                <p className="text-xs text-muted-foreground" suppressHydrationWarning>
                                   {format(new Date(group.lastSeen), 'PPp')}
                                 </p>
                               </div>
@@ -856,7 +856,7 @@ export default function ErrorMonitoring() {
                                               <div className="grid gap-2">
                                                 <div className="flex justify-between">
                                                   <span className="text-muted-foreground">Time:</span>
-                                                  <span>{format(new Date(event.createdAt), 'PPp')}</span>
+                                                  <span suppressHydrationWarning>{format(new Date(event.createdAt), 'PPp')}</span>
                                                 </div>
                                                 {event.userId && (
                                                   <div className="flex justify-between">
@@ -977,8 +977,8 @@ export default function ErrorMonitoring() {
                             </TableCell>
                             <TableCell>
                               <div className="text-sm">
-                                <p>{formatDistanceToNow(new Date(group.lastSeen), { addSuffix: true })}</p>
-                                <p className="text-xs text-muted-foreground">
+                                <p suppressHydrationWarning>{formatDistanceToNow(new Date(group.lastSeen), { addSuffix: true })}</p>
+                                <p className="text-xs text-muted-foreground" suppressHydrationWarning>
                                   {format(new Date(group.lastSeen), 'PPp')}
                                 </p>
                               </div>
@@ -1008,7 +1008,7 @@ export default function ErrorMonitoring() {
                                               <div className="grid gap-2">
                                                 <div className="flex justify-between">
                                                   <span className="text-muted-foreground">Time:</span>
-                                                  <span>{format(new Date(event.createdAt), 'PPp')}</span>
+                                                  <span suppressHydrationWarning>{format(new Date(event.createdAt), 'PPp')}</span>
                                                 </div>
                                                 {event.userId && (
                                                   <div className="flex justify-between">
@@ -1161,7 +1161,7 @@ export default function ErrorMonitoring() {
                                               <div className="grid gap-2">
                                                 <div className="flex justify-between">
                                                   <span className="text-muted-foreground">Time:</span>
-                                                  <span>{format(new Date(event.createdAt), 'PPp')}</span>
+                                                  <span suppressHydrationWarning>{format(new Date(event.createdAt), 'PPp')}</span>
                                                 </div>
                                                 {event.stackTrace && (
                                                   <div>
@@ -1549,7 +1549,7 @@ export default function ErrorMonitoring() {
                       <div className="flex-1">
                         <p className="text-sm font-medium line-clamp-1">{resolution.message}</p>
                         <p className="text-xs text-muted-foreground">
-                          Resolved by {resolution.resolvedBy} • {formatDistanceToNow(new Date(resolution.resolvedAt), { addSuffix: true })}
+                          Resolved by {resolution.resolvedBy} • <span suppressHydrationWarning>{formatDistanceToNow(new Date(resolution.resolvedAt), { addSuffix: true })}</span>
                         </p>
                       </div>
                       <CheckCircle className="h-4 w-4 text-green-600" />
