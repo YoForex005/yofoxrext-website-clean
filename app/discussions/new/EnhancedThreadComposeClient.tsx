@@ -11,6 +11,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
 import DOMPurify from 'isomorphic-dompurify';
 import type { ForumCategory } from "@shared/schema";
 import Header from "@/components/Header";
@@ -74,7 +75,8 @@ import {
   Paperclip,
   DollarSign,
   Download,
-  MessageSquare
+  MessageSquare,
+  Loader2
 } from "lucide-react";
 
 // File attachment interface
@@ -121,40 +123,16 @@ interface EnhancedThreadComposeClientProps {
 }
 
 // Formatting toolbar component
-function FormattingToolbar({ editor }: { editor: any }) {
+function FormattingToolbar({ 
+  editor, 
+  isUploadingImage, 
+  onImageUpload 
+}: { 
+  editor: any;
+  isUploadingImage: boolean;
+  onImageUpload: () => void;
+}) {
   if (!editor) return null;
-
-  const handleImageUpload = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      const formData = new FormData();
-      formData.append('files', file);
-
-      try {
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-          credentials: "include",
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const imageUrl = data.urls?.[0];
-          if (imageUrl) {
-            editor.chain().focus().setImage({ src: imageUrl }).run();
-          }
-        }
-      } catch (error) {
-        console.error('Image upload failed:', error);
-      }
-    };
-    input.click();
-  };
 
   return (
     <div className="flex items-center gap-1 p-2 border-b bg-muted/30 rounded-t-lg">
@@ -244,13 +222,23 @@ function FormattingToolbar({ editor }: { editor: any }) {
       <Button
         type="button"
         size="sm"
-        variant="ghost"
-        onClick={handleImageUpload}
-        className="h-8 px-2"
+        variant="secondary"
+        onClick={onImageUpload}
+        disabled={isUploadingImage}
+        className="h-8 px-3 bg-primary/10 hover:bg-primary/20 font-medium"
         data-testid="button-insert-image"
       >
-        <ImageIcon className="h-4 w-4 mr-1" />
-        Image
+        {isUploadingImage ? (
+          <>
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            Uploading...
+          </>
+        ) : (
+          <>
+            <ImageIcon className="h-4 w-4 mr-1" />
+            Insert Image
+          </>
+        )}
       </Button>
     </div>
   );
@@ -507,6 +495,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const [attachments, setAttachments] = useState<FileAttachment[]>([]);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   
   // Pre-select category from URL param
   const categoryParam = searchParams?.get("category") || "";
@@ -515,6 +505,68 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const parentCategories = categories.filter(c => !c.parentSlug);
   const getCategorySubcategories = (parentSlug: string) => 
     categories.filter(c => c.parentSlug === parentSlug);
+
+  // Image upload handler
+  const handleImageUpload = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('files', file);
+
+    try {
+      setIsUploadingImage(true);
+      
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.urls?.[0];
+        if (imageUrl && editor) {
+          editor.chain().focus().setImage({ src: imageUrl }).run();
+          toast({
+            title: "Image uploaded!",
+            description: "Image inserted at cursor position",
+          });
+        }
+      } else {
+        throw new Error("Upload failed");
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      toast({
+        title: "Upload failed",
+        description: "Could not upload image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  // Trigger file picker for image upload
+  const triggerImageUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        await handleImageUpload(file);
+      }
+    };
+    input.click();
+  };
 
   // Initialize TipTap editor
   const editor = useEditor({
@@ -526,8 +578,11 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
       }),
       Underline,
       Image.configure({
+        inline: true,
+        allowBase64: false,
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg',
+          class: 'max-w-full h-auto rounded-lg my-2 cursor-pointer hover:shadow-lg transition-shadow',
+          style: 'max-height: 500px; object-fit: contain;',
         },
       }),
       Link.configure({
@@ -536,11 +591,74 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           class: 'text-primary underline',
         },
       }),
+      Placeholder.configure({
+        placeholder: 'Start typing... You can add images by clicking the "Insert Image" button, dragging & dropping, or pasting (Ctrl+V)',
+        emptyEditorClass: 'is-editor-empty',
+      }),
     ],
     content: '',
     editorProps: {
       attributes: {
         class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4',
+      },
+      handleDrop: (view, event, slice, moved) => {
+        if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+          const files = Array.from(event.dataTransfer.files);
+          const imageFiles = files.filter(file => file.type.startsWith('image/'));
+          
+          if (imageFiles.length > 0) {
+            event.preventDefault();
+            setIsDragging(false);
+            
+            imageFiles.forEach(async (file) => {
+              await handleImageUpload(file);
+            });
+            
+            return true;
+          }
+        }
+        setIsDragging(false);
+        return false;
+      },
+      handlePaste: (view, event, slice) => {
+        const items = Array.from(event.clipboardData?.items || []);
+        const imageItems = items.filter(item => item.type.startsWith('image/'));
+        
+        if (imageItems.length > 0) {
+          event.preventDefault();
+          
+          imageItems.forEach((item) => {
+            const file = item.getAsFile();
+            if (file) {
+              handleImageUpload(file);
+            }
+          });
+          
+          return true;
+        }
+        return false;
+      },
+      handleDOMEvents: {
+        dragenter: (view, event) => {
+          if (event.dataTransfer?.types.includes('Files')) {
+            setIsDragging(true);
+          }
+          return false;
+        },
+        dragleave: (view, event) => {
+          const relatedTarget = event.relatedTarget as Node;
+          if (!view.dom.contains(relatedTarget)) {
+            setIsDragging(false);
+          }
+          return false;
+        },
+        dragover: (view, event) => {
+          if (event.dataTransfer?.types.includes('Files')) {
+            event.preventDefault();
+            return true;
+          }
+          return false;
+        },
       },
     },
   });
@@ -812,12 +930,41 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                     {/* Rich Text Editor */}
                     <div className="space-y-2">
                       <Label>Your story or question</Label>
-                      <div className="border rounded-lg overflow-hidden">
-                        <FormattingToolbar editor={editor} />
-                        <EditorContent 
+                      <div 
+                        className={`border rounded-lg overflow-hidden transition-all ${
+                          isDragging ? 'border-primary border-2 bg-primary/5 shadow-lg' : ''
+                        }`}
+                      >
+                        <FormattingToolbar 
                           editor={editor} 
-                          className="min-h-[300px]"
+                          isUploadingImage={isUploadingImage}
+                          onImageUpload={triggerImageUpload}
                         />
+                        <div className="relative">
+                          <EditorContent 
+                            editor={editor} 
+                            className="min-h-[300px]"
+                          />
+                          {isDragging && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-primary/10 backdrop-blur-sm pointer-events-none">
+                              <div className="text-center p-6 bg-background/90 rounded-lg border-2 border-dashed border-primary">
+                                <Upload className="h-12 w-12 mx-auto mb-2 text-primary" />
+                                <p className="text-lg font-semibold text-primary">Drop images here</p>
+                                <p className="text-sm text-muted-foreground mt-1">
+                                  Images will be uploaded and inserted at cursor
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                          {isUploadingImage && (
+                            <div className="absolute top-2 right-2">
+                              <Badge className="bg-primary/90 text-primary-foreground">
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Uploading image...
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {editor && (
                         <div className="flex justify-between text-xs">
@@ -831,6 +978,9 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                           )}
                         </div>
                       )}
+                      <p className="text-xs text-muted-foreground">
+                        💡 Tip: You can drag & drop images, paste from clipboard (Ctrl+V), or click "Insert Image"
+                      </p>
                     </div>
 
                     {/* Hashtags */}
