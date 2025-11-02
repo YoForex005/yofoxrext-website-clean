@@ -1264,25 +1264,42 @@ export const systemSettings = pgTable("system_settings", {
 // 5. Support Tickets - Customer support system
 export const supportTickets = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
-  ticketNumber: varchar("ticket_number").notNull().unique(),
+  ticketNumber: varchar("ticket_number", { length: 50 }).notNull().unique(),
   userId: varchar("user_id").notNull().references(() => users.id),
-  subject: varchar("subject").notNull(),
+  subject: text("subject").notNull(),
   description: text("description").notNull(),
-  status: varchar("status").notNull().default("open"),
-  priority: varchar("priority").notNull().default("medium"),
-  category: varchar("category").notNull(),
-  assignedTo: varchar("assigned_to").references(() => users.id),
-  replies: jsonb("replies").default(sql`'[]'::jsonb`),
-  tags: text("tags").array().default(sql`'{}'::text[]`),
+  category: varchar("category", { length: 50 }).notNull().$type<"technical" | "billing" | "general" | "account" | "other">(),
+  priority: varchar("priority", { length: 20 }).notNull().default("medium").$type<"low" | "medium" | "high">(),
+  status: varchar("status", { length: 20 }).notNull().default("open").$type<"open" | "in_progress" | "closed">(),
+  firstResponseAt: timestamp("first_response_at"),
+  resolvedAt: timestamp("resolved_at"),
+  satisfactionScore: integer("satisfaction_score"), // 1-5
+  satisfactionComment: text("satisfaction_comment"),
+  satisfactionSubmittedAt: timestamp("satisfaction_submitted_at"),
+  lastAdminResponderId: varchar("last_admin_responder_id").references(() => users.id),
+  lastMessageAt: timestamp("last_message_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-  resolvedAt: timestamp("resolved_at"),
 }, (table) => ({
+  ticketNumberIdx: index("idx_support_tickets_ticket_number").on(table.ticketNumber),
   statusIdx: index("idx_support_tickets_status").on(table.status),
   priorityIdx: index("idx_support_tickets_priority").on(table.priority),
-  userIdIdx: index("idx_support_tickets_user_id").on(table.userId),
-  assignedToIdx: index("idx_support_tickets_assigned_to").on(table.assignedTo),
-  createdAtIdx: index("idx_support_tickets_created_at").on(table.createdAt),
+  userIdx: index("idx_support_tickets_user").on(table.userId),
+  categoryStatusIdx: index("idx_support_tickets_category_status").on(table.category, table.status),
+}));
+
+// 5.5. Ticket Messages - Support ticket messages
+export const ticketMessages = pgTable("ticket_messages", {
+  id: serial("id").primaryKey(),
+  ticketId: integer("ticket_id").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull().references(() => users.id),
+  body: text("body").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
+  attachments: jsonb("attachments").$type<string[]>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  ticketIdx: index("idx_ticket_messages_ticket").on(table.ticketId),
+  authorIdx: index("idx_ticket_messages_author").on(table.authorId),
 }));
 
 // 6. Announcements - Removed (replaced by Communications System at end of file)
@@ -2622,6 +2639,11 @@ export type SystemSetting = typeof systemSettings.$inferSelect;
 export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
 export type SupportTicket = typeof supportTickets.$inferSelect;
+
+// 5.5. Ticket Messages
+export const insertTicketMessageSchema = createInsertSchema(ticketMessages).omit({ id: true, createdAt: true });
+export type InsertTicketMessage = z.infer<typeof insertTicketMessageSchema>;
+export type TicketMessage = typeof ticketMessages.$inferSelect;
 
 // 6. Announcements - Removed (schemas in Communications System at end of file)
 

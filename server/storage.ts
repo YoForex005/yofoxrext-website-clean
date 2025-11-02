@@ -1723,6 +1723,80 @@ export interface IStorage {
   updateFeedbackStatus(id: string, status: string, adminNotes?: string): Promise<void>;
   
   // ============================================================================
+  // SUPPORT TICKETS & MESSAGES
+  // ============================================================================
+  
+  /**
+   * List support tickets with optional filters
+   */
+  listSupportTickets(filters?: { status?: string; priority?: string; category?: string; userId?: string }): Promise<SupportTicket[]>;
+  
+  /**
+   * Get support ticket by ID
+   */
+  getSupportTicketById(id: number): Promise<SupportTicket | null>;
+  
+  /**
+   * Get support ticket by ticket number
+   */
+  getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicket | null>;
+  
+  /**
+   * Create a new support ticket
+   */
+  createSupportTicket(data: InsertSupportTicket): Promise<SupportTicket>;
+  
+  /**
+   * Update support ticket
+   */
+  updateSupportTicket(id: number, data: Partial<InsertSupportTicket>): Promise<SupportTicket>;
+  
+  /**
+   * Update ticket status
+   */
+  updateTicketStatus(id: number, status: string): Promise<void>;
+  
+  /**
+   * Update ticket priority
+   */
+  updateTicketPriority(id: number, priority: string): Promise<void>;
+  
+  /**
+   * Record first response timestamp
+   */
+  recordFirstResponse(ticketId: number, timestamp: Date): Promise<void>;
+  
+  /**
+   * Record resolution timestamp
+   */
+  recordResolution(ticketId: number, timestamp: Date): Promise<void>;
+  
+  /**
+   * Submit satisfaction score and comment
+   */
+  submitSatisfaction(ticketId: number, score: number, comment?: string): Promise<void>;
+  
+  /**
+   * List ticket messages for a ticket
+   */
+  listTicketMessages(ticketId: number): Promise<TicketMessage[]>;
+  
+  /**
+   * Create a new ticket message
+   */
+  createTicketMessage(data: InsertTicketMessage): Promise<TicketMessage>;
+  
+  /**
+   * Get first admin message for a ticket
+   */
+  getFirstAdminMessage(ticketId: number): Promise<TicketMessage | null>;
+  
+  /**
+   * Get support KPIs (admin dashboard)
+   */
+  getSupportKPIs(): Promise<{ openTickets: number; avgResponseTime: number; avgResolutionTime: number; avgSatisfaction: number }>;
+  
+  // ============================================================================
   // ADMIN OVERVIEW ENDPOINTS - Dashboard Analytics
   // ============================================================================
   
@@ -14738,6 +14812,253 @@ export class DrizzleStorage implements IStorage {
         .where(eq(feedback.id, id));
     } catch (error) {
       console.error("Error updating feedback status:", error);
+      throw error;
+    }
+  }
+  
+  // ============================================================================
+  // SUPPORT TICKETS & MESSAGES
+  // ============================================================================
+  
+  async listSupportTickets(filters?: { status?: string; priority?: string; category?: string; userId?: string }): Promise<SupportTicket[]> {
+    try {
+      let query = db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).$dynamic();
+      
+      if (filters?.status) {
+        query = query.where(eq(supportTickets.status, filters.status as any));
+      }
+      if (filters?.priority) {
+        query = query.where(eq(supportTickets.priority, filters.priority as any));
+      }
+      if (filters?.category) {
+        query = query.where(eq(supportTickets.category, filters.category as any));
+      }
+      if (filters?.userId) {
+        query = query.where(eq(supportTickets.userId, filters.userId));
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error("Error listing support tickets:", error);
+      throw error;
+    }
+  }
+  
+  async getSupportTicketById(id: number): Promise<SupportTicket | null> {
+    try {
+      const [ticket] = await db
+        .select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, id))
+        .limit(1);
+      return ticket || null;
+    } catch (error) {
+      console.error("Error getting support ticket by ID:", error);
+      throw error;
+    }
+  }
+  
+  async getSupportTicketByNumber(ticketNumber: string): Promise<SupportTicket | null> {
+    try {
+      const [ticket] = await db
+        .select()
+        .from(supportTickets)
+        .where(eq(supportTickets.ticketNumber, ticketNumber))
+        .limit(1);
+      return ticket || null;
+    } catch (error) {
+      console.error("Error getting support ticket by number:", error);
+      throw error;
+    }
+  }
+  
+  async createSupportTicket(data: InsertSupportTicket): Promise<SupportTicket> {
+    try {
+      const [ticket] = await db
+        .insert(supportTickets)
+        .values(data)
+        .returning();
+      return ticket;
+    } catch (error) {
+      console.error("Error creating support ticket:", error);
+      throw error;
+    }
+  }
+  
+  async updateSupportTicket(id: number, data: Partial<InsertSupportTicket>): Promise<SupportTicket> {
+    try {
+      const [ticket] = await db
+        .update(supportTickets)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(supportTickets.id, id))
+        .returning();
+      return ticket;
+    } catch (error) {
+      console.error("Error updating support ticket:", error);
+      throw error;
+    }
+  }
+  
+  async updateTicketStatus(id: number, status: string): Promise<void> {
+    try {
+      await db
+        .update(supportTickets)
+        .set({ status: status as any, updatedAt: new Date() })
+        .where(eq(supportTickets.id, id));
+    } catch (error) {
+      console.error("Error updating ticket status:", error);
+      throw error;
+    }
+  }
+  
+  async updateTicketPriority(id: number, priority: string): Promise<void> {
+    try {
+      await db
+        .update(supportTickets)
+        .set({ priority: priority as any, updatedAt: new Date() })
+        .where(eq(supportTickets.id, id));
+    } catch (error) {
+      console.error("Error updating ticket priority:", error);
+      throw error;
+    }
+  }
+  
+  async recordFirstResponse(ticketId: number, timestamp: Date): Promise<void> {
+    try {
+      await db
+        .update(supportTickets)
+        .set({ firstResponseAt: timestamp, updatedAt: new Date() })
+        .where(eq(supportTickets.id, ticketId));
+    } catch (error) {
+      console.error("Error recording first response:", error);
+      throw error;
+    }
+  }
+  
+  async recordResolution(ticketId: number, timestamp: Date): Promise<void> {
+    try {
+      await db
+        .update(supportTickets)
+        .set({ resolvedAt: timestamp, updatedAt: new Date() })
+        .where(eq(supportTickets.id, ticketId));
+    } catch (error) {
+      console.error("Error recording resolution:", error);
+      throw error;
+    }
+  }
+  
+  async submitSatisfaction(ticketId: number, score: number, comment?: string): Promise<void> {
+    try {
+      await db
+        .update(supportTickets)
+        .set({
+          satisfactionScore: score,
+          satisfactionComment: comment || null,
+          satisfactionSubmittedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(supportTickets.id, ticketId));
+    } catch (error) {
+      console.error("Error submitting satisfaction:", error);
+      throw error;
+    }
+  }
+  
+  async listTicketMessages(ticketId: number): Promise<TicketMessage[]> {
+    try {
+      return await db
+        .select()
+        .from(ticketMessages)
+        .where(eq(ticketMessages.ticketId, ticketId))
+        .orderBy(asc(ticketMessages.createdAt));
+    } catch (error) {
+      console.error("Error listing ticket messages:", error);
+      throw error;
+    }
+  }
+  
+  async createTicketMessage(data: InsertTicketMessage): Promise<TicketMessage> {
+    try {
+      const [message] = await db
+        .insert(ticketMessages)
+        .values(data)
+        .returning();
+      
+      // Update lastMessageAt on the ticket
+      await db
+        .update(supportTickets)
+        .set({ lastMessageAt: new Date(), updatedAt: new Date() })
+        .where(eq(supportTickets.id, data.ticketId));
+      
+      return message;
+    } catch (error) {
+      console.error("Error creating ticket message:", error);
+      throw error;
+    }
+  }
+  
+  async getFirstAdminMessage(ticketId: number): Promise<TicketMessage | null> {
+    try {
+      const [message] = await db
+        .select()
+        .from(ticketMessages)
+        .where(and(
+          eq(ticketMessages.ticketId, ticketId),
+          eq(ticketMessages.isAdmin, true)
+        ))
+        .orderBy(asc(ticketMessages.createdAt))
+        .limit(1);
+      return message || null;
+    } catch (error) {
+      console.error("Error getting first admin message:", error);
+      throw error;
+    }
+  }
+  
+  async getSupportKPIs(): Promise<{ openTickets: number; avgResponseTime: number; avgResolutionTime: number; avgSatisfaction: number }> {
+    try {
+      // Count open tickets
+      const [openTicketsResult] = await db
+        .select({ count: count() })
+        .from(supportTickets)
+        .where(ne(supportTickets.status, 'closed'));
+      const openTickets = openTicketsResult?.count || 0;
+      
+      // Calculate average response time (in hours)
+      const responseTimeResult = await db
+        .select({
+          avgResponseTime: sql<number>`AVG(EXTRACT(EPOCH FROM (${supportTickets.firstResponseAt} - ${supportTickets.createdAt})) / 3600)`
+        })
+        .from(supportTickets)
+        .where(isNotNull(supportTickets.firstResponseAt));
+      const avgResponseTime = responseTimeResult[0]?.avgResponseTime || 0;
+      
+      // Calculate average resolution time (in hours)
+      const resolutionTimeResult = await db
+        .select({
+          avgResolutionTime: sql<number>`AVG(EXTRACT(EPOCH FROM (${supportTickets.resolvedAt} - ${supportTickets.createdAt})) / 3600)`
+        })
+        .from(supportTickets)
+        .where(isNotNull(supportTickets.resolvedAt));
+      const avgResolutionTime = resolutionTimeResult[0]?.avgResolutionTime || 0;
+      
+      // Calculate average satisfaction score
+      const satisfactionResult = await db
+        .select({
+          avgSatisfaction: sql<number>`AVG(${supportTickets.satisfactionScore})`
+        })
+        .from(supportTickets)
+        .where(isNotNull(supportTickets.satisfactionScore));
+      const avgSatisfaction = satisfactionResult[0]?.avgSatisfaction || 0;
+      
+      return {
+        openTickets: Number(openTickets),
+        avgResponseTime: Number(avgResponseTime.toFixed(2)),
+        avgResolutionTime: Number(avgResolutionTime.toFixed(2)),
+        avgSatisfaction: Number(avgSatisfaction.toFixed(2))
+      };
+    } catch (error) {
+      console.error("Error getting support KPIs:", error);
       throw error;
     }
   }

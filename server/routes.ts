@@ -877,6 +877,288 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
   
+  // =============================================================================
+  // SUPPORT TICKETS - USER ENDPOINTS
+  // =============================================================================
+  
+  const supportRateLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20, // 20 requests per minute
+    message: { error: "Too many requests, please try again later" },
+  });
+  
+  // POST /api/support/tickets - Create a new support ticket
+  app.post("/api/support/tickets", isAuthenticated, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const { subject, description, category } = req.body;
+      
+      if (!subject || !description || !category) {
+        return res.status(400).json({ error: "Subject, description, and category are required" });
+      }
+      
+      const supportService = await import('./services/supportService.js');
+      const ticket = await supportService.createTicket(userId, { subject, description, category });
+      
+      res.json(ticket);
+    } catch (error: any) {
+      console.error('[SUPPORT] Error creating ticket:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // GET /api/support/tickets - List user's tickets
+  app.get("/api/support/tickets", isAuthenticated, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const supportService = await import('./services/supportService.js');
+      const tickets = await supportService.getTicketsForUser(userId);
+      
+      res.json(tickets);
+    } catch (error: any) {
+      console.error('[SUPPORT] Error listing tickets:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // GET /api/support/tickets/:id - Get ticket details with messages
+  app.get("/api/support/tickets/:id", isAuthenticated, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const ticketId = parseInt(req.params.id);
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      const supportService = await import('./services/supportService.js');
+      const { ticket, messages } = await supportService.getTicketWithMessages(ticketId);
+      
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      // Verify user owns this ticket (or is admin)
+      if (ticket.userId !== userId && !isAdmin(req.user)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      res.json({ ticket, messages });
+    } catch (error: any) {
+      console.error('[SUPPORT] Error getting ticket:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // POST /api/support/tickets/:id/messages - Add a message to ticket
+  app.post("/api/support/tickets/:id/messages", isAuthenticated, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const ticketId = parseInt(req.params.id);
+      const { body } = req.body;
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      if (!body || body.trim().length === 0) {
+        return res.status(400).json({ error: "Message body is required" });
+      }
+      
+      // Verify user owns this ticket
+      const ticket = await storage.getSupportTicketById(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      if (ticket.userId !== userId && !isAdmin(req.user)) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      const supportService = await import('./services/supportService.js');
+      const message = await supportService.addMessage(ticketId, userId, body, false);
+      
+      res.json(message);
+    } catch (error: any) {
+      console.error('[SUPPORT] Error adding message:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // POST /api/support/tickets/:id/satisfaction - Submit satisfaction rating
+  app.post("/api/support/tickets/:id/satisfaction", isAuthenticated, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const ticketId = parseInt(req.params.id);
+      const { score, comment } = req.body;
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      if (!score || score < 1 || score > 5) {
+        return res.status(400).json({ error: "Score must be between 1 and 5" });
+      }
+      
+      // Verify user owns this ticket
+      const ticket = await storage.getSupportTicketById(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      if (ticket.userId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      if (ticket.status !== 'closed') {
+        return res.status(400).json({ error: "Can only rate closed tickets" });
+      }
+      
+      await storage.submitSatisfaction(ticketId, score, comment);
+      
+      res.json({ success: true, message: "Thank you for your feedback!" });
+    } catch (error: any) {
+      console.error('[SUPPORT] Error submitting satisfaction:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // =============================================================================
+  // SUPPORT TICKETS - ADMIN ENDPOINTS
+  // =============================================================================
+  
+  // GET /api/admin/support/tickets - List all tickets with filters
+  app.get("/api/admin/support/tickets", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const { status, priority, category } = req.query;
+      
+      const supportService = await import('./services/supportService.js');
+      const tickets = await supportService.getTicketsForAdmin({
+        status: status as string | undefined,
+        priority: priority as string | undefined,
+        category: category as string | undefined,
+      });
+      
+      res.json(tickets);
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error listing tickets:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // GET /api/admin/support/tickets/:id - Get ticket details (admin)
+  app.get("/api/admin/support/tickets/:id", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      const supportService = await import('./services/supportService.js');
+      const { ticket, messages } = await supportService.getTicketWithMessages(ticketId);
+      
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket not found" });
+      }
+      
+      res.json({ ticket, messages });
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error getting ticket:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // PUT /api/admin/support/tickets/:id/status - Update ticket status
+  app.put("/api/admin/support/tickets/:id/status", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      const { status } = req.body;
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      if (!status || !['open', 'in_progress', 'closed'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status" });
+      }
+      
+      if (status === 'closed') {
+        const supportService = await import('./services/supportService.js');
+        await supportService.closeTicket(ticketId);
+      } else {
+        await storage.updateTicketStatus(ticketId, status);
+      }
+      
+      const ticket = await storage.getSupportTicketById(ticketId);
+      res.json(ticket);
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error updating status:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // PUT /api/admin/support/tickets/:id/priority - Update ticket priority
+  app.put("/api/admin/support/tickets/:id/priority", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const ticketId = parseInt(req.params.id);
+      const { priority } = req.body;
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      if (!priority || !['low', 'medium', 'high'].includes(priority)) {
+        return res.status(400).json({ error: "Invalid priority" });
+      }
+      
+      await storage.updateTicketPriority(ticketId, priority);
+      const ticket = await storage.getSupportTicketById(ticketId);
+      res.json(ticket);
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error updating priority:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // POST /api/admin/support/tickets/:id/messages - Admin reply to ticket
+  app.post("/api/admin/support/tickets/:id/messages", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const ticketId = parseInt(req.params.id);
+      const { body } = req.body;
+      
+      if (isNaN(ticketId)) {
+        return res.status(400).json({ error: "Invalid ticket ID" });
+      }
+      
+      if (!body || body.trim().length === 0) {
+        return res.status(400).json({ error: "Message body is required" });
+      }
+      
+      const supportService = await import('./services/supportService.js');
+      const message = await supportService.addMessage(ticketId, userId, body, true);
+      
+      res.json(message);
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error adding admin message:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // GET /api/admin/support/kpis - Get support KPI metrics
+  app.get("/api/admin/support/kpis", isAuthenticated, isAdminMiddleware, supportRateLimiter, async (req, res) => {
+    try {
+      const supportMetricsService = await import('./services/supportMetricsService.js');
+      const kpis = await supportMetricsService.calculateKPIs();
+      
+      res.json(kpis);
+    } catch (error: any) {
+      console.error('[ADMIN SUPPORT] Error getting KPIs:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
   // Get user by ID (requires authentication - own profile or admin)
   app.get("/api/user/:userId", isAuthenticated, async (req, res) => {
     try {
