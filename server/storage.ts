@@ -7366,6 +7366,61 @@ export class DrizzleStorage implements IStorage {
     return await db.select().from(forumThreads).where(eq(forumThreads.authorId, userId)).orderBy(desc(forumThreads.createdAt));
   }
 
+  /**
+   * Fraud detection checks within a transaction context
+   * Extracted from coinTransactionService to enable fraud checks within atomic transactions
+   * 
+   * Checks:
+   * 1. Rate limiting (max 10 transactions per minute)
+   * 2. Duplicate detection (same trigger within 5 seconds)
+   * 3. Amount limits (max 1000 coins per transaction unless admin)
+   */
+  private async performFraudChecksInTx(
+    tx: any,
+    userId: string, 
+    amount: number, 
+    trigger: string
+  ): Promise<void> {
+    try {
+      // Check 1: Rate limit (max 10 transactions per minute)
+      const recentTransactions = await tx.select()
+        .from(coinTransactions)
+        .where(
+          and(
+            eq(coinTransactions.userId, userId),
+            sql`${coinTransactions.createdAt} > NOW() - INTERVAL '1 minute'`
+          )
+        );
+
+      if (recentTransactions.length >= 10) {
+        throw new Error('Rate limit exceeded (max 10 transactions per minute)');
+      }
+
+      // Check 2: Duplicate detection (same trigger within 5 seconds)
+      const duplicates = await tx.select()
+        .from(coinTransactions)
+        .where(
+          and(
+            eq(coinTransactions.userId, userId),
+            eq(coinTransactions.trigger, trigger),
+            sql`${coinTransactions.createdAt} > NOW() - INTERVAL '5 seconds'`
+          )
+        );
+
+      if (duplicates.length > 0) {
+        throw new Error('Duplicate transaction detected (same trigger within 5 seconds)');
+      }
+
+      // Check 3: Spending limit (no single transaction > 1000 coins unless admin)
+      if (Math.abs(amount) > 1000 && !trigger.startsWith('admin.')) {
+        throw new Error('Transaction amount exceeds maximum (1000 coins)');
+      }
+    } catch (error) {
+      // Re-throw the error to fail the transaction
+      throw error;
+    }
+  }
+
   async createUser(insertUser: InsertUser | UpsertUser): Promise<User> {
     // Determine if this is OIDC or traditional auth
     const isOIDC = 'email' in insertUser && insertUser.email !== undefined;
@@ -7853,20 +7908,55 @@ export class DrizzleStorage implements IStorage {
         return purchase;
       }
 
-      // 5. Get buyer wallet for balance check
-      const buyerWallet = await this.getUserWallet(buyerId);
-      if (!buyerWallet) throw new Error('Buyer wallet not found');
+      // 5. Deterministic idempotency key (FIX #2)
+      const idempotencyKey = `purchase-${contentId}-${buyerId}`;
 
-      // 6. Validate balance
+      // 6. Check if this purchase already exists (idempotency check)
+      const existingTx = await tx.select()
+        .from(coinTransactions)
+        .where(eq(coinTransactions.idempotencyKey, idempotencyKey))
+        .limit(1);
+
+      if (existingTx.length > 0) {
+        // Purchase already processed, return existing purchase
+        const existingPurchase = await tx.select()
+          .from(contentPurchases)
+          .where(and(
+            eq(contentPurchases.contentId, contentId),
+            eq(contentPurchases.buyerId, buyerId)
+          ))
+          .limit(1);
+        
+        if (existingPurchase[0]) {
+          return existingPurchase[0];
+        }
+      }
+
+      // 7. Get buyer wallet with row lock (FIX #1 - manual atomic transaction)
+      const walletRows = await tx.select()
+        .from(userWallet)
+        .where(eq(userWallet.userId, buyerId))
+        .for('update');
+      
+      if (!walletRows || walletRows.length === 0) {
+        throw new Error('Buyer wallet not found');
+      }
+
+      const buyerWallet = walletRows[0];
+
+      // 8. Validate balance
       if (buyerWallet.balance < item.priceCoins) {
         throw new Error(`Insufficient balance. Need ${item.priceCoins} coins, have ${buyerWallet.balance}`);
       }
 
-      // 7. Calculate amounts (90% to seller, 10% to platform)
+      // 9. Fraud detection checks
+      await this.performFraudChecksInTx(tx, buyerId, -item.priceCoins, 'marketplace.purchase.item');
+
+      // 10. Calculate amounts (90% to seller, 10% to platform)
       const sellerAmount = Math.floor(item.priceCoins * 0.9);
       const platformAmount = item.priceCoins - sellerAmount;
 
-      // 8. Create balanced ledger transaction
+      // 11. Create balanced ledger transaction
       await this.beginLedgerTransaction(
         'purchase',
         buyerId,
@@ -7893,27 +7983,88 @@ export class DrizzleStorage implements IStorage {
         { contentId, buyerId, sellerId: item.authorId, price: item.priceCoins }
       );
 
-      // 9. Create transaction record and purchase record
-      const [txRecord] = await tx.insert(coinTransactions).values({
-        userId: buyerId,
-        type: 'spend',
-        amount: item.priceCoins,
-        description: `Purchased: ${item.title}`,
-        status: 'completed',
-      }).returning();
+      // 12. Manually create coin transaction within this atomic transaction (FIX #1)
+      const newBalance = buyerWallet.balance - item.priceCoins;
 
+      const [transaction] = await tx.insert(coinTransactions)
+        .values({
+          userId: buyerId,
+          amount: -item.priceCoins,
+          type: "spend",
+          trigger: 'marketplace.purchase.item',
+          channel: 'marketplace',
+          description: `Purchased: ${item.title}`,
+          metadata: { 
+            contentId, 
+            sellerId: item.authorId, 
+            price: item.priceCoins,
+            sellerAmount,
+            platformAmount
+          },
+          idempotencyKey: idempotencyKey,
+          status: "completed",
+          createdAt: new Date()
+        })
+        .returning();
+
+      // 13. Update user_wallet with version check (optimistic concurrency)
+      const [updatedWallet] = await tx.update(userWallet)
+        .set({
+          balance: newBalance,
+          availableBalance: newBalance,
+          updatedAt: new Date(),
+          version: buyerWallet.version + 1
+        })
+        .where(
+          and(
+            eq(userWallet.userId, buyerId),
+            eq(userWallet.version, buyerWallet.version)
+          )
+        )
+        .returning();
+
+      if (!updatedWallet) {
+        throw new Error('Wallet version conflict - transaction was modified concurrently. Please retry.');
+      }
+
+      // 14. Update users.total_coins (dual-write for backward compatibility)
+      await tx.update(users)
+        .set({
+          totalCoins: sql`${users.totalCoins} - ${item.priceCoins}`,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, buyerId));
+
+      // 15. Create purchase record
       const [purchase] = await tx.insert(contentPurchases).values({
         contentId,
         buyerId,
         sellerId: item.authorId,
         priceCoins: item.priceCoins,
-        transactionId: txRecord.id,
+        transactionId: transaction.id,
       }).returning();
 
-      // 10. Update download counter
+      // 16. Update download counter
       await tx.update(content)
         .set({ downloads: sql`${content.downloads} + 1` })
         .where(eq(content.id, contentId));
+
+      // 17. Emit events (after transaction commits)
+      setTimeout(() => {
+        const { emitSweetsBalanceUpdated, emitAdminSweetsTransaction } = require('./services/dashboardWebSocket');
+        emitSweetsBalanceUpdated(buyerId, {
+          newBalance: newBalance,
+          change: -item.priceCoins,
+        });
+        emitAdminSweetsTransaction({
+          userId: buyerId,
+          transactionId: transaction.id,
+          amount: -item.priceCoins,
+          trigger: 'marketplace.purchase.item',
+          channel: 'marketplace',
+          newBalance: newBalance,
+        });
+      }, 0);
 
       return purchase;
     });
@@ -10318,46 +10469,181 @@ export class DrizzleStorage implements IStorage {
   }
 
   async createWithdrawalRequest(userId: string, data: Omit<InsertWithdrawalRequest, 'userId'>): Promise<WithdrawalRequest> {
-    const user = await this.getUser(userId);
-    if (!user) {
-      throw new Error('User not found');
-    }
+    // Use client-provided idempotency key, or generate stable server-side key
+    // - Client provides key: Retries with same key are deduped, new keys create new withdrawals
+    // - Client omits key: Each call generates new UUID, allowing repeat withdrawals (no retry deduplication)
+    const clientKey = (data as any).idempotencyKey;
+    const idempotencyKey = clientKey || `withdrawal-${userId}-${Date.now()}-${randomUUID()}`;
+    
+    return await db.transaction(async (tx) => {
+      // 1. Check if this withdrawal already exists (idempotency check)
+      const existingTx = await tx.select()
+        .from(coinTransactions)
+        .where(eq(coinTransactions.idempotencyKey, idempotencyKey))
+        .limit(1);
 
-    if (user.totalCoins < data.amount) {
-      throw new Error('Insufficient balance');
-    }
+      if (existingTx.length > 0) {
+        // Withdrawal already processed - this is a retry of the same request
+        // Extract withdrawal ID from metadata
+        const withdrawalId = existingTx[0].metadata?.withdrawalId;
+        if (withdrawalId) {
+          const existingWithdrawal = await tx.select()
+            .from(withdrawalRequests)
+            .where(eq(withdrawalRequests.id, withdrawalId))
+            .limit(1);
+          
+          if (existingWithdrawal[0]) {
+            return existingWithdrawal[0];
+          }
+        }
+      }
 
-    const values: any = {
-      userId,
-      amount: data.amount,
-      cryptoType: data.cryptoType,
-      walletAddress: data.walletAddress,
-      status: (data.status || 'pending') as "pending" | "processing" | "completed" | "failed" | "cancelled",
-      exchangeRate: String(data.exchangeRate),
-      cryptoAmount: String(data.cryptoAmount),
-      processingFee: data.processingFee,
-    };
+      // 2. Get user details
+      const userRows = await tx.select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      if (!userRows || userRows.length === 0) {
+        throw new Error('User not found');
+      }
 
-    if (data.transactionHash) {
-      values.transactionHash = data.transactionHash;
-    }
+      const user = userRows[0];
 
-    if (data.adminNotes) {
-      values.adminNotes = data.adminNotes;
-    }
+      // 3. Validate balance
+      if (user.totalCoins < data.amount) {
+        throw new Error('Insufficient balance');
+      }
 
-    const [withdrawal] = await db.insert(withdrawalRequests).values(values).returning();
+      // 4. Get user wallet with row lock (FIX #1 - atomic transaction)
+      const walletRows = await tx.select()
+        .from(userWallet)
+        .where(eq(userWallet.userId, userId))
+        .for('update');
+      
+      if (!walletRows || walletRows.length === 0) {
+        throw new Error('User wallet not found');
+      }
 
-    const newTotalCoins = user.totalCoins - data.amount;
-    await db
-      .update(users)
-      .set({ 
-        totalCoins: newTotalCoins,
-        level: calculateUserLevel(newTotalCoins)
-      })
-      .where(eq(users.id, userId));
+      const wallet = walletRows[0];
 
-    return withdrawal;
+      // 5. Validate wallet balance
+      if (wallet.balance < data.amount) {
+        throw new Error(`Insufficient wallet balance. Need ${data.amount} coins, have ${wallet.balance}`);
+      }
+
+      // 6. Generate withdrawal ID for this new withdrawal
+      const withdrawalId = randomUUID();
+
+      // 7. Fraud detection checks
+      await this.performFraudChecksInTx(tx, userId, -data.amount, 'withdrawal.request.crypto');
+
+      // 8. Manually create coin transaction within this atomic transaction (FIX #1)
+      const newBalance = wallet.balance - data.amount;
+
+      const [transaction] = await tx.insert(coinTransactions)
+        .values({
+          userId,
+          amount: -data.amount,
+          type: "spend",
+          trigger: 'withdrawal.request.crypto',
+          channel: 'withdrawal',
+          description: `Withdrawal request: ${data.amount} coins to ${data.cryptoType} (${data.walletAddress})`,
+          metadata: {
+            withdrawalId, // Store withdrawal ID for idempotency lookup
+            cryptoType: data.cryptoType,
+            walletAddress: data.walletAddress,
+            exchangeRate: data.exchangeRate,
+            cryptoAmount: data.cryptoAmount,
+            processingFee: data.processingFee,
+          },
+          idempotencyKey: idempotencyKey, // Use client-provided key or server-generated key
+          status: "completed",
+          createdAt: new Date()
+        })
+        .returning();
+
+      // 9. Update user_wallet with version check (optimistic concurrency)
+      const [updatedWallet] = await tx.update(userWallet)
+        .set({
+          balance: newBalance,
+          availableBalance: newBalance,
+          updatedAt: new Date(),
+          version: wallet.version + 1
+        })
+        .where(
+          and(
+            eq(userWallet.userId, userId),
+            eq(userWallet.version, wallet.version)
+          )
+        )
+        .returning();
+
+      if (!updatedWallet) {
+        throw new Error('Wallet version conflict - transaction was modified concurrently. Please retry.');
+      }
+
+      // 10. Update users.total_coins (dual-write for backward compatibility)
+      await tx.update(users)
+        .set({
+          totalCoins: sql`${users.totalCoins} - ${data.amount}`,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+
+      // 11. Create withdrawal request record with the same withdrawalId
+      const values: any = {
+        id: withdrawalId, // Use the same ID for both transaction and withdrawal record
+        userId,
+        amount: data.amount,
+        cryptoType: data.cryptoType,
+        walletAddress: data.walletAddress,
+        status: (data.status || 'pending') as "pending" | "processing" | "completed" | "failed" | "cancelled",
+        exchangeRate: String(data.exchangeRate),
+        cryptoAmount: String(data.cryptoAmount),
+        processingFee: data.processingFee,
+      };
+
+      if (data.transactionHash) {
+        values.transactionHash = data.transactionHash;
+      }
+
+      if (data.adminNotes) {
+        values.adminNotes = data.adminNotes;
+      }
+
+      const [withdrawal] = await tx.insert(withdrawalRequests).values(values).returning();
+
+      // 12. Update user level based on new balance (FIX #3 - fail hard if missing)
+      if (typeof newBalance !== 'number') {
+        throw new Error('CRITICAL: newBalance is missing - cannot update user level. Transaction aborted.');
+      }
+
+      await tx.update(users)
+        .set({ 
+          level: calculateUserLevel(newBalance)
+        })
+        .where(eq(users.id, userId));
+
+      // 13. Emit events (after transaction commits)
+      setTimeout(() => {
+        const { emitSweetsBalanceUpdated, emitAdminSweetsTransaction } = require('./services/dashboardWebSocket');
+        emitSweetsBalanceUpdated(userId, {
+          newBalance: newBalance,
+          change: -data.amount,
+        });
+        emitAdminSweetsTransaction({
+          userId: userId,
+          transactionId: transaction.id,
+          amount: -data.amount,
+          trigger: 'withdrawal.request.crypto',
+          channel: 'withdrawal',
+          newBalance: newBalance,
+        });
+      }, 0);
+
+      return withdrawal;
+    });
   }
 
   async getUserWithdrawals(userId: string): Promise<WithdrawalRequest[]> {

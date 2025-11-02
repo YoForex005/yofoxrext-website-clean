@@ -2020,6 +2020,7 @@ export const insertWithdrawalRequestSchema = createInsertSchema(withdrawalReques
   method: z.enum(["crypto", "paypal", "bank", "other"]).optional(),
   cryptoType: z.enum(["BTC", "ETH"]).optional(),
   walletAddress: z.string().min(26, "Invalid wallet address").max(100, "Invalid wallet address"),
+  idempotencyKey: z.string().optional(), // Allow clients to provide stable key for retry semantics
 });
 
 export const insertFinancialTransactionSchema = createInsertSchema(financialTransactions).omit({
