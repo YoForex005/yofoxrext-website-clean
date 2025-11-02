@@ -1302,6 +1302,70 @@ export interface IStorage {
    */
   isIpBanned(ipAddress: string): Promise<boolean>;
   
+  // ============================================================================
+  // SECURITY & SAFETY SYSTEM - Enhanced CRUD Methods
+  // ============================================================================
+  
+  /**
+   * Create a new security event
+   */
+  createSecurityEvent(data: InsertSecurityEvent): Promise<SecurityEvent>;
+  
+  /**
+   * Get security events with optional filters
+   */
+  getSecurityEvents(filters?: { 
+    type?: string; 
+    severity?: string; 
+    status?: string; 
+    limit?: number 
+  }): Promise<SecurityEvent[]>;
+  
+  /**
+   * Update security event status
+   */
+  updateSecurityEventStatus(id: number, status: 'open' | 'resolved'): Promise<void>;
+  
+  /**
+   * Get single security event by ID
+   */
+  getSecurityEventById(id: number): Promise<SecurityEvent | null>;
+  
+  /**
+   * Get security metrics for dashboard
+   */
+  getSecurityMetrics(): Promise<{
+    totalEvents: number;
+    eventsToday: number;
+    eventsByType: Record<string, number>;
+    eventsBySeverity: Record<string, number>;
+  }>;
+  
+  /**
+   * Create a new IP ban
+   */
+  createIpBan(data: InsertIpBan): Promise<IpBan>;
+  
+  /**
+   * Get all IP bans (including expired)
+   */
+  getIpBans(): Promise<IpBan[]>;
+  
+  /**
+   * Get only active IP bans (not expired)
+   */
+  getActiveIpBans(): Promise<IpBan[]>;
+  
+  /**
+   * Remove an IP ban (unban)
+   */
+  deleteIpBan(ipAddress: string): Promise<void>;
+  
+  /**
+   * Check if an IP is currently banned (not expired)
+   */
+  checkIpBanned(ipAddress: string): Promise<boolean>;
+  
   /**
    * List all page controls
    */
@@ -5461,6 +5525,74 @@ export class MemStorage implements IStorage {
   }
 
   async isIpBanned(ipAddress: string): Promise<boolean> {
+    return false;
+  }
+
+  // ============================================================================
+  // SECURITY & SAFETY SYSTEM - Enhanced CRUD Methods (Stubs)
+  // ============================================================================
+
+  async createSecurityEvent(data: InsertSecurityEvent): Promise<SecurityEvent> {
+    return { 
+      id: 1, 
+      ...data, 
+      status: data.status || 'open',
+      createdAt: new Date() 
+    } as SecurityEvent;
+  }
+
+  async getSecurityEvents(filters?: { 
+    type?: string; 
+    severity?: string; 
+    status?: string; 
+    limit?: number 
+  }): Promise<SecurityEvent[]> {
+    return [];
+  }
+
+  async updateSecurityEventStatus(id: number, status: 'open' | 'resolved'): Promise<void> {
+    // No-op in MemStorage
+  }
+
+  async getSecurityEventById(id: number): Promise<SecurityEvent | null> {
+    return null;
+  }
+
+  async getSecurityMetrics(): Promise<{
+    totalEvents: number;
+    eventsToday: number;
+    eventsByType: Record<string, number>;
+    eventsBySeverity: Record<string, number>;
+  }> {
+    return {
+      totalEvents: 0,
+      eventsToday: 0,
+      eventsByType: {},
+      eventsBySeverity: {}
+    };
+  }
+
+  async createIpBan(data: InsertIpBan): Promise<IpBan> {
+    return {
+      id: 1,
+      ...data,
+      createdAt: new Date()
+    } as IpBan;
+  }
+
+  async getIpBans(): Promise<IpBan[]> {
+    return [];
+  }
+
+  async getActiveIpBans(): Promise<IpBan[]> {
+    return [];
+  }
+
+  async deleteIpBan(ipAddress: string): Promise<void> {
+    // No-op in MemStorage
+  }
+
+  async checkIpBanned(ipAddress: string): Promise<boolean> {
     return false;
   }
 
@@ -13280,6 +13412,249 @@ export class DrizzleStorage implements IStorage {
       return !!ban;
     } catch (error) {
       console.error("Error checking IP ban:", error);
+      return false;
+    }
+  }
+
+  // ============================================================================
+  // SECURITY & SAFETY SYSTEM - Enhanced CRUD Methods
+  // ============================================================================
+
+  async createSecurityEvent(data: InsertSecurityEvent): Promise<SecurityEvent> {
+    try {
+      const [event] = await db
+        .insert(securityEvents)
+        .values(data)
+        .returning();
+      return event;
+    } catch (error) {
+      console.error("Error creating security event:", error);
+      throw error;
+    }
+  }
+
+  async getSecurityEvents(filters?: { 
+    type?: string; 
+    severity?: string; 
+    status?: string; 
+    limit?: number 
+  }): Promise<SecurityEvent[]> {
+    try {
+      const conditions = [];
+      
+      if (filters?.type) {
+        conditions.push(eq(securityEvents.type, filters.type));
+      }
+      
+      if (filters?.severity) {
+        conditions.push(eq(securityEvents.severity, filters.severity));
+      }
+      
+      if (filters?.status) {
+        conditions.push(eq(securityEvents.status, filters.status));
+      }
+      
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+      
+      const events = await db
+        .select()
+        .from(securityEvents)
+        .where(whereClause)
+        .orderBy(desc(securityEvents.createdAt))
+        .limit(filters?.limit || 100);
+      
+      return events;
+    } catch (error) {
+      console.error("Error fetching security events:", error);
+      throw error;
+    }
+  }
+
+  async updateSecurityEventStatus(id: number, status: 'open' | 'resolved'): Promise<void> {
+    try {
+      await db
+        .update(securityEvents)
+        .set({ status })
+        .where(eq(securityEvents.id, id));
+    } catch (error) {
+      console.error("Error updating security event status:", error);
+      throw error;
+    }
+  }
+
+  async getSecurityEventById(id: number): Promise<SecurityEvent | null> {
+    try {
+      const [event] = await db
+        .select()
+        .from(securityEvents)
+        .where(eq(securityEvents.id, id))
+        .limit(1);
+      
+      return event || null;
+    } catch (error) {
+      console.error("Error fetching security event by ID:", error);
+      throw error;
+    }
+  }
+
+  async getSecurityMetrics(): Promise<{
+    totalEvents: number;
+    eventsToday: number;
+    eventsByType: Record<string, number>;
+    eventsBySeverity: Record<string, number>;
+  }> {
+    try {
+      // Get total events count
+      const [{ totalEvents }] = await db
+        .select({ totalEvents: count() })
+        .from(securityEvents);
+      
+      // Get today's events count
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const [{ eventsToday }] = await db
+        .select({ eventsToday: count() })
+        .from(securityEvents)
+        .where(gte(securityEvents.createdAt, today));
+      
+      // Get events by type
+      const eventsByTypeData = await db
+        .select({
+          type: securityEvents.type,
+          count: count()
+        })
+        .from(securityEvents)
+        .groupBy(securityEvents.type);
+      
+      const eventsByType: Record<string, number> = {};
+      for (const row of eventsByTypeData) {
+        if (row.type) {
+          eventsByType[row.type] = Number(row.count);
+        }
+      }
+      
+      // Get events by severity
+      const eventsBySeverityData = await db
+        .select({
+          severity: securityEvents.severity,
+          count: count()
+        })
+        .from(securityEvents)
+        .groupBy(securityEvents.severity);
+      
+      const eventsBySeverity: Record<string, number> = {};
+      for (const row of eventsBySeverityData) {
+        if (row.severity) {
+          eventsBySeverity[row.severity] = Number(row.count);
+        }
+      }
+      
+      return {
+        totalEvents: Number(totalEvents),
+        eventsToday: Number(eventsToday),
+        eventsByType,
+        eventsBySeverity
+      };
+    } catch (error) {
+      console.error("Error fetching security metrics:", error);
+      throw error;
+    }
+  }
+
+  async createIpBan(data: InsertIpBan): Promise<IpBan> {
+    try {
+      const [ban] = await db
+        .insert(ipBans)
+        .values(data)
+        .onConflictDoNothing()
+        .returning();
+      
+      if (!ban) {
+        // If conflict occurred, return existing ban
+        const [existing] = await db
+          .select()
+          .from(ipBans)
+          .where(eq(ipBans.ipAddress, data.ipAddress))
+          .limit(1);
+        return existing;
+      }
+      
+      return ban;
+    } catch (error) {
+      console.error("Error creating IP ban:", error);
+      throw error;
+    }
+  }
+
+  async getIpBans(): Promise<IpBan[]> {
+    try {
+      const bans = await db
+        .select()
+        .from(ipBans)
+        .orderBy(desc(ipBans.createdAt));
+      
+      return bans;
+    } catch (error) {
+      console.error("Error fetching IP bans:", error);
+      throw error;
+    }
+  }
+
+  async getActiveIpBans(): Promise<IpBan[]> {
+    try {
+      const now = new Date();
+      
+      const bans = await db
+        .select()
+        .from(ipBans)
+        .where(
+          or(
+            isNull(ipBans.expiresAt),
+            gt(ipBans.expiresAt, now)
+          )
+        )
+        .orderBy(desc(ipBans.createdAt));
+      
+      return bans;
+    } catch (error) {
+      console.error("Error fetching active IP bans:", error);
+      throw error;
+    }
+  }
+
+  async deleteIpBan(ipAddress: string): Promise<void> {
+    try {
+      await db
+        .delete(ipBans)
+        .where(eq(ipBans.ipAddress, ipAddress));
+    } catch (error) {
+      console.error("Error deleting IP ban:", error);
+      throw error;
+    }
+  }
+
+  async checkIpBanned(ipAddress: string): Promise<boolean> {
+    try {
+      const now = new Date();
+      
+      const [ban] = await db
+        .select()
+        .from(ipBans)
+        .where(
+          and(
+            eq(ipBans.ipAddress, ipAddress),
+            or(
+              isNull(ipBans.expiresAt),
+              gt(ipBans.expiresAt, now)
+            )
+          )
+        )
+        .limit(1);
+      
+      return !!ban;
+    } catch (error) {
+      console.error("Error checking if IP is banned:", error);
       return false;
     }
   }

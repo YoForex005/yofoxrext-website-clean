@@ -93,6 +93,14 @@ const sweetsHistoryQuerySchema = z.object({
 const sweetsLeaderboardQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).optional().default("10"),
 });
+
+// Validation schema for Security & Safety endpoints
+const banIpSchema = z.object({
+  ipAddress: z.string().ip(),
+  reason: z.string().min(1).max(500),
+  hours: z.number().int().min(1).max(8760).optional()
+});
+
 import {
   sanitizeRequestBody,
   validateCoinAmount,
@@ -180,6 +188,7 @@ import {
 import { seoFixOrchestrator } from './services/seo-fixer.js';
 import { featureFlagService } from './services/featureFlagService.js';
 import { getSweetsService } from './services/sweetsService.js';
+import { getSecurityService } from './services/securityService.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -15273,6 +15282,102 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('[Finance Export] Error:', error);
       res.status(500).json({ error: 'Failed to export finance data' });
+    }
+  });
+
+  // ============================================================================
+  // SECURITY & SAFETY ADMIN ENDPOINTS
+  // ============================================================================
+
+  // Initialize security service
+  const securityService = getSecurityService(storage);
+
+  // 1. GET /api/admin/security/events - Get security events with optional filters
+  app.get("/api/admin/security/events", isAdminMiddleware, async (req, res) => {
+    try {
+      const { type, severity, status, limit } = req.query;
+      
+      const filters: any = {};
+      if (type) filters.type = type as string;
+      if (severity) filters.severity = severity as string;
+      if (status) filters.status = status as string;
+      if (limit) filters.limit = parseInt(limit as string);
+
+      const events = await storage.getSecurityEvents(filters);
+      
+      res.json(events);
+    } catch (error) {
+      console.error('[SECURITY] Error fetching security events:', error);
+      res.status(500).json({ error: 'Failed to fetch security events' });
+    }
+  });
+
+  // 2. GET /api/admin/security/ip-bans - Get all IP bans
+  app.get("/api/admin/security/ip-bans", isAdminMiddleware, async (req, res) => {
+    try {
+      const ipBans = await storage.getIpBans();
+      
+      res.json(ipBans);
+    } catch (error) {
+      console.error('[SECURITY] Error fetching IP bans:', error);
+      res.status(500).json({ error: 'Failed to fetch IP bans' });
+    }
+  });
+
+  // 3. GET /api/admin/security/metrics - Get security dashboard metrics
+  app.get("/api/admin/security/metrics", isAdminMiddleware, async (req, res) => {
+    try {
+      const metrics = await securityService.getSecurityMetrics();
+      
+      res.json(metrics);
+    } catch (error) {
+      console.error('[SECURITY] Error fetching security metrics:', error);
+      res.status(500).json({ error: 'Failed to fetch security metrics' });
+    }
+  });
+
+  // 4. POST /api/admin/security/ban - Ban an IP address
+  app.post("/api/admin/security/ban", isAdminMiddleware, adminOperationLimiter, async (req, res) => {
+    try {
+      const validation = banIpSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          error: validation.error.errors[0].message 
+        });
+      }
+
+      const { ipAddress, reason, hours } = validation.data;
+      const adminUser = req.user as User;
+
+      await securityService.banIp(ipAddress, reason, adminUser.id, hours);
+
+      const ipBans = await storage.getIpBans();
+      const ban = ipBans.find(b => b.ipAddress === ipAddress);
+
+      res.status(201).json({ 
+        success: true, 
+        ban 
+      });
+    } catch (error) {
+      console.error('[SECURITY] Error banning IP:', error);
+      res.status(500).json({ error: 'Failed to ban IP address' });
+    }
+  });
+
+  // 5. DELETE /api/admin/security/unban/:ip - Unban an IP address
+  app.delete("/api/admin/security/unban/:ip", isAdminMiddleware, adminOperationLimiter, async (req, res) => {
+    try {
+      const { ip } = req.params;
+      const adminUser = req.user as User;
+
+      await securityService.unbanIp(ip, adminUser.id);
+
+      res.json({ 
+        success: true 
+      });
+    } catch (error) {
+      console.error('[SECURITY] Error unbanning IP:', error);
+      res.status(500).json({ error: 'Failed to unban IP address' });
     }
   });
 

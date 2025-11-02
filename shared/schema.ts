@@ -1308,21 +1308,6 @@ export const announcements = pgTable("announcements", {
   endDateIdx: index("idx_announcements_end_date").on(table.endDate),
 }));
 
-// 7. IP Bans - IP address banning
-export const ipBans = pgTable("ip_bans", {
-  id: serial("id").primaryKey(),
-  ipAddress: varchar("ip_address").notNull().unique(),
-  reason: text("reason").notNull(),
-  banType: varchar("ban_type").notNull().default("permanent"),
-  expiresAt: timestamp("expires_at"),
-  bannedBy: varchar("banned_by").notNull().references(() => users.id),
-  bannedAt: timestamp("banned_at").notNull().defaultNow(),
-  isActive: boolean("is_active").notNull().default(true),
-}, (table) => ({
-  ipAddressIdx: index("idx_ip_bans_ip_address").on(table.ipAddress),
-  isActiveIdx: index("idx_ip_bans_is_active").on(table.isActive),
-  expiresAtIdx: index("idx_ip_bans_expires_at").on(table.expiresAt),
-}));
 
 // 7.5. Page Controls - Admin page availability control system
 export const pageControls = pgTable("page_controls", {
@@ -1508,24 +1493,6 @@ export const performanceMetrics = pgTable("performance_metrics", {
   recordedAtIdx: index("idx_performance_metrics_recorded_at").on(table.recordedAt),
 }));
 
-// 18. Security Events - Security event logging
-export const securityEvents = pgTable("security_events", {
-  id: serial("id").primaryKey(),
-  eventType: varchar("event_type").notNull(),
-  severity: varchar("severity").notNull(),
-  userId: varchar("user_id").references(() => users.id),
-  ipAddress: varchar("ip_address").notNull(),
-  details: jsonb("details").notNull(),
-  isResolved: boolean("is_resolved").notNull().default(false),
-  resolvedBy: varchar("resolved_by").references(() => users.id),
-  resolvedAt: timestamp("resolved_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => ({
-  eventTypeIdx: index("idx_security_events_event_type").on(table.eventType),
-  severityIdx: index("idx_security_events_severity").on(table.severity),
-  isResolvedIdx: index("idx_security_events_is_resolved").on(table.isResolved),
-  createdAtIdx: index("idx_security_events_created_at").on(table.createdAt),
-}));
 
 // 19. Media Library - Central media storage
 export const mediaLibrary = pgTable("media_library", {
@@ -2682,10 +2649,6 @@ export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
 export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
 export type Announcement = typeof announcements.$inferSelect;
 
-// 7. IP Bans
-export const insertIpBanSchema = createInsertSchema(ipBans).omit({ id: true, bannedAt: true });
-export type InsertIpBan = z.infer<typeof insertIpBanSchema>;
-export type IpBan = typeof ipBans.$inferSelect;
 
 // 7.5. Page Controls
 export const insertPageControlSchema = createInsertSchema(pageControls).omit({ id: true, createdAt: true, updatedAt: true });
@@ -2737,10 +2700,6 @@ export const insertPerformanceMetricSchema = createInsertSchema(performanceMetri
 export type InsertPerformanceMetric = z.infer<typeof insertPerformanceMetricSchema>;
 export type PerformanceMetric = typeof performanceMetrics.$inferSelect;
 
-// 18. Security Events
-export const insertSecurityEventSchema = createInsertSchema(securityEvents).omit({ id: true, createdAt: true });
-export type InsertSecurityEvent = z.infer<typeof insertSecurityEventSchema>;
-export type SecurityEvent = typeof securityEvents.$inferSelect;
 
 // 19. Media Library
 export const insertMediaLibrarySchema = createInsertSchema(mediaLibrary).omit({ id: true, uploadedAt: true, usageCount: true });
@@ -4627,3 +4586,70 @@ export const insertAiLogSchema = createInsertSchema(aiLogs).omit({
 });
 export type InsertAiLog = z.infer<typeof insertAiLogSchema>;
 export type AiLog = typeof aiLogs.$inferSelect;
+
+// ==================== SECURITY & SAFETY SYSTEM ====================
+
+/**
+ * Security Events - Track security-related events for monitoring and incident response
+ * Logs various security events like failed logins, rate limit breaches, suspicious activity, etc.
+ */
+export const securityEvents = pgTable("security_events", {
+  id: serial("id").primaryKey(),
+  type: varchar("type", { length: 50 }).notNull().$type<"login_failed" | "api_rate_limit" | "suspicious_ip" | "login_bruteforce" | "api_abuse">(),
+  severity: varchar("severity", { length: 20 }).notNull().$type<"low" | "medium" | "high">(),
+  description: text("description"),
+  ipAddress: varchar("ip_address", { length: 45 }), // IPv4 or IPv6
+  userId: varchar("user_id").references(() => users.id), // Nullable - may not always have a user context
+  status: varchar("status", { length: 20 }).notNull().default("open").$type<"open" | "resolved">(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  typeIdx: index("idx_security_events_type").on(table.type),
+  severityIdx: index("idx_security_events_severity").on(table.severity),
+  statusIdx: index("idx_security_events_status").on(table.status),
+  createdAtIdx: index("idx_security_events_created_at").on(table.createdAt),
+  ipAddressIdx: index("idx_security_events_ip_address").on(table.ipAddress),
+  userIdIdx: index("idx_security_events_user_id").on(table.userId),
+}));
+
+export const insertSecurityEventSchema = createInsertSchema(securityEvents).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  type: z.enum(["login_failed", "api_rate_limit", "suspicious_ip", "login_bruteforce", "api_abuse"]),
+  severity: z.enum(["low", "medium", "high"]),
+  description: z.string().optional(),
+  ipAddress: z.string().ip().optional(),
+  userId: z.string().uuid().optional(),
+  status: z.enum(["open", "resolved"]).default("open"),
+});
+export type InsertSecurityEvent = z.infer<typeof insertSecurityEventSchema>;
+export type SecurityEvent = typeof securityEvents.$inferSelect;
+
+/**
+ * IP Bans - Manage banned IP addresses to prevent malicious access
+ * Supports both permanent and temporary bans with optional expiration dates
+ */
+export const ipBans = pgTable("ip_bans", {
+  id: serial("id").primaryKey(),
+  ipAddress: varchar("ip_address", { length: 45 }).notNull().unique(), // IPv4 or IPv6
+  reason: text("reason"),
+  bannedBy: varchar("banned_by").references(() => users.id), // Admin who created the ban (nullable)
+  expiresAt: timestamp("expires_at"), // NULL = permanent ban, set date = temporary ban
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  ipAddressIdx: index("idx_ip_bans_ip_address").on(table.ipAddress),
+  expiresAtIdx: index("idx_ip_bans_expires_at").on(table.expiresAt),
+  bannedByIdx: index("idx_ip_bans_banned_by").on(table.bannedBy),
+}));
+
+export const insertIpBanSchema = createInsertSchema(ipBans).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  ipAddress: z.string().ip(),
+  reason: z.string().optional(),
+  bannedBy: z.string().uuid().optional(),
+  expiresAt: z.date().optional(),
+});
+export type InsertIpBan = z.infer<typeof insertIpBanSchema>;
+export type IpBan = typeof ipBans.$inferSelect;

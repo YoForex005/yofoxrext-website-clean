@@ -12,6 +12,11 @@ import { setupSecurityHeaders } from "./middleware/securityHeaders";
 import { categoryRedirectMiddleware, trackCategoryViews } from "./middleware/categoryRedirects";
 import { initializeDashboardWebSocket } from "./services/dashboardWebSocket";
 import { serverErrorTracker, errorTrackingMiddleware } from "./middleware/errorTracking";
+import { ipBanMiddleware, loginSecurityMiddleware } from './middleware/security';
+import { getSecurityService } from './services/securityService';
+
+// Initialize security service
+const securityService = getSecurityService(storage);
 
 const app = express();
 
@@ -105,6 +110,13 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// Apply security middleware early in the chain
+// Block banned IPs first (before any other processing)
+app.use(ipBanMiddleware(storage));
+
+// Track login attempts and detect brute force attacks
+app.use(loginSecurityMiddleware(storage, securityService));
 
 // Apply general rate limiting to all API routes
 app.use("/api/", generalApiLimiter);
