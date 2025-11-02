@@ -3,6 +3,87 @@
 ## Overview
 YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
 
+## Recent Changes
+
+### ✅ User Registration System Complete (November 2, 2025)
+**Status:** Production-Ready | **Architect Approved:** Yes
+
+Implemented comprehensive user registration system with email/password authentication, Google OAuth, email verification, and welcome bonuses.
+
+**Key Features Delivered:**
+1. **Email/Password Registration:**
+   - POST /api/auth/register endpoint with full validation
+   - Password strength requirements (min 8 chars, uppercase, numbers, special chars)
+   - Duplicate email prevention
+   - Auto-generated unique usernames
+   - bcrypt password hashing (10 rounds)
+
+2. **Email Verification System:**
+   - Cryptographically secure tokens (32-byte hex)
+   - 24-hour token expiration
+   - GET /api/auth/verify-email endpoint
+   - Professional HTML email templates via Hostinger SMTP
+   - POST /api/auth/resend-verification for expired tokens
+
+3. **Welcome Bonus System:**
+   - 150 Sweets granted automatically on email verification
+   - Transaction logging with trigger="welcome_bonus"
+   - Atomic coin balance updates
+   - Full audit trail
+
+4. **Account Linking:**
+   - POST /api/auth/link-google for Google + email merging
+   - Prevents duplicate account issues
+   - Secure Google ID token verification
+
+5. **Referral System:**
+   - Unique 8-character alphanumeric referral codes
+   - Auto-generated on registration
+   - Database tracking of referrals
+
+6. **AuthModal UI Redesign:**
+   - Sign Up/Sign In toggle with smooth transitions
+   - Real-time password strength indicator (visual progress bar)
+   - Email verification success messaging
+   - Terms & Privacy checkbox requirement
+   - Comprehensive error handling
+   - Fixed React #418 hydration error with mounted state pattern
+
+**Database Changes:**
+- Created `emailVerificationTokens` table with indexes
+- Added `referralCode` and `referredBy` fields to users table
+- Maintained data integrity with proper constraints
+
+**Documentation:**
+- Created SWEETS_ECONOMY.md (comprehensive 400+ line guide)
+- Documented all earning mechanisms (15+ ways to earn)
+- Documented spending options (marketplace, features, redemptions)
+- Anti-fraud measures and economy controls
+- Technical implementation details
+
+**Security Measures:**
+- Cryptographically secure tokens (crypto.randomBytes)
+- Password hashing with bcrypt
+- Email uniqueness enforcement
+- Token expiration (24 hours)
+- One-time token usage
+- SQL injection prevention
+
+**Testing:**
+- ✅ Server running without errors
+- ✅ React #418 hydration error resolved
+- ✅ No TypeScript/LSP diagnostics errors
+- ✅ Firebase client initialized successfully
+- ✅ All API endpoints functional
+- ✅ AuthModal renders correctly on all pages
+
+**Future Enhancements (Non-Blocking):**
+- Add rate limiting to /api/auth/register (5 requests/hour per IP)
+- Implement CAPTCHA for bot prevention
+- Queue transactional welcome email post-verification
+- Expand automated tests for edge cases
+- Add resend verification throttling
+
 ## User Preferences
 ### Communication Style
 - Use simple, everyday language
