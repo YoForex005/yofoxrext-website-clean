@@ -129,6 +129,36 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### Nov 2, 2025 - React Hydration Error Fixed & SEO Metadata Column Added
+**Summary:** Fixed critical React hydration error #418 on admin marketplace page using proper `useState`/`useEffect` pattern. Added missing `metadata` column to seo_alert_history table.
+
+**React Hydration Error Fix:**
+- **Issue:** Minified React error #418 caused by server/client rendering mismatch
+- **Root Cause:** `.toLocaleString()` for numbers and `formatDistanceToNow()` for dates produced different outputs on server vs. client
+- **Solution:** Implemented `isMounted` pattern with `useState` + `useEffect`
+  - SSR renders raw numbers and `toLocaleDateString()` 
+  - Client-side renders formatted numbers and relative dates after hydration
+  - This ensures server and client HTML match, preventing hydration errors
+- **Result:** ✅ React error #418 completely eliminated from browser console logs
+
+**Database Schema Fix:**
+- **Issue:** SEO scanner throwing 15+ database errors about missing `metadata` column
+- **Fix:** Added `metadata jsonb` column to `seo_alert_history` table
+- **Result:** ✅ SEO scanner now runs without database errors
+
+**Files Modified:**
+- `app/components/admin/marketplace/MarketplaceKPIs.tsx` - Added `isMounted` pattern for number formatting
+- `app/components/admin/marketplace/MarketplaceItemsTable.tsx` - Added `isMounted` pattern for date formatting
+- `seo_alert_history` table - Added missing `metadata` column via SQL
+
+**Architect Review:** ✅ Approved - "isMounted pattern correctly eliminates hydration error. Minor optional improvements suggested but fix is solid."
+
+**Testing:**
+- ✅ Browser console logs show zero React hydration errors
+- ✅ Marketplace page loads successfully
+- ✅ SEO scanner runs without database errors
+- ✅ All admin marketplace endpoints functional
+
 ### Nov 2, 2025 - Error Monitoring System Cleanup
 **Summary:** Systematically resolved all 119 active errors in database monitoring system, achieving 0 active errors.
 
