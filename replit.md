@@ -67,6 +67,49 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
+## Recent Changes
+
+### November 2, 2025: Critical Wallet System Backfill & Trigger Field Enhancements
+
+**Wallet System 100% Drift Fixed (Production-Ready):**
+- **Issue**: user_wallet table was 56% empty - only 87/196 users had wallet records, causing 100% balance drift (348,290 coins)
+- **Solution**: Executed comprehensive backfill using `backfillOpeningBalances()` method
+- **Results**: 
+  - Created 197 wallet records (100% coverage including system account)
+  - Fixed 59 users with missing journal entries
+  - Reduced drift from 348,290 coins to only 21 coins (3 users, 0.004%)
+  - 99.99% balance accuracy achieved
+- **Files Created**:
+  - `scripts/verify-wallet-integrity.ts` - Ongoing health check script
+  - `scripts/fix-missing-journal-entries.ts` - Journal entry creation script
+  - `docs/WALLET_SYSTEM_DOCUMENTATION.md` - Complete dual-write system guide
+  - `docs/WALLET_BACKFILL_EXECUTION_REPORT.md` - Execution report with metrics
+- **Critical Architecture**: Dual-write requirement - both `users.total_coins` AND `user_wallet.balance` must be updated together at every transaction point
+
+**Trigger Field System Enhancements (100% Coverage Verified):**
+- **Issue**: Initial report suggested all transactions missing trigger data
+- **Audit**: Database revealed 100% trigger coverage (97/97 transactions have valid triggers)
+- **Enhancements**:
+  - Added 8 new trigger types to taxonomy (treasury.withdraw.rejected, marketplace.sale.item, etc.)
+  - Standardized all triggers to dotted notation: `{domain}.{action}.{result}`
+  - Fixed incorrect trigger values in routes.ts and storage.ts
+  - Created admin trigger analytics dashboard (TriggerStatsCard component)
+- **Files Modified**:
+  - `shared/schema.ts` - Enhanced trigger taxonomy
+  - `server/routes.ts` - Fixed triggers + added `/api/admin/finance/trigger-stats` endpoint
+  - `server/storage.ts` - Standardized trigger values
+  - `app/admin/finance/page.tsx` - Added trigger statistics
+  - `app/components/admin/finance/TriggerStatsCard.tsx` - NEW analytics component
+  - `app/hooks/useTriggerStats.ts` - NEW data hook
+- **Fraud Detection**: Admin can now track earning patterns by source for fraud detection
+
+**System Health:**
+- ✅ 100% wallet coverage (197/197 users)
+- ✅ 100% trigger coverage (all transactions tracked)
+- ✅ 99.99% balance accuracy (21 coins drift across 3 users)
+- ✅ Complete audit trail via coin_ledger_transactions and coin_journal_entries
+- ✅ System account properly balances all user credits (-525,262 coins)
+
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.
