@@ -233,3 +233,29 @@ export function sanitizeRequestBody(body: any, htmlFields: string[] = []): any {
 
   return sanitized;
 }
+
+// ============================================================================
+// Admin User Management Validation Schemas
+// ============================================================================
+
+/**
+ * User management query params schema for GET /api/admin/users
+ */
+export const userManagementQuerySchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  search: z.string().optional(),
+  role: z.enum(['all', 'member', 'moderator', 'admin', 'superadmin']).default('all'),
+  status: z.enum(['all', 'active', 'banned', 'suspended']).default('all'),
+  authMethod: z.enum(['all', 'email', 'google', 'replit']).default('all'),
+  sortBy: z.enum(['createdAt', 'username', 'last_login_at', 'reputationScore']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+});
+
+/**
+ * Ban user schema for POST /api/admin/users/:userId/ban
+ */
+export const banUserSchema = z.object({
+  reason: z.string().min(1, "Ban reason is required").max(500, "Ban reason must be less than 500 characters"),
+  duration: z.number().positive().optional(), // hours for temporary ban (future feature)
+});

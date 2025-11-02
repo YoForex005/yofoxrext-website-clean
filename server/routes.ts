@@ -70,13 +70,15 @@ import {
 } from "../shared/schema.js";
 import { z } from "zod";
 import { db } from "./db.js";
-import { eq, and, gt, asc, desc, count, sql, gte, lte, lt, or, ne } from "drizzle-orm";
+import { eq, and, gt, asc, desc, count, sql, gte, lte, lt, or, ne, ilike, isNotNull, isNull } from "drizzle-orm";
 import {
   sanitizeRequestBody,
   validateCoinAmount,
   validatePrice,
   validateSufficientCoins,
   runValidators,
+  userManagementQuerySchema,
+  banUserSchema,
 } from "./validation.js";
 import { 
   ObjectStorageService, 
@@ -13336,6 +13338,430 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error: any) {
       console.error('Failed to get bot earnings:', error);
       res.status(500).json({ error: 'Failed to get bot earnings', message: error.message });
+    }
+  });
+
+  // ===== ADMIN USER MANAGEMENT ENDPOINTS =====
+
+  // Rate limiter for ban operations
+  const banOperationLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 10, // 10 ban operations per minute per admin
+    message: 'Too many ban operations, please try again later',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // GET /api/admin/users - List users with pagination, filters, and stats
+  app.get("/api/admin/users", isAdminMiddleware, async (req, res) => {
+    try {
+      // Validate and parse query parameters
+      const validatedQuery = userManagementQuerySchema.parse(req.query);
+      const { page, limit, search, role, status, authMethod, sortBy, sortOrder } = validatedQuery;
+
+      // Build filter conditions
+      const conditions: any[] = [];
+
+      // Search filter (username OR email)
+      if (search && search.trim()) {
+        conditions.push(
+          or(
+            ilike(users.username, `%${search}%`),
+            ilike(users.email, `%${search}%`)
+          )
+        );
+      }
+
+      // Role filter
+      if (role !== 'all') {
+        conditions.push(eq(users.role, role));
+      }
+
+      // Status filter
+      if (status === 'banned') {
+        conditions.push(isNotNull(users.bannedAt));
+      } else if (status === 'suspended') {
+        conditions.push(
+          and(
+            isNotNull(users.suspendedUntil),
+            gt(users.suspendedUntil, new Date())
+          )
+        );
+      } else if (status === 'active') {
+        conditions.push(
+          and(
+            isNull(users.bannedAt),
+            or(
+              isNull(users.suspendedUntil),
+              lte(users.suspendedUntil, new Date())
+            )
+          )
+        );
+      }
+
+      // Auth method filter
+      if (authMethod !== 'all') {
+        conditions.push(eq(users.auth_provider, authMethod));
+      }
+
+      // Combine all conditions
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Calculate pagination
+      const offset = (page - 1) * limit;
+
+      // Determine sort column and order
+      const sortColumn = sortBy === 'createdAt' ? users.createdAt
+        : sortBy === 'username' ? users.username
+        : sortBy === 'last_login_at' ? users.last_login_at
+        : users.reputationScore;
+
+      const orderFn = sortOrder === 'asc' ? asc : desc;
+
+      // Fetch users with pagination
+      const usersQuery = db
+        .select({
+          id: users.id,
+          username: users.username,
+          email: users.email,
+          role: users.role,
+          status: users.status,
+          auth_provider: users.auth_provider,
+          reputationScore: users.reputationScore,
+          totalCoins: users.totalCoins,
+          level: users.level,
+          isBot: users.isBot,
+          createdAt: users.createdAt,
+          last_login_at: users.last_login_at,
+          bannedAt: users.bannedAt,
+          banReason: users.banReason,
+          bannedBy: users.bannedBy,
+          suspendedUntil: users.suspendedUntil,
+          profileImageUrl: users.profileImageUrl,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(orderFn(sortColumn))
+        .limit(limit)
+        .offset(offset);
+
+      // Get total count for pagination
+      const totalCountQuery = db
+        .select({ count: count() })
+        .from(users)
+        .where(whereClause);
+
+      // Execute queries in parallel
+      const [usersList, totalCountResult] = await Promise.all([
+        usersQuery,
+        totalCountQuery,
+      ]);
+
+      const total = Number(totalCountResult[0]?.count || 0);
+      const totalPages = Math.ceil(total / limit);
+
+      // Calculate stats (exclude bots)
+      const statsQuery = db
+        .select({
+          totalUsers: count(),
+          avgReputation: sql<number>`COALESCE(AVG(${users.reputationScore}), 0)`,
+          avgCoins: sql<number>`COALESCE(AVG(${users.totalCoins}), 0)`,
+          bannedCount: sql<number>`COUNT(CASE WHEN ${users.bannedAt} IS NOT NULL THEN 1 END)`,
+        })
+        .from(users)
+        .where(eq(users.isBot, false));
+
+      const statsResult = await statsQuery;
+      const stats = {
+        totalUsers: Number(statsResult[0]?.totalUsers || 0),
+        avgReputation: Number(Number(statsResult[0]?.avgReputation || 0).toFixed(1)),
+        avgCoins: Number(Number(statsResult[0]?.avgCoins || 0).toFixed(1)),
+        bannedCount: Number(statsResult[0]?.bannedCount || 0),
+      };
+
+      res.json({
+        users: usersList,
+        total,
+        page,
+        totalPages,
+        stats,
+      });
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid query parameters', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to fetch users', message: error.message });
+    }
+  });
+
+  // GET /api/admin/users/:userId - Get single user details
+  app.get("/api/admin/users/:userId", isAdminMiddleware, async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+
+      const userResult = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (userResult.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const user = userResult[0];
+
+      // Remove sensitive fields
+      const { password, password_hash, ...userWithoutPassword } = user;
+
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      console.error('Failed to fetch user:', error);
+      res.status(500).json({ error: 'Failed to fetch user', message: error.message });
+    }
+  });
+
+  // POST /api/admin/users/:userId/ban - Ban or unban user
+  app.post("/api/admin/users/:userId/ban", isAdminMiddleware, banOperationLimiter, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const adminUser = req.user as User;
+
+      if (!userId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+
+      // Fetch the user
+      const userResult = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (userResult.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const targetUser = userResult[0];
+
+      // Prevent banning yourself
+      if (targetUser.id === adminUser.id) {
+        return res.status(400).json({ error: 'You cannot ban yourself' });
+      }
+
+      // Prevent banning other admins (unless you're superadmin)
+      if (targetUser.role === 'admin' || targetUser.role === 'superadmin') {
+        if (adminUser.role !== 'superadmin') {
+          return res.status(403).json({ error: 'Only superadmins can ban other admins' });
+        }
+      }
+
+      let action: 'banned' | 'unbanned';
+      let updatedUser;
+
+      if (targetUser.bannedAt) {
+        // User is already banned, unban them
+        const unbanResult = await db
+          .update(users)
+          .set({
+            bannedAt: null,
+            banReason: null,
+            bannedBy: null,
+            status: 'active',
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, userId))
+          .returning();
+
+        updatedUser = unbanResult[0];
+        action = 'unbanned';
+
+        // Create audit log
+        await db.insert(adminActions).values({
+          adminId: adminUser.id,
+          action: 'user_unbanned',
+          targetType: 'user',
+          targetId: userId,
+          details: {
+            username: targetUser.username,
+            previousBanReason: targetUser.banReason,
+          },
+        });
+      } else {
+        // User is not banned, ban them
+        const validatedBody = banUserSchema.parse(req.body);
+        const { reason } = validatedBody;
+
+        const banResult = await db
+          .update(users)
+          .set({
+            bannedAt: new Date(),
+            banReason: reason,
+            bannedBy: adminUser.id,
+            status: 'banned',
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, userId))
+          .returning();
+
+        updatedUser = banResult[0];
+        action = 'banned';
+
+        // Create audit log
+        await db.insert(adminActions).values({
+          adminId: adminUser.id,
+          action: 'user_banned',
+          targetType: 'user',
+          targetId: userId,
+          details: {
+            username: targetUser.username,
+            banReason: reason,
+          },
+        });
+      }
+
+      // Remove sensitive fields
+      const { password, password_hash, ...userWithoutPassword } = updatedUser;
+
+      res.json({
+        success: true,
+        action,
+        user: userWithoutPassword,
+      });
+    } catch (error: any) {
+      console.error('Failed to ban/unban user:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid request body', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to ban/unban user', message: error.message });
+    }
+  });
+
+  // GET /api/admin/users/export/csv - Export users to CSV
+  app.get("/api/admin/users/export/csv", isAdminMiddleware, async (req, res) => {
+    try {
+      // Validate and parse query parameters (same as GET /api/admin/users)
+      const validatedQuery = userManagementQuerySchema.parse(req.query);
+      const { search, role, status, authMethod, sortBy, sortOrder } = validatedQuery;
+
+      // Build filter conditions (same as GET /api/admin/users)
+      const conditions: any[] = [];
+
+      if (search && search.trim()) {
+        conditions.push(
+          or(
+            ilike(users.username, `%${search}%`),
+            ilike(users.email, `%${search}%`)
+          )
+        );
+      }
+
+      if (role !== 'all') {
+        conditions.push(eq(users.role, role));
+      }
+
+      if (status === 'banned') {
+        conditions.push(isNotNull(users.bannedAt));
+      } else if (status === 'suspended') {
+        conditions.push(
+          and(
+            isNotNull(users.suspendedUntil),
+            gt(users.suspendedUntil, new Date())
+          )
+        );
+      } else if (status === 'active') {
+        conditions.push(
+          and(
+            isNull(users.bannedAt),
+            or(
+              isNull(users.suspendedUntil),
+              lte(users.suspendedUntil, new Date())
+            )
+          )
+        );
+      }
+
+      if (authMethod !== 'all') {
+        conditions.push(eq(users.auth_provider, authMethod));
+      }
+
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Determine sort column and order
+      const sortColumn = sortBy === 'createdAt' ? users.createdAt
+        : sortBy === 'username' ? users.username
+        : sortBy === 'last_login_at' ? users.last_login_at
+        : users.reputationScore;
+
+      const orderFn = sortOrder === 'asc' ? asc : desc;
+
+      // Fetch ALL matching users (no pagination)
+      const allUsers = await db
+        .select({
+          username: users.username,
+          email: users.email,
+          role: users.role,
+          auth_provider: users.auth_provider,
+          status: users.status,
+          reputationScore: users.reputationScore,
+          totalCoins: users.totalCoins,
+          createdAt: users.createdAt,
+          last_login_at: users.last_login_at,
+          bannedAt: users.bannedAt,
+          banReason: users.banReason,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(orderFn(sortColumn));
+
+      // Generate CSV
+      const csvHeader = 'Username,Email,Role,Auth Method,Status,Reputation,Coins,Created At,Last Login,Banned At,Ban Reason\n';
+      
+      const csvRows = allUsers.map(user => {
+        const formatDate = (date: Date | null) => date ? new Date(date).toISOString() : '';
+        const escapeCSV = (value: any) => {
+          if (value === null || value === undefined) return '';
+          const str = String(value);
+          if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+            return `"${str.replace(/"/g, '""')}"`;
+          }
+          return str;
+        };
+
+        return [
+          escapeCSV(user.username),
+          escapeCSV(user.email || ''),
+          escapeCSV(user.role),
+          escapeCSV(user.auth_provider || ''),
+          escapeCSV(user.status),
+          escapeCSV(user.reputationScore),
+          escapeCSV(user.totalCoins),
+          escapeCSV(formatDate(user.createdAt)),
+          escapeCSV(formatDate(user.last_login_at)),
+          escapeCSV(formatDate(user.bannedAt)),
+          escapeCSV(user.banReason || ''),
+        ].join(',');
+      }).join('\n');
+
+      const csv = csvHeader + csvRows;
+
+      // Set response headers
+      const today = new Date().toISOString().split('T')[0];
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="yoforex-users-${today}.csv"`);
+
+      res.send(csv);
+    } catch (error: any) {
+      console.error('Failed to export users:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ error: 'Invalid query parameters', details: error.errors });
+      }
+      res.status(500).json({ error: 'Failed to export users', message: error.message });
     }
   });
 

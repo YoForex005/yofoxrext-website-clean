@@ -88,6 +88,7 @@ export const users = pgTable("users", {
   status: varchar("status", { length: 20 }).notNull().default("active"), // active, suspended, banned
   suspendedUntil: timestamp("suspended_until"), // When suspension ends
   bannedAt: timestamp("banned_at"), // When user was banned
+  banReason: text("ban_reason"), // Reason for ban (nullable)
   bannedBy: varchar("banned_by"), // Admin ID who banned the user
   lastActive: timestamp("last_active").defaultNow(), // Last activity timestamp for online tracking
   
