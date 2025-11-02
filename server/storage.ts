@@ -10573,7 +10573,7 @@ export class DrizzleStorage implements IStorage {
       const withdrawalId = randomUUID();
 
       // 7. Fraud detection checks
-      await this.performFraudChecksInTx(tx, userId, -data.amount, 'withdrawal.request.crypto');
+      await this.performFraudChecksInTx(tx, userId, -data.amount, 'treasury.withdraw.requested');
 
       // 8. Manually create coin transaction within this atomic transaction (FIX #1)
       const newBalance = wallet.balance - data.amount;
@@ -10583,8 +10583,8 @@ export class DrizzleStorage implements IStorage {
           userId,
           amount: -data.amount,
           type: "spend",
-          trigger: 'withdrawal.request.crypto',
-          channel: 'withdrawal',
+          trigger: 'treasury.withdraw.requested',
+          channel: 'treasury',
           description: `Withdrawal request: ${data.amount} coins to ${data.cryptoType} (${data.walletAddress})`,
           metadata: {
             withdrawalId, // Store withdrawal ID for idempotency lookup
@@ -10673,8 +10673,8 @@ export class DrizzleStorage implements IStorage {
           userId: userId,
           transactionId: transaction.id,
           amount: -data.amount,
-          trigger: 'withdrawal.request.crypto',
-          channel: 'withdrawal',
+          trigger: 'treasury.withdraw.requested',
+          channel: 'treasury',
           newBalance: newBalance,
         });
       }, 0);

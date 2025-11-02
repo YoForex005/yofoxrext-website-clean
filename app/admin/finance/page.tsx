@@ -6,11 +6,13 @@ import { FinanceHeader } from "@/components/admin/finance/FinanceHeader";
 import { KPICardsGrid } from "@/components/admin/finance/KPICardsGrid";
 import { RevenueTrendChart } from "@/components/admin/finance/RevenueTrendChart";
 import { RevenueSourceChart } from "@/components/admin/finance/RevenueSourceChart";
+import { TriggerStatsCard } from "@/components/admin/finance/TriggerStatsCard";
 import { PendingWithdrawalsTable } from "@/components/admin/finance/PendingWithdrawalsTable";
 import { RejectWithdrawalModal } from "@/components/admin/finance/RejectWithdrawalModal";
 import { useFinanceStats } from "@/hooks/useFinanceStats";
 import { useFinanceRevenueTrend } from "@/hooks/useFinanceRevenueTrend";
 import { useRevenueSources } from "@/hooks/useRevenueSources";
+import { useTriggerStats } from "@/hooks/useTriggerStats";
 import { usePendingWithdrawals } from "@/hooks/usePendingWithdrawals";
 import { useApproveWithdrawal } from "@/hooks/useApproveWithdrawal";
 import { useRejectWithdrawal } from "@/hooks/useRejectWithdrawal";
@@ -27,6 +29,7 @@ function FinanceContent() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useFinanceStats(period);
   const { data: trendData, isLoading: trendLoading } = useFinanceRevenueTrend(period);
   const { data: sourcesData, isLoading: sourcesLoading } = useRevenueSources(period);
+  const { data: triggerData, isLoading: triggerLoading } = useTriggerStats(period);
   const { data: withdrawalsData, isLoading: withdrawalsLoading } = usePendingWithdrawals(page, 20);
 
   const { mutate: approveWithdrawal, isPending: isApproving } = useApproveWithdrawal();
@@ -114,6 +117,8 @@ function FinanceContent() {
         <RevenueTrendChart data={trendData} isLoading={trendLoading} />
         <RevenueSourceChart data={sourcesData} isLoading={sourcesLoading} />
       </div>
+
+      <TriggerStatsCard data={triggerData} isLoading={triggerLoading} />
 
       <PendingWithdrawalsTable
         withdrawals={withdrawalsData?.withdrawals}

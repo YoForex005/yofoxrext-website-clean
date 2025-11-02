@@ -634,8 +634,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
         amount: 150,
         description: "Welcome to YoForex!",
         status: "completed",
-        trigger: "welcome_bonus",
-        channel: "web",
+        trigger: "system.welcome.bonus",
+        channel: "system",
       });
 
       // Update user's total coins
@@ -16721,6 +16721,34 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('[Revenue Sources] Error:', error);
       res.status(500).json({ error: 'Failed to fetch revenue sources' });
+    }
+  });
+
+  // 3a. GET /api/admin/finance/trigger-stats - Get transaction statistics by trigger
+  app.get("/api/admin/finance/trigger-stats", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const days = parseInt(req.query.days as string) || 30;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+
+      const triggerStats = await db
+        .select({
+          trigger: coinTransactions.trigger,
+          channel: coinTransactions.channel,
+          count: sql<number>`COUNT(*)::int`,
+          totalEarned: sql<number>`COALESCE(SUM(CASE WHEN ${coinTransactions.amount} > 0 THEN ${coinTransactions.amount} ELSE 0 END), 0)::int`,
+          totalSpent: sql<number>`COALESCE(SUM(CASE WHEN ${coinTransactions.amount} < 0 THEN ${coinTransactions.amount} ELSE 0 END), 0)::int`,
+          avgAmount: sql<number>`COALESCE(AVG(${coinTransactions.amount}), 0)::float`,
+        })
+        .from(coinTransactions)
+        .where(gte(coinTransactions.createdAt, cutoffDate))
+        .groupBy(coinTransactions.trigger, coinTransactions.channel)
+        .orderBy(desc(sql`COUNT(*)`));
+
+      res.json(triggerStats);
+    } catch (error) {
+      console.error('[Trigger Stats] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch trigger statistics' });
     }
   });
 

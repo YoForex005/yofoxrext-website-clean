@@ -54,7 +54,7 @@ async function createTestUser(): Promise<string> {
 
 async function createTestContent(authorId: string): Promise<string> {
   const [item] = await db.insert(content).values({
-    authorId,
+    author_id: authorId,
     type: 'ea',
     title: 'Test EA for Transaction Testing',
     description: 'This is a test EA',

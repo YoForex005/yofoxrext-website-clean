@@ -18,33 +18,49 @@ export const COIN_TRIGGERS = {
   FORUM_THREAD_CREATED: 'forum.thread.created',
   FORUM_LIKE_RECEIVED: 'forum.like.received',
   FORUM_LIKE_GIVEN: 'forum.like.given',
+  FORUM_REPLY_HELPFUL: 'forum.reply.helpful',
   
   // Onboarding
   ONBOARDING_PROFILE_COMPLETE: 'onboarding.profile.complete',
   ONBOARDING_EMAIL_VERIFIED: 'onboarding.email.verified',
   ONBOARDING_FIRST_POST: 'onboarding.first.post',
+  ONBOARDING_PROFILE_PICTURE: 'onboarding.profile_picture',
+  ONBOARDING_WELCOME: 'onboarding.welcome',
+  ONBOARDING_FIRST_THREAD: 'onboarding.first_thread',
+  ONBOARDING_FIRST_PUBLISH: 'onboarding.first_publish',
   
   // Referrals
   REFERRAL_SIGNUP_COMPLETED: 'referral.signup.completed',
   REFERRAL_PURCHASE_COMPLETED: 'referral.purchase.completed',
+  REFERRAL_SIGNUP: 'referral.signup',
+  REFERRAL_PREMIUM: 'referral.premium',
   
   // Engagement
   ENGAGEMENT_DAILY_LOGIN: 'engagement.daily.login',
   ENGAGEMENT_STREAK_BONUS: 'engagement.streak.bonus',
+  ENGAGEMENT_FOLLOWER_GAINED: 'engagement.follower.gained',
+  ENGAGEMENT_FOLLOWER_LOST: 'engagement.follower.lost',
   
   // Marketplace
   MARKETPLACE_PURCHASE_ITEM: 'marketplace.purchase.item',
+  MARKETPLACE_SALE_ITEM: 'marketplace.sale.item',
   MARKETPLACE_EA_PUBLISHED: 'marketplace.ea.published',
   
-  // Treasury
+  // Treasury / Withdrawals
   TREASURY_WITHDRAW_REQUESTED: 'treasury.withdraw.requested',
+  TREASURY_WITHDRAW_REJECTED: 'treasury.withdraw.rejected',
+  TREASURY_WITHDRAW_APPROVED: 'treasury.withdraw.approved',
   
   // Admin Actions
   ADMIN_ADJUSTMENT_MANUAL: 'admin.adjustment.manual',
   ADMIN_BONUS_REWARD: 'admin.bonus.reward',
+  ADMIN_MANUAL_GRANT: 'admin.manual.grant',
+  ADMIN_MANUAL_DEDUCT: 'admin.manual.deduct',
   
   // System
   SYSTEM_WELCOME_BONUS: 'system.welcome.bonus',
+  SYSTEM_MIGRATION_BACKFILL: 'system.migration.backfill',
+  SYSTEM_CORRECTION: 'system.correction',
   SYSTEM_UNKNOWN: 'system.unknown',
 } as const;
 
