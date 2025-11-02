@@ -367,6 +367,12 @@ export interface IStorage {
   getForumCategoryBySlug(slug: string): Promise<ForumCategory | undefined>;
   updateCategoryStats(categorySlug: string): Promise<void>;
   
+  // Engagement Sidebar Methods
+  listTrendingThreads(options: { sinceHours: number; limit: number }): Promise<ForumThread[]>;
+  listPopularCategories(limit: number): Promise<Array<{ category: ForumCategory; threadCount: number }>>;
+  listRecentThreadActivity(limit: number): Promise<Array<{ thread: ForumThread; author: { username: string; firstName?: string | null } }>>;
+  getCommunityStats(): Promise<{ activeUsers: number; threadsToday: number; totalThreads: number; totalCategories: number }>;
+  
   createUserBadge(userId: string, badgeType: string): Promise<UserBadge>;
   getUserBadges(userId: string): Promise<UserBadge[]>;
   hasUserBadge(userId: string, badgeType: string): Promise<boolean>;
@@ -8687,6 +8693,114 @@ export class DrizzleStorage implements IStorage {
         updatedAt: sql`NOW()`,
       })
       .where(eq(forumCategories.slug, categorySlug));
+  }
+  
+  async listTrendingThreads(options: { sinceHours: number; limit: number }): Promise<ForumThread[]> {
+    const hoursAgo = new Date();
+    hoursAgo.setHours(hoursAgo.getHours() - options.sinceHours);
+    
+    const threads = await db
+      .select()
+      .from(forumThreads)
+      .where(and(
+        eq(forumThreads.status, "approved"),
+        gte(forumThreads.createdAt, hoursAgo)
+      ))
+      .orderBy(desc(forumThreads.views))
+      .limit(options.limit);
+    
+    return threads;
+  }
+  
+  async listPopularCategories(limit: number): Promise<Array<{ category: ForumCategory; threadCount: number }>> {
+    // Use raw SQL to get categories with their thread counts
+    const result = await db.execute<{
+      slug: string;
+      name: string;
+      description: string | null;
+      icon: string | null;
+      thread_count: string;
+      post_count: number;
+      parent_slug: string | null;
+      order_index: number;
+      created_at: Date;
+      updated_at: Date;
+    }>(sql`
+      SELECT 
+        c.*,
+        COALESCE(COUNT(t.id), 0) as thread_count
+      FROM forum_categories c
+      LEFT JOIN forum_threads t ON t.category_slug = c.slug
+      GROUP BY c.slug, c.name, c.description, c.icon, c.thread_count, c.post_count, c.parent_slug, c.order_index, c.created_at, c.updated_at
+      ORDER BY COALESCE(COUNT(t.id), 0) DESC
+      LIMIT ${limit}
+    `);
+    
+    return result.rows.map(row => ({
+      category: {
+        slug: row.slug,
+        name: row.name,
+        description: row.description,
+        icon: row.icon,
+        threadCount: row.thread_count,
+        postCount: row.post_count,
+        parentSlug: row.parent_slug,
+        orderIndex: row.order_index,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+      threadCount: Number(row.thread_count)
+    }));
+  }
+  
+  async listRecentThreadActivity(limit: number): Promise<Array<{ thread: ForumThread; author: { username: string; firstName?: string | null } }>> {
+    const results = await db
+      .select({
+        thread: forumThreads,
+        authorUsername: users.username,
+        authorFirstName: users.firstName
+      })
+      .from(forumThreads)
+      .innerJoin(users, eq(users.id, forumThreads.userId))
+      .where(eq(forumThreads.status, "approved"))
+      .orderBy(desc(forumThreads.createdAt))
+      .limit(limit);
+    
+    return results.map(r => ({
+      thread: r.thread,
+      author: {
+        username: r.authorUsername,
+        firstName: r.authorFirstName
+      }
+    }));
+  }
+  
+  async getCommunityStats(): Promise<{ activeUsers: number; threadsToday: number; totalThreads: number; totalCategories: number }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    
+    // Use raw SQL for complex aggregations to avoid Drizzle syntax issues
+    const result = await db.execute<{
+      total_threads: string;
+      total_categories: string;
+      threads_today: string;
+      active_users: string;
+    }>(sql`
+      SELECT 
+        (SELECT COUNT(*) FROM forum_threads) as total_threads,
+        (SELECT COUNT(*) FROM forum_categories) as total_categories,
+        (SELECT COUNT(*) FROM forum_threads WHERE created_at >= ${today}) as threads_today,
+        (SELECT COUNT(*) FROM users WHERE last_active >= ${twentyFourHoursAgo}) as active_users
+    `);
+    
+    const stats = result.rows[0];
+    return {
+      activeUsers: Number(stats.active_users || 0),
+      threadsToday: Number(stats.threads_today || 0),
+      totalThreads: Number(stats.total_threads || 0),
+      totalCategories: Number(stats.total_categories || 0)
+    };
   }
   
   async createUserBadge(userId: string, badgeType: string): Promise<UserBadge> {

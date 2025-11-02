@@ -15,6 +15,8 @@ import DOMPurify from 'isomorphic-dompurify';
 import type { ForumCategory } from "@shared/schema";
 import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
+import LeftEngagementSidebar from "./LeftEngagementSidebar";
+import RightEngagementSidebar from "./RightEngagementSidebar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -681,22 +683,33 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     <>
       <Header />
       <div className="min-h-screen bg-background">
-        <div className="container max-w-4xl mx-auto px-4 py-6">
-          {/* Header with progress */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h1 className="text-2xl font-bold">Create New Thread</h1>
-              {isSavingDraft && (
-                <Badge variant="secondary" className="animate-pulse">
-                  <Save className="w-3 h-3 mr-1" />
-                  Saving...
-                </Badge>
-              )}
+        <div className="container max-w-7xl mx-auto px-4 py-6">
+          {/* 3-column responsive grid layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-6">
+            {/* Left Sidebar - Hidden on mobile, visible on lg+ */}
+            <div className="hidden lg:block">
+              <div className="lg:sticky lg:top-[88px]">
+                <LeftEngagementSidebar />
+              </div>
             </div>
-            <StepIndicator currentStep={currentStep} totalSteps={2} />
-          </div>
 
-          <Form {...form}>
+            {/* Main Content - Thread Creation Form */}
+            <div className="min-w-0">
+              {/* Header with progress */}
+              <div className="mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h1 className="text-2xl font-bold">Create New Thread</h1>
+                  {isSavingDraft && (
+                    <Badge variant="secondary" className="animate-pulse">
+                      <Save className="w-3 h-3 mr-1" />
+                      Saving...
+                    </Badge>
+                  )}
+                </div>
+                <StepIndicator currentStep={currentStep} totalSteps={2} />
+              </div>
+
+              <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)}>
               {/* STEP 1: Core Content */}
               {currentStep === 1 && (
@@ -992,6 +1005,15 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           </Form>
 
           {AuthPrompt}
+            </div>
+
+            {/* Right Sidebar - Hidden on mobile, visible on lg+ */}
+            <div className="hidden lg:block">
+              <div className="lg:sticky lg:top-[88px]">
+                <RightEngagementSidebar />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <EnhancedFooter />

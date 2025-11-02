@@ -5211,6 +5211,59 @@ export async function registerRoutes(app: Express): Promise<Express> {
     res.json(userThreads);
   });
 
+  // ===== ENGAGEMENT SIDEBAR ENDPOINTS =====
+  
+  // Get trending threads
+  app.get("/api/forum/trending", async (req, res) => {
+    try {
+      const hours = req.query.hours ? parseInt(req.query.hours as string) : 24;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 7;
+      
+      const threads = await storage.listTrendingThreads({ sinceHours: hours, limit });
+      res.json(threads);
+    } catch (error: any) {
+      console.error('Error fetching trending threads:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Get popular categories
+  app.get("/api/forum/popular-categories", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 5;
+      
+      const categories = await storage.listPopularCategories(limit);
+      res.json(categories);
+    } catch (error: any) {
+      console.error('Error fetching popular categories:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Get recent thread activity
+  app.get("/api/forum/recent-activity", async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      
+      const activity = await storage.listRecentThreadActivity(limit);
+      res.json(activity);
+    } catch (error: any) {
+      console.error('Error fetching recent activity:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+  
+  // Get community stats
+  app.get("/api/forum/stats", async (req, res) => {
+    try {
+      const stats = await storage.getCommunityStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error('Error fetching community stats:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // ===== FORUM REPLIES ENDPOINTS =====
   
   // Create reply
