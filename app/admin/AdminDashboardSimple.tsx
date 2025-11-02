@@ -28,7 +28,8 @@ import {
   Menu,
   X,
   Wallet,
-  LineChart
+  LineChart,
+  AlertTriangle
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AdminAuthCheck } from "./auth-check";
@@ -55,6 +56,7 @@ import ContentStudio from "./sections/ContentStudio";
 import Testing from "./sections/Testing";
 import SchemaValidation from "./sections/SchemaValidation";
 import SitemapManagement from "./sections/SitemapManagement";
+import ErrorMonitoring from "./sections/ErrorMonitoring";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -80,6 +82,7 @@ const sections = [
   { id: "performance", icon: Activity, label: "Performance", path: "/admin/performance" },
   { id: "content-studio", icon: Folder, label: "Content Studio", path: "/admin/content-studio" },
   { id: "testing", icon: TestTube, label: "Testing", path: "/admin/testing" },
+  { id: "errors", icon: AlertTriangle, label: "Error Monitoring", path: "/admin/errors" },
   { id: "settings", icon: SettingsIcon, label: "Settings", path: "/admin/settings" },
   { id: "security", icon: Shield, label: "Security", path: "/admin/security" },
   { id: "communications", icon: Mail, label: "Communications", path: "/admin/communications" },
@@ -128,6 +131,8 @@ export function AdminDashboardClient() {
         return <ContentStudio />;
       case "/admin/testing":
         return <Testing />;
+      case "/admin/errors":
+        return <ErrorMonitoring />;
       case "/admin/settings":
         return <Settings />;
       case "/admin/security":
