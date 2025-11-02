@@ -95,14 +95,15 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Content Moderation Admin Dashboard:** Comprehensive forum content moderation system at `/admin/moderation` with admin-only access, featuring tab navigation, content type filtering, moderation queue table, approve/reject workflows with mandatory reasons, and immutable audit logging.
 - **Security & Safety Admin Dashboard:** Enterprise-grade security monitoring and IP ban management system at `/admin/security` with admin-only access. Includes database tables for security events and IP bans, a centralized security service for event logging and auto-blocking, middleware for IP banning and login security, and admin API endpoints. Auto-blocking is triggered by 5 failed login attempts within 15 minutes, with severity escalation.
 - **Communications Admin Dashboard:** Enterprise-grade announcement and email campaign management system at `/admin/communications` with admin-only access. Features database tables, DrizzleStorage CRUD, services for announcement lifecycle and email delivery, admin API endpoints, public tracking routes for open/click tracking, and WebSocket integration for real-time broadcasts. Frontend includes UI for managing announcements and email campaigns with audience targeting and scheduling.
-- **Support & Tickets Admin System:** Enterprise-grade customer support and ticket management system with dual interfaces at `/support` (user) and `/admin/support` (admin). Features database tables for tickets and messages, DrizzleStorage CRUD, services for ticket lifecycle management and KPI calculations, and API endpoints for both user and admin functionalities. Admin dashboard includes KPI cards, filtering, data table, and detail view with message thread and controls. User interface allows ticket creation, listing, detail view, and replying.
+- **Support & Tickets Admin System:** Enterprise-grade customer support and ticket management system with dual interfaces at `/support` (user) and `/admin/support` (admin). Includes database tables, DrizzleStorage CRUD, services for ticket lifecycle management and KPI calculations, API endpoints, and comprehensive user and admin UIs.
+- **Audit Logs Admin System:** Enterprise-grade audit logging system for comprehensive tracking of all administrative actions at `/admin/audit` with admin-only access. Includes database table, DrizzleStorage CRUD, middleware for automatic logging of admin API requests, explicit logging utility, and an admin UI with filters and an expandable events table.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies
 
 ### Core Infrastructure
 - **Neon PostgreSQL:** Serverless database.
-- **Replit Object Storage:** Persistent file storage (for message attachments).
+- **Replit Object Storage:** Persistent file storage.
 - **Replit OIDC:** OAuth authentication provider.
 
 ### Email Services
@@ -116,14 +117,14 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Gemini AI:** AI-powered content suggestions and bot engagement.
 
 ### CDN & Storage
-- **Google Cloud Storage:** Object storage backend (general storage).
+- **Google Cloud Storage:** Object storage backend.
 
 ### Development Tools
 - **Drizzle Kit:** Database migrations.
 - **TypeScript:** Type safety.
 - **shadcn/ui:** Component library.
 - **TailwindCSS:** Utility-first CSS framework.
-- **Recharts:** Composable charting library for React (admin analytics visualizations).
+- **Recharts:** Composable charting library for React.
 - **Zod:** Runtime schema validation.
 - **Vitest:** Testing framework.
 - **Supertest:** API integration testing.

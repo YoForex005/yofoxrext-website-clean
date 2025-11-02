@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage/index.js';
-import { actionCategoryMap } from '../utils/auditActions.js';
+import { getActionFromRoute, actionCategoryMap } from '../utils/auditActions.js';
 
 // Sensitive fields to redact from logs
 const SENSITIVE_FIELDS = ['password', 'token', 'secret', 'apiKey'];
@@ -45,9 +45,8 @@ export const auditLogger = async (req: Request, res: Response, next: NextFunctio
     // Log the audit event asynchronously (don't block response)
     setImmediate(async () => {
       try {
-        // Determine action from path
-        const pathParts = req.path.split('/').filter(Boolean);
-        const action = `${req.method}_${pathParts.slice(2).join('_')}`.toUpperCase();
+        // Use route mapper to get canonical action
+        const action = getActionFromRoute(req.method, req.path);
         const category = actionCategoryMap[action] || 'SYSTEM';
         
         await storage.createAuditLog({
