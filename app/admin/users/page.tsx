@@ -230,7 +230,7 @@ function AdminUsersContent() {
           </Pagination>
 
           <p className="text-sm text-muted-foreground" data-testid="pagination-info">
-            Showing page {data.page} of {data.totalPages} ({data.total.toLocaleString()} total users)
+            Showing page {data.page} of {data.totalPages} ({data.total?.toLocaleString() || 0} total users)
           </p>
         </div>
       )}

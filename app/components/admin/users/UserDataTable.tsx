@@ -69,7 +69,7 @@ export function UserDataTable({ users, isLoading, error, onBanClick, onUnbanClic
   };
 
   const truncateEmail = (email: string, maxLength: number = 25) => {
-    if (email.length <= maxLength) return email;
+    if (!email || email.length <= maxLength) return email || '';
     return email.substring(0, maxLength) + "...";
   };
 

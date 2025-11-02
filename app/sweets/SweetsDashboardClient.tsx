@@ -155,7 +155,7 @@ export default function SweetsDashboardClient() {
         });
       } else {
         toast.success(`+${data.xpAwarded} XP earned!`, {
-          description: `Total XP: ${data.newTotalXp.toLocaleString()}`
+          description: `Total XP: ${data.newTotalXp?.toLocaleString() || '0'}`
         });
       }
     });
@@ -174,7 +174,7 @@ export default function SweetsDashboardClient() {
       
       // Show toast notification
       toast.success(`${data.change > 0 ? '+' : ''}${data.change} Sweets`, {
-        description: `New balance: ${data.newBalance.toLocaleString()}`
+        description: `New balance: ${data.newBalance?.toLocaleString() || '0'}`
       });
     });
 
@@ -356,7 +356,7 @@ export default function SweetsDashboardClient() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">XP Progress</span>
                     <span className="font-medium" data-testid="text-current-xp">
-                      {progress.currentXp.toLocaleString()} / {nextRank?.minXp.toLocaleString() || "MAX"}
+                      {progress.currentXp?.toLocaleString() || '0'} / {nextRank?.minXp?.toLocaleString() || "MAX"}
                     </span>
                   </div>
                   <Progress 
@@ -366,7 +366,7 @@ export default function SweetsDashboardClient() {
                   />
                   {nextRank && (
                     <p className="text-xs text-muted-foreground" data-testid="text-xp-needed">
-                      {progress.xpNeededForNext.toLocaleString()} XP until {nextRank.name}
+                      {progress.xpNeededForNext?.toLocaleString() || '0'} XP until {nextRank.name}
                     </p>
                   )}
                   {!nextRank && (
@@ -418,7 +418,7 @@ export default function SweetsDashboardClient() {
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">This Week</span>
                     <span className="font-medium">
-                      {progress.weeklyXp.toLocaleString()} / 1,000 XP
+                      {progress.weeklyXp?.toLocaleString() || '0'} / 1,000 XP
                     </span>
                   </div>
                   <Progress 
@@ -429,7 +429,7 @@ export default function SweetsDashboardClient() {
                   <p className="text-xs text-muted-foreground">
                     {weeklyProgress >= 100 
                       ? "Weekly cap reached! Great job!" 
-                      : `${(1000 - progress.weeklyXp).toLocaleString()} XP remaining this week`
+                      : `${(1000 - (progress.weeklyXp || 0)).toLocaleString()} XP remaining this week`
                     }
                   </p>
                 </div>
@@ -451,11 +451,11 @@ export default function SweetsDashboardClient() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div className="rounded-lg bg-muted p-3">
                       <p className="text-xs text-muted-foreground">Earned</p>
-                      <p className="text-lg font-bold" data-testid="text-weekly-xp-earned">{progress.weeklyXp}</p>
+                      <p className="text-lg font-bold" data-testid="text-weekly-xp-earned">{progress.weeklyXp || 0}</p>
                     </div>
                     <div className="rounded-lg bg-muted p-3">
                       <p className="text-xs text-muted-foreground">Remaining</p>
-                      <p className="text-lg font-bold" data-testid="text-weekly-xp-remaining">{Math.max(0, 1000 - progress.weeklyXp)}</p>
+                      <p className="text-lg font-bold" data-testid="text-weekly-xp-remaining">{Math.max(0, 1000 - (progress.weeklyXp || 0))}</p>
                     </div>
                   </div>
                 </div>
@@ -512,8 +512,8 @@ export default function SweetsDashboardClient() {
                       <div className="space-y-1">
                         <h3 className="font-bold text-lg">{rank.name}</h3>
                         <p className="text-xs text-muted-foreground">
-                          {rank.minXp.toLocaleString()} XP
-                          {rank.maxXp && ` - ${rank.maxXp.toLocaleString()} XP`}
+                          {rank.minXp?.toLocaleString() || '0'} XP
+                          {rank.maxXp && ` - ${rank.maxXp?.toLocaleString() || '0'} XP`}
                         </p>
                       </div>
                       <Badge 

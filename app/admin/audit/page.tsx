@@ -13,7 +13,7 @@ import { formatDistanceToNow } from 'date-fns';
 export default function AuditLogsPage() {
   const [filters, setFilters] = useState({
     action: '',
-    category: '',
+    category: 'all',
     startDate: '',
     endDate: '',
     search: '',
@@ -54,7 +54,7 @@ export default function AuditLogsPage() {
               <SelectValue placeholder="All Categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               <SelectItem value="USER_MANAGEMENT">User Management</SelectItem>
               <SelectItem value="SUPPORT">Support</SelectItem>
               <SelectItem value="SECURITY">Security</SelectItem>

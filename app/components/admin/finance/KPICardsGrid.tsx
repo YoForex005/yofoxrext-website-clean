@@ -50,7 +50,7 @@ export function KPICardsGrid({ stats, isLoading, error, onRetry }: KPICardsGridP
     );
   }
 
-  const percentChange = stats?.totalRevenue.percentChange || 0;
+  const percentChange = stats?.totalRevenue?.percentChange || 0;
   const isPositive = percentChange >= 0;
 
   return (
@@ -62,7 +62,7 @@ export function KPICardsGrid({ stats, isLoading, error, onRetry }: KPICardsGridP
         </CardHeader>
         <CardContent>
           <p className="text-3xl font-bold text-white" data-testid="value-total-revenue">
-            ${stats?.totalRevenue.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+            ${stats?.totalRevenue?.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
           </p>
           <p className={`text-xs mt-1 flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`} data-testid="text-revenue-change">
             {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
@@ -78,10 +78,10 @@ export function KPICardsGrid({ stats, isLoading, error, onRetry }: KPICardsGridP
         </CardHeader>
         <CardContent>
           <p className="text-3xl font-bold text-white" data-testid="value-pending-count">
-            {stats?.pendingWithdrawals.count || 0}
+            {stats?.pendingWithdrawals?.count || 0}
           </p>
           <p className="text-xs text-gray-400 mt-1" data-testid="text-pending-total">
-            ${stats?.pendingWithdrawals.total.toLocaleString() || 0} total
+            ${stats?.pendingWithdrawals?.total?.toLocaleString() || 0} total
           </p>
         </CardContent>
       </Card>
@@ -93,10 +93,10 @@ export function KPICardsGrid({ stats, isLoading, error, onRetry }: KPICardsGridP
         </CardHeader>
         <CardContent>
           <p className="text-3xl font-bold text-white" data-testid="value-total-transactions">
-            {stats?.transactions.total.toLocaleString() || 0}
+            {stats?.transactions?.total?.toLocaleString() || 0}
           </p>
           <p className="text-xs text-green-400 mt-1" data-testid="text-today-transactions">
-            +{stats?.transactions.today || 0} today
+            +{stats?.transactions?.today || 0} today
           </p>
         </CardContent>
       </Card>
@@ -113,7 +113,7 @@ export function KPICardsGrid({ stats, isLoading, error, onRetry }: KPICardsGridP
                 {stats.topEarner.username}
               </p>
               <p className="text-xs text-gray-400 mt-1" data-testid="text-top-earner-amount">
-                ${stats.topEarner.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                ${stats.topEarner.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
               </p>
             </>
           ) : (

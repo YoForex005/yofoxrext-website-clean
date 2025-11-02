@@ -94,9 +94,9 @@ export default function AdminSupportPage() {
   const [detailDialog, setDetailDialog] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
   const [filters, setFilters] = useState({
-    status: "",
-    priority: "",
-    category: "",
+    status: "all",
+    priority: "all",
+    category: "all",
   });
   const [replyMessage, setReplyMessage] = useState("");
 
@@ -108,7 +108,7 @@ export default function AdminSupportPage() {
 
   // Build query string from filters
   const queryString = Object.entries(filters)
-    .filter(([_, value]) => value !== "")
+    .filter(([_, value]) => value !== "" && value !== "all")
     .map(([key, value]) => `${key}=${value}`)
     .join("&");
 
@@ -326,7 +326,7 @@ export default function AdminSupportPage() {
                     <SelectValue placeholder="All Statuses" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" data-testid="option-status-all">All Statuses</SelectItem>
+                    <SelectItem value="all" data-testid="option-status-all">All Statuses</SelectItem>
                     <SelectItem value="open" data-testid="option-status-open">Open</SelectItem>
                     <SelectItem value="in_progress" data-testid="option-status-in-progress">In Progress</SelectItem>
                     <SelectItem value="closed" data-testid="option-status-closed">Closed</SelectItem>
@@ -346,7 +346,7 @@ export default function AdminSupportPage() {
                     <SelectValue placeholder="All Priorities" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" data-testid="option-priority-all">All Priorities</SelectItem>
+                    <SelectItem value="all" data-testid="option-priority-all">All Priorities</SelectItem>
                     <SelectItem value="low" data-testid="option-priority-low">Low</SelectItem>
                     <SelectItem value="medium" data-testid="option-priority-medium">Medium</SelectItem>
                     <SelectItem value="high" data-testid="option-priority-high">High</SelectItem>
@@ -366,7 +366,7 @@ export default function AdminSupportPage() {
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" data-testid="option-category-all">All Categories</SelectItem>
+                    <SelectItem value="all" data-testid="option-category-all">All Categories</SelectItem>
                     <SelectItem value="technical" data-testid="option-category-technical">Technical</SelectItem>
                     <SelectItem value="billing" data-testid="option-category-billing">Billing</SelectItem>
                     <SelectItem value="general" data-testid="option-category-general">General</SelectItem>

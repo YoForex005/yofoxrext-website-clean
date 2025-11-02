@@ -67,7 +67,7 @@ export function PendingWithdrawalsTable({
                       {withdrawal.username}
                     </TableCell>
                     <TableCell className="text-white" data-testid={`text-amount-${withdrawal.id}`}>
-                      ${withdrawal.amount.toLocaleString()}
+                      ${withdrawal.amount?.toLocaleString() || '0'}
                     </TableCell>
                     <TableCell className="text-gray-400" data-testid={`text-method-${withdrawal.id}`}>
                       {withdrawal.method}

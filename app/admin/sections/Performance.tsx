@@ -165,7 +165,7 @@ export default function Performance() {
   const cachedKeys: CachedKey[] = Array.isArray(cachedKeysRaw) ? cachedKeysRaw : [];
 
   const recordMetricMutation = useMutation({
-    mutationFn: () => apiRequest("/api/admin/performance/record-metric", "POST"),
+    mutationFn: () => apiRequest("/api/admin/performance/record", "POST"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/performance/system-metrics"] });
       toast({ title: "Metric recorded" });

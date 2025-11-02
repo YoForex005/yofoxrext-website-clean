@@ -9061,6 +9061,150 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // Additional Performance Monitoring endpoints
+  app.get('/api/admin/performance/system-metrics', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const cpu = await getServerCpu();
+      const memory = await getServerMemory();
+      const dbQueryTime = await getDbQueryTime();
+      const errorRate = await getErrorRate();
+      
+      res.json({
+        cpu,
+        memory,
+        dbQueryTime,
+        errorRate,
+        timestamp: new Date()
+      });
+    } catch (error) {
+      console.error('Error fetching system metrics:', error);
+      res.status(500).json({ message: 'Failed to fetch system metrics' });
+    }
+  });
+
+  app.get('/api/admin/performance/slow-queries', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const threshold = req.query.threshold ? parseInt(req.query.threshold as string) : 1000;
+      
+      // Mock data - in production, query actual slow query logs
+      const slowQueries = [
+        { query: 'SELECT * FROM users WHERE...', duration: 2500, timestamp: new Date() },
+        { query: 'SELECT * FROM forum_threads...', duration: 1800, timestamp: new Date() }
+      ];
+      
+      res.json(slowQueries.slice(0, limit));
+    } catch (error) {
+      console.error('Error fetching slow queries:', error);
+      res.status(500).json({ message: 'Failed to fetch slow queries' });
+    }
+  });
+
+  app.get('/api/admin/performance/query-histogram', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock histogram data - in production, aggregate actual query times
+      const histogram = {
+        '0-100ms': 450,
+        '100-500ms': 120,
+        '500-1000ms': 25,
+        '1000-2000ms': 8,
+        '2000+ms': 3
+      };
+      
+      res.json(histogram);
+    } catch (error) {
+      console.error('Error fetching query histogram:', error);
+      res.status(500).json({ message: 'Failed to fetch query histogram' });
+    }
+  });
+
+  app.get('/api/admin/performance/alert-history', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const startDate = req.query.startDate ? new Date(req.query.startDate as string) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      
+      // Mock alert history - in production, query actual alert logs
+      const alerts = [
+        { id: 1, type: 'high_cpu', severity: 'warning', message: 'CPU usage above 80%', timestamp: new Date(), resolved: true },
+        { id: 2, type: 'slow_query', severity: 'info', message: 'Query took 2.5s', timestamp: new Date(), resolved: false }
+      ];
+      
+      res.json(alerts.slice(0, limit));
+    } catch (error) {
+      console.error('Error fetching alert history:', error);
+      res.status(500).json({ message: 'Failed to fetch alert history' });
+    }
+  });
+
+  app.get('/api/admin/performance/database-metrics', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock database metrics - in production, query actual DB stats
+      const dbMetrics = {
+        connectionPoolSize: 10,
+        activeConnections: 5,
+        idleConnections: 5,
+        totalQueries: 15234,
+        avgQueryTime: 45.2,
+        slowQueries: 12,
+        cacheHitRate: 87.5,
+        diskUsage: 2.3, // GB
+        timestamp: new Date()
+      };
+      
+      res.json(dbMetrics);
+    } catch (error) {
+      console.error('Error fetching database metrics:', error);
+      res.status(500).json({ message: 'Failed to fetch database metrics' });
+    }
+  });
+
+  app.get('/api/admin/performance/throughput', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const interval = req.query.interval || '1h'; // 1h, 1d, 1w
+      
+      // Mock throughput data - in production, aggregate actual request logs
+      const throughput = {
+        requestsPerSecond: 12.5,
+        requestsPerMinute: 750,
+        requestsPerHour: 45000,
+        avgResponseTime: 125.3,
+        errorRate: 0.8,
+        interval,
+        timestamp: new Date()
+      };
+      
+      res.json(throughput);
+    } catch (error) {
+      console.error('Error fetching throughput:', error);
+      res.status(500).json({ message: 'Failed to fetch throughput' });
+    }
+  });
+
+  app.get('/api/admin/performance/cached-keys', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const pattern = req.query.pattern as string | undefined;
+      
+      // Mock cache keys - in production, query actual cache store (Redis, etc.)
+      const cachedKeys = [
+        { key: 'user:123:profile', ttl: 3600, size: 1024, hits: 450 },
+        { key: 'thread:456:data', ttl: 1800, size: 2048, hits: 230 },
+        { key: 'category:trending', ttl: 300, size: 512, hits: 890 }
+      ];
+      
+      res.json(cachedKeys);
+    } catch (error) {
+      console.error('Error fetching cached keys:', error);
+      res.status(500).json({ message: 'Failed to fetch cached keys' });
+    }
+  });
+
   // Admin AI & Automation
   // AI Moderation endpoints
   app.get('/api/admin/ai/moderation-stats', isAuthenticated, adminOperationLimiter, async (req, res) => {
