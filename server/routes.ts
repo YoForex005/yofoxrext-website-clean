@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
+import crypto from "crypto";
 import { 
   insertCoinTransactionSchema, 
   insertRechargeOrderSchema,
@@ -46,6 +47,7 @@ import {
   profiles,
   forumReplies,
   users,
+  emailVerificationTokens,
   userFollows,
   content,
   rechargeOrders,
@@ -313,14 +315,47 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   // ===== AUTHENTICATION API ROUTES =====
   
-  // POST /api/auth/register - Email/password registration
+  // Helper function to generate unique referral code
+  const generateReferralCode = async (): Promise<string> => {
+    const generateCode = () => {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = '';
+      for (let i = 0; i < 8; i++) {
+        code += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return code;
+    };
+
+    let code = generateCode();
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    while (attempts < maxAttempts) {
+      const existing = await db
+        .select()
+        .from(users)
+        .where(eq(users.referralCode, code))
+        .limit(1);
+
+      if (existing.length === 0) {
+        return code;
+      }
+
+      code = generateCode();
+      attempts++;
+    }
+
+    throw new Error("Failed to generate unique referral code");
+  };
+
+  // POST /api/auth/register - Email/password registration with email verification
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, password, username } = req.body;
+      const { email, password, referredBy } = req.body;
 
       // Validate inputs
-      if (!email || !password || !username) {
-        return res.status(400).json({ error: "Email, password, and username are required" });
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email and password are required" });
       }
 
       // Validate email format
@@ -331,30 +366,48 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       // Validate password strength (min 8 chars)
       if (password.length < 8) {
-        return res.status(400).json({ error: "Password must be at least 8 characters" });
+        return res.status(400).json({ error: "Password must be at least 8 characters long" });
       }
 
       // Check if user already exists
       const existingUsers = await db
         .select()
         .from(users)
-        .where(or(eq(users.email, email), eq(users.username, username)))
+        .where(eq(users.email, email))
         .limit(1);
 
       if (existingUsers.length > 0) {
-        const existingUser = existingUsers[0];
-        if (existingUser.email === email) {
-          return res.status(409).json({ error: "Email already registered" });
-        }
-        if (existingUser.username === username) {
-          return res.status(409).json({ error: "Username already taken" });
-        }
+        return res.status(409).json({ error: "Email already registered" });
+      }
+
+      // Generate unique username from email prefix + random suffix
+      const emailPrefix = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      const randomSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      let username = `${emailPrefix}_${randomSuffix}`;
+      
+      // Ensure username is unique
+      let usernameAttempts = 0;
+      while (usernameAttempts < 5) {
+        const existingUsername = await db
+          .select()
+          .from(users)
+          .where(eq(users.username, username))
+          .limit(1);
+        
+        if (existingUsername.length === 0) break;
+        
+        const newSuffix = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+        username = `${emailPrefix}_${newSuffix}`;
+        usernameAttempts++;
       }
 
       // Hash password
       const password_hash = await hashPassword(password);
 
-      // Create user
+      // Generate unique referral code
+      const referralCode = await generateReferralCode();
+
+      // Create user with email NOT verified
       const newUserResults = await db
         .insert(users)
         .values({
@@ -377,39 +430,318 @@ export async function registerRoutes(app: Express): Promise<Express> {
           emailBounceCount: 0,
           onboardingCompleted: false,
           onboardingDismissed: false,
-          last_login_at: new Date(),
+          referralCode,
+          referredBy: referredBy || null,
         })
         .returning();
 
       const newUser = newUserResults[0];
 
-      // Log in the user automatically
-      req.login(newUser, (err) => {
-        if (err) {
-          console.error("Auto-login failed after registration:", err);
-          return res.status(500).json({ error: "Registration successful but login failed" });
-        }
+      // Generate verification token
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
-        // Explicitly save the session to ensure cookie is set
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error("Session save error:", saveErr);
-          }
+      // Store verification token
+      await db.insert(emailVerificationTokens).values({
+        userId: newUser.id,
+        email: newUser.email!,
+        token,
+        expiresAt,
+      });
 
-          res.status(201).json({
-            message: "Registration successful",
-            user: {
-              id: newUser.id,
-              email: newUser.email,
-              username: newUser.username,
-              role: newUser.role,
-            },
-          });
+      // Send verification email
+      const verificationLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5000'}/api/auth/verify-email?token=${token}`;
+      
+      try {
+        await emailService.sendEmail({
+          to: email,
+          subject: "Verify your YoForex account",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #2563eb;">Welcome to YoForex!</h2>
+              <p>Thank you for creating an account. Please verify your email address to activate your account and claim your <strong>150 welcome Sweets</strong>!</p>
+              <p>Click the button below to verify your email:</p>
+              <a href="${verificationLink}" style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Verify Email</a>
+              <p>Or copy and paste this link into your browser:</p>
+              <p style="color: #6b7280; word-break: break-all;">${verificationLink}</p>
+              <p style="color: #ef4444; margin-top: 20px;"><strong>This link expires in 24 hours.</strong></p>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+              <p style="color: #6b7280; font-size: 14px;">If you didn't create this account, please ignore this email.</p>
+              <p style="color: #6b7280; font-size: 14px;">Best regards,<br/>The YoForex Team</p>
+            </div>
+          `,
         });
+      } catch (emailError) {
+        console.error("Failed to send verification email:", emailError);
+        // Don't fail registration if email fails - user can resend
+      }
+
+      res.status(201).json({
+        message: "Account created! Please check your email to verify your account.",
+        email: newUser.email,
       });
     } catch (error: any) {
       console.error("Registration error:", error);
       res.status(500).json({ error: error.message || "Registration failed" });
+    }
+  });
+
+  // GET /api/auth/verify-email - Verify email and grant welcome bonus
+  app.get("/api/auth/verify-email", async (req, res) => {
+    try {
+      const { token } = req.query;
+
+      if (!token || typeof token !== 'string') {
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Invalid Link</title></head>
+          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #ef4444;">Invalid Verification Link</h1>
+            <p>This verification link is invalid or malformed.</p>
+            <a href="/" style="color: #2563eb;">Return to Home</a>
+          </body>
+          </html>
+        `);
+      }
+
+      // Find verification token
+      const tokenResults = await db
+        .select()
+        .from(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.token, token))
+        .limit(1);
+
+      if (tokenResults.length === 0) {
+        return res.status(404).send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Invalid Token</title></head>
+          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #ef4444;">Invalid or Expired Link</h1>
+            <p>This verification link is invalid or has already been used.</p>
+            <a href="/" style="color: #2563eb;">Return to Home</a>
+          </body>
+          </html>
+        `);
+      }
+
+      const verificationToken = tokenResults[0];
+
+      // Check if token is expired
+      if (new Date() > verificationToken.expiresAt) {
+        await db
+          .delete(emailVerificationTokens)
+          .where(eq(emailVerificationTokens.token, token));
+
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+          <head><title>Link Expired</title></head>
+          <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+            <h1 style="color: #f59e0b;">Link Expired</h1>
+            <p>This verification link has expired. Please request a new one.</p>
+            <a href="/" style="color: #2563eb;">Return to Home</a>
+          </body>
+          </html>
+        `);
+      }
+
+      // Mark user as verified
+      await db
+        .update(users)
+        .set({ is_email_verified: true })
+        .where(eq(users.id, verificationToken.userId));
+
+      // Grant welcome bonus: 150 Sweets
+      await db.insert(coinTransactions).values({
+        userId: verificationToken.userId,
+        type: "earn",
+        amount: 150,
+        description: "Welcome to YoForex!",
+        status: "completed",
+        trigger: "welcome_bonus",
+        channel: "web",
+      });
+
+      // Update user's total coins
+      await db
+        .update(users)
+        .set({ 
+          totalCoins: sql`${users.totalCoins} + 150`
+        })
+        .where(eq(users.id, verificationToken.userId));
+
+      // Delete the used token
+      await db
+        .delete(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.token, token));
+
+      // Return success page with redirect
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Email Verified!</title>
+          <meta http-equiv="refresh" content="3;url=/" />
+        </head>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+          <h1 style="color: #10b981;">✓ Email Verified Successfully!</h1>
+          <p>Your account has been activated and you've earned <strong>150 Sweets</strong> as a welcome bonus!</p>
+          <p style="color: #6b7280;">Redirecting you to the homepage in 3 seconds...</p>
+          <a href="/" style="color: #2563eb;">Click here if you're not redirected automatically</a>
+        </body>
+        </html>
+      `);
+    } catch (error: any) {
+      console.error("Email verification error:", error);
+      res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+        <head><title>Verification Error</title></head>
+        <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+          <h1 style="color: #ef4444;">Verification Error</h1>
+          <p>An error occurred while verifying your email. Please try again later.</p>
+          <a href="/" style="color: #2563eb;">Return to Home</a>
+        </body>
+        </html>
+      `);
+    }
+  });
+
+  // POST /api/auth/resend-verification - Resend verification email
+  app.post("/api/auth/resend-verification", async (req, res) => {
+    try {
+      const { email } = req.body;
+
+      if (!email) {
+        return res.status(400).json({ error: "Email is required" });
+      }
+
+      // Find user by email
+      const userResults = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      if (userResults.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const user = userResults[0];
+
+      // Check if already verified
+      if (user.is_email_verified) {
+        return res.status(400).json({ error: "Email already verified" });
+      }
+
+      // Delete old tokens for this user
+      await db
+        .delete(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.userId, user.id));
+
+      // Generate new verification token
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+      // Store new verification token
+      await db.insert(emailVerificationTokens).values({
+        userId: user.id,
+        email: user.email!,
+        token,
+        expiresAt,
+      });
+
+      // Send verification email
+      const verificationLink = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:5000'}/api/auth/verify-email?token=${token}`;
+      
+      try {
+        await emailService.sendEmail({
+          to: email,
+          subject: "Verify your YoForex account",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #2563eb;">Verify Your Email</h2>
+              <p>You requested a new verification link for your YoForex account.</p>
+              <p>Click the button below to verify your email and claim your <strong>150 welcome Sweets</strong>:</p>
+              <a href="${verificationLink}" style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0;">Verify Email</a>
+              <p>Or copy and paste this link into your browser:</p>
+              <p style="color: #6b7280; word-break: break-all;">${verificationLink}</p>
+              <p style="color: #ef4444; margin-top: 20px;"><strong>This link expires in 24 hours.</strong></p>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e7eb;" />
+              <p style="color: #6b7280; font-size: 14px;">If you didn't request this, please ignore this email.</p>
+              <p style="color: #6b7280; font-size: 14px;">Best regards,<br/>The YoForex Team</p>
+            </div>
+          `,
+        });
+      } catch (emailError) {
+        console.error("Failed to resend verification email:", emailError);
+        return res.status(500).json({ error: "Failed to send verification email" });
+      }
+
+      res.json({ message: "Verification email sent. Please check your inbox." });
+    } catch (error: any) {
+      console.error("Resend verification error:", error);
+      res.status(500).json({ error: error.message || "Failed to resend verification email" });
+    }
+  });
+
+  // POST /api/auth/link-google - Link Google account to existing email account
+  app.post("/api/auth/link-google", isAuthenticated, async (req, res) => {
+    try {
+      const { idToken } = req.body;
+      const currentUser = req.user as any;
+
+      if (!idToken) {
+        return res.status(400).json({ error: "Google ID token is required" });
+      }
+
+      // Verify Google ID token
+      const googleUser = await verifyGoogleToken(idToken);
+
+      // Check if email matches current user
+      if (googleUser.email !== currentUser.email) {
+        return res.status(400).json({ 
+          error: "Google account email must match your current account email" 
+        });
+      }
+
+      // Check if this Google UID is already linked to another account
+      const existingGoogleUsers = await db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.google_uid, googleUser.uid),
+          ne(users.id, currentUser.id)
+        ))
+        .limit(1);
+
+      if (existingGoogleUsers.length > 0) {
+        return res.status(409).json({ 
+          error: "This Google account is already linked to another user" 
+        });
+      }
+
+      // Update user with Google UID
+      const authProvider = currentUser.auth_provider === "email" ? "both" : currentUser.auth_provider;
+
+      await db
+        .update(users)
+        .set({ 
+          google_uid: googleUser.uid,
+          auth_provider: authProvider,
+          is_email_verified: googleUser.emailVerified || currentUser.is_email_verified,
+        })
+        .where(eq(users.id, currentUser.id));
+
+      res.json({ 
+        message: "Google account linked successfully",
+        auth_provider: authProvider
+      });
+    } catch (error: any) {
+      console.error("Link Google account error:", error);
+      res.status(500).json({ error: error.message || "Failed to link Google account" });
     }
   });
 

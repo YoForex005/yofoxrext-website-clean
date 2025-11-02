@@ -81,10 +81,10 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
-- **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage.
+- **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage. Features email verification, welcome bonuses, referral tracking, and account linking.
 - **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning/spending mechanisms, XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement.
 - **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails.
-- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an andmin dashboard for resolution.
+- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an admin dashboard for resolution.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
 - **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
 - **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls, with a robust Page Control System.

@@ -98,6 +98,10 @@ export const users = pgTable("users", {
   emailBounceCount: integer("email_bounce_count").notNull().default(0), // Track bounce count for auto-unsubscribe
   lastEmailSentAt: timestamp("last_email_sent_at"), // For rate limiting
   
+  // Referral System fields
+  referralCode: varchar("referral_code", { length: 20 }).unique(), // User's unique referral code
+  referredBy: varchar("referred_by"), // Referral code of user who referred them
+  
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -113,6 +117,19 @@ export const users = pgTable("users", {
   statusIdx: index("idx_users_status").on(table.status), // Index for admin filters
   lastActiveIdx: index("idx_users_last_active").on(table.lastActive), // Index for online users query
   coinsCheck: check("chk_user_coins_nonnegative", sql`${table.totalCoins} >= 0`),
+}));
+
+// Email Verification Tokens table - for email verification during registration
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: varchar("email").notNull(),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  tokenIdx: index("idx_email_verification_token").on(table.token),
+  userIdIdx: index("idx_email_verification_user_id").on(table.userId),
 }));
 
 export const userActivity = pgTable("user_activity", {
