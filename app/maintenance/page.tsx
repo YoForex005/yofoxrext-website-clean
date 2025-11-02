@@ -1,3 +1,5 @@
+'use client';
+
 import Header from '@/components/Header';
 import EnhancedFooter from '@/components/EnhancedFooter';
 import { Wrench, RefreshCw, ArrowLeft, Clock } from 'lucide-react';
@@ -59,12 +61,3 @@ export default function MaintenancePage() {
     </>
   );
 }
-
-export const metadata = {
-  title: 'Maintenance Mode | YoForex',
-  description: 'YoForex is currently undergoing scheduled maintenance. We will be back soon.',
-  robots: {
-    index: false,
-    follow: false,
-  },
-};

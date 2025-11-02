@@ -23,10 +23,6 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 39255
-externalPort = 6800
-
-[[ports]]
 localPort = 40711
 externalPort = 5000
 
@@ -49,6 +45,10 @@ externalPort = 9000
 [[ports]]
 localPort = 42787
 externalPort = 3000
+
+[[ports]]
+localPort = 43125
+externalPort = 6800
 
 [[ports]]
 localPort = 43543
@@ -75,19 +75,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Development Server"
+args = "Production Server"
 
 [[workflows.workflow]]
-name = "Development Server"
+name = "Production Server"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev:hybrid"
+args = "bash start-production.sh"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [agent]
 integrations = ["javascript_log_in_with_replit:1.0.0", "javascript_database:1.0.0", "javascript_object_storage:1.0.0", "javascript_gemini:1.0.0"]
