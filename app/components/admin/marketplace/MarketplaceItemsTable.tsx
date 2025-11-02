@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,12 @@ export function MarketplaceItemsTable({
   isApproving = false,
   isRejecting = false,
 }: MarketplaceItemsTableProps) {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   return (
     <Card data-testid="marketplace-items-table">
       <CardHeader>
@@ -144,8 +151,11 @@ export function MarketplaceItemsTable({
                     </TableCell>
                     
                     {/* Created Column */}
-                    <TableCell suppressHydrationWarning>
-                      {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
+                    <TableCell>
+                      {isMounted 
+                        ? formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })
+                        : new Date(item.createdAt).toLocaleDateString()
+                      }
                     </TableCell>
                     
                     {/* Actions Column */}

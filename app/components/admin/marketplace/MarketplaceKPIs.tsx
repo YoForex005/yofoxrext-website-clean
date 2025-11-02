@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -15,6 +16,11 @@ interface MarketplaceKPIsProps {
 }
 
 export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: MarketplaceKPIsProps) {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   if (error) {
     return (
       <Alert variant="destructive" data-testid="kpis-error">
@@ -58,10 +64,10 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <ShoppingBag className="h-4 w-4 text-blue-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-items" suppressHydrationWarning>
-            {stats?.totalItems.toLocaleString() || 0}
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-items">
+            {isMounted ? (stats?.totalItems.toLocaleString() || '0') : (stats?.totalItems || 0)}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-pending-approval" suppressHydrationWarning>
+          <p className="text-xs text-green-400 mt-1" data-testid="text-pending-approval">
             {stats?.pendingApproval || 0} pending approval
           </p>
         </CardContent>
@@ -73,11 +79,11 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <TrendingUp className="h-4 w-4 text-green-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-sales" suppressHydrationWarning>
-            {stats?.totalSales.toLocaleString() || 0}
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-sales">
+            {isMounted ? (stats?.totalSales.toLocaleString() || '0') : (stats?.totalSales || 0)}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-sales" suppressHydrationWarning>
-            +{stats?.weeklySales.toLocaleString() || 0} this week
+          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-sales">
+            +{isMounted ? (stats?.weeklySales.toLocaleString() || '0') : (stats?.weeklySales || 0)} this week
           </p>
         </CardContent>
       </Card>
@@ -88,11 +94,11 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <DollarSign className="h-4 w-4 text-amber-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-revenue" suppressHydrationWarning>
-            ${stats?.totalRevenue.toLocaleString() || 0}
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-revenue">
+            ${isMounted ? (stats?.totalRevenue.toLocaleString() || '0') : (stats?.totalRevenue || 0)}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-revenue" suppressHydrationWarning>
-            +${stats?.weeklyRevenue.toLocaleString() || 0} this week
+          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-revenue">
+            +${isMounted ? (stats?.weeklyRevenue.toLocaleString() || '0') : (stats?.weeklyRevenue || 0)} this week
           </p>
         </CardContent>
       </Card>
