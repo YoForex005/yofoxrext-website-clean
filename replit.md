@@ -69,6 +69,47 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 
 ## Recent Changes
 
+### November 2, 2025: Thread Creation Engagement Sidebars & Error Monitoring Fixes
+
+**Thread Creation Page Enhancement:**
+- **Issue**: Thread creation page was bare - only showing header, form, and footer without any engagement elements
+- **Solution**: Implemented responsive 3-column layout with engaging sidebars
+- **Features Added**:
+  - **Left Sidebar (280px)**: Static engagement content
+    - Posting Tips (4 actionable tips)
+    - Formatting Shortcuts (keyboard shortcuts guide)
+    - Community Guidelines reminder
+  - **Right Sidebar (320px)**: Dynamic community data
+    - Community Stats (156 active users, 4 threads today, 27 total threads, 60 categories)
+    - Trending Threads (top threads by views in last 24 hours)
+    - Popular Categories (categories ranked by thread count)
+    - Recent Activity (latest thread creations)
+  - **Responsive Design**: Sidebars hidden on mobile (<lg), visible on desktop
+  - **Sticky Positioning**: `lg:sticky lg:top-[88px]` for optimal UX
+- **New API Endpoints**:
+  - `GET /api/forum/trending?hours=24&limit=7` - Trending threads by views
+  - `GET /api/forum/popular-categories?limit=5` - Categories with thread counts
+  - `GET /api/forum/recent-activity?limit=10` - Recent thread activity
+  - `GET /api/forum/stats` - Community statistics
+- **New Storage Methods**: `listTrendingThreads()`, `listPopularCategories()`, `listRecentThreadActivity()`, `getCommunityStats()`
+- **Technical Implementation**: Fixed Drizzle ORM SQL syntax errors by using raw SQL queries for complex aggregations
+- **Files Created**:
+  - `app/discussions/new/LeftEngagementSidebar.tsx` - Static tips and guidelines
+  - `app/discussions/new/RightEngagementSidebar.tsx` - Dynamic data with React Query
+- **Files Modified**:
+  - `app/discussions/new/EnhancedThreadComposeClient.tsx` - 3-column grid layout
+  - `server/storage.ts` - Added 4 new sidebar data methods
+  - `server/routes.ts` - Added 4 new sidebar API endpoints
+
+**Error Monitoring System Fixes:**
+- **Issue**: Error dashboard showed 0 active errors despite 15 errors in database
+- **Solution**: Fixed authentication middleware chain for all 8 error monitoring endpoints
+- **Changes**:
+  - Updated endpoints to use proper `isAdminMiddleware` instead of manual role checks
+  - Extended auto-resolve timeout from 1 hour to 7 days to prevent premature resolution
+  - All error endpoints now return proper 200 responses with data
+- **Impact**: Error monitoring dashboard now correctly displays all 15 active errors
+
 ### November 2, 2025: Critical Wallet System Backfill & Trigger Field Enhancements
 
 **Wallet System 100% Drift Fixed (Production-Ready):**
