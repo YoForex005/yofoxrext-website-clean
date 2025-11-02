@@ -67,6 +67,36 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
+## Recent Changes
+
+### Database & Error Resolution (November 2, 2025)
+**Critical /api/hot Endpoint Fix:**
+- Fixed Drizzle ORM "Cannot convert undefined or null to object" error in `/api/hot` endpoint
+- Issue: Direct field selection from joined tables caused orderSelectedFields error
+- Solution: Changed to `db.select()` without field specification, then destructure joined results
+- Updated result mapping to handle `row.forum_threads` and `row.users` structure
+- Endpoint now returns 200 OK with proper hot content aggregation
+
+**Content Table Schema Fixes:**
+- Added missing columns to content table that existed in schema but not database:
+  - `sales_count INTEGER DEFAULT 0` - Track total sales/purchases
+  - `purchase_count INTEGER DEFAULT 0` - Track individual purchases
+  - `revenue DECIMAL(10,2) DEFAULT '0'` - Track total revenue
+- Created indexes for new columns for query optimization
+- Fixed schema-database mismatch preventing proper Drizzle queries
+
+**Audit Logs System Deployment:**
+- Created `audit_logs` table with 12 fields and 4 performance indexes
+- Implemented middleware-driven automatic logging of all admin actions
+- Route mapping system translates HTTP requests to canonical action names
+- Admin dashboard at `/admin/audit` with filters, CSV export, real-time updates
+
+**Error Database Cleanup:**
+- Removed 22,906 old error events (errors prior to fix deployment)
+- Reduced from 4,008 error groups to 19 active monitoring groups
+- Current error count: 53 events (mostly hydration warnings, non-critical)
+- System stability significantly improved
+
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.

@@ -4156,19 +4156,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // OPTIMIZED: Use database queries with LIMIT and WHERE instead of loading all data
       const [threads, marketplaceContent, topBrokers] = await Promise.all([
         // Fetch only recent threads with high engagement, already limited
-        db.select({
-          id: forumThreads.id,
-          title: forumThreads.title,
-          slug: forumThreads.slug,
-          categorySlug: forumThreads.categorySlug,
-          views: forumThreads.views,
-          createdAt: forumThreads.createdAt,
-          authorId: forumThreads.authorId,
-          engagementScore: forumThreads.engagementScore,
-          replyCount: forumThreads.replyCount,
-          authorUsername: users.username,
-          authorProfileImageUrl: users.profileImageUrl,
-        })
+        db.select()
           .from(forumThreads)
           .leftJoin(users, eq(forumThreads.authorId, users.id))
           .where(gte(forumThreads.createdAt, sevenDaysAgo))
@@ -4176,22 +4164,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
           .limit(limit),
         
         // Fetch only recent content with high sales score, already limited
-        db.select({
-          id: content.id,
-          title: content.title,
-          slug: content.slug,
-          category: content.category,
-          downloads: content.downloads,
-          createdAt: content.createdAt,
-          authorId: content.authorId,
-          type: content.type,
-          priceCoins: content.priceCoins,
-          isFree: content.isFree,
-          salesScore: content.salesScore,
-          purchaseCount: content.purchaseCount,
-          authorUsername: users.username,
-          authorProfileImageUrl: users.profileImageUrl,
-        })
+        db.select()
           .from(content)
           .leftJoin(users, eq(content.authorId, users.id))
           .where(and(
@@ -4221,43 +4194,51 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const safeMarketplaceContent = marketplaceContent || [];
       const safeTopBrokers = topBrokers || [];
       
-      // Prepare thread items (normalized score)
-      const threadItems = safeThreads.map((thread) => ({
-        id: thread.id,
-        type: 'thread' as const,
-        title: thread.title,
-        slug: thread.slug,
-        categorySlug: thread.categorySlug,
-        views: thread.views || 0,
-        createdAt: thread.createdAt,
-        normalizedScore: thread.engagementScore || 0,
-        replyCount: thread.replyCount || 0,
-        author: {
-          id: thread.authorId,
-          username: thread.authorUsername,
-          profileImageUrl: thread.authorProfileImageUrl
-        }
-      }));
+      // Prepare thread items (normalized score) - handle joined structure
+      const threadItems = safeThreads.map((row) => {
+        const thread = row.forum_threads;
+        const user = row.users;
+        return {
+          id: thread.id,
+          type: 'thread' as const,
+          title: thread.title,
+          slug: thread.slug,
+          categorySlug: thread.categorySlug,
+          views: thread.views || 0,
+          createdAt: thread.createdAt,
+          normalizedScore: thread.engagementScore || 0,
+          replyCount: thread.replyCount || 0,
+          author: {
+            id: thread.authorId,
+            username: user?.username || 'Unknown',
+            profileImageUrl: user?.profileImageUrl || null
+          }
+        };
+      });
       
-      // Prepare marketplace items (normalized score)
-      const marketplaceItems = safeMarketplaceContent.map((item) => ({
-        id: item.id,
-        type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
-        title: item.title,
-        slug: item.slug,
-        categorySlug: item.category,
-        views: item.downloads || 0,
-        createdAt: item.createdAt,
-        priceCoins: item.priceCoins || 0,
-        isFree: item.isFree,
-        normalizedScore: (item.salesScore || 0) / 2,
-        purchaseCount: item.purchaseCount || 0,
-        author: {
-          id: item.authorId,
-          username: item.authorUsername,
-          profileImageUrl: item.authorProfileImageUrl
-        }
-      }));
+      // Prepare marketplace items (normalized score) - handle joined structure
+      const marketplaceItems = safeMarketplaceContent.map((row) => {
+        const item = row.content;
+        const user = row.users;
+        return {
+          id: item.id,
+          type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
+          title: item.title,
+          slug: item.slug,
+          categorySlug: item.category,
+          views: item.downloads || 0,
+          createdAt: item.createdAt,
+          priceCoins: item.priceCoins || 0,
+          isFree: item.isFree,
+          normalizedScore: (item.salesScore || 0) / 2,
+          purchaseCount: item.purchaseCount || 0,
+          author: {
+            id: item.authorId,
+            username: user?.username || 'Unknown',
+            profileImageUrl: user?.profileImageUrl || null
+          }
+        };
+      });
       
       // Prepare broker items (normalized score)
       const brokerItems = safeTopBrokers.map((broker) => ({
