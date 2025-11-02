@@ -1285,28 +1285,7 @@ export const supportTickets = pgTable("support_tickets", {
   createdAtIdx: index("idx_support_tickets_created_at").on(table.createdAt),
 }));
 
-// 6. Announcements - Platform-wide announcements
-export const announcements = pgTable("announcements", {
-  id: serial("id").primaryKey(),
-  title: varchar("title").notNull(),
-  content: text("content").notNull(),
-  type: varchar("type").notNull().default("info"),
-  targetAudience: varchar("target_audience").notNull().default("all"),
-  segmentId: integer("segment_id"),
-  displayType: varchar("display_type").notNull().default("banner"),
-  isActive: boolean("is_active").notNull().default(true),
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date"),
-  createdBy: varchar("created_by").notNull().references(() => users.id),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  views: integer("views").notNull().default(0),
-  clicks: integer("clicks").notNull().default(0),
-}, (table) => ({
-  isActiveIdx: index("idx_announcements_is_active").on(table.isActive),
-  targetAudienceIdx: index("idx_announcements_target_audience").on(table.targetAudience),
-  startDateIdx: index("idx_announcements_start_date").on(table.startDate),
-  endDateIdx: index("idx_announcements_end_date").on(table.endDate),
-}));
+// 6. Announcements - Removed (replaced by Communications System at end of file)
 
 
 // 7.5. Page Controls - Admin page availability control system
@@ -2644,11 +2623,7 @@ export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit
 export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
 export type SupportTicket = typeof supportTickets.$inferSelect;
 
-// 6. Announcements
-export const insertAnnouncementSchema = createInsertSchema(announcements).omit({ id: true, createdAt: true, views: true, clicks: true });
-export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
-export type Announcement = typeof announcements.$inferSelect;
-
+// 6. Announcements - Removed (schemas in Communications System at end of file)
 
 // 7.5. Page Controls
 export const insertPageControlSchema = createInsertSchema(pageControls).omit({ id: true, createdAt: true, updatedAt: true });
@@ -4653,3 +4628,154 @@ export const insertIpBanSchema = createInsertSchema(ipBans).omit({
 });
 export type InsertIpBan = z.infer<typeof insertIpBanSchema>;
 export type IpBan = typeof ipBans.$inferSelect;
+
+// ==================== COMMUNICATIONS SYSTEM ====================
+
+/**
+ * Announcements - Site-wide announcements that can be displayed as banners, modals, or toasts
+ * Supports audience targeting and scheduling
+ */
+export const announcements = pgTable("announcements", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  type: varchar("type", { length: 20 }).notNull().$type<"banner" | "modal" | "toast">(),
+  audience: jsonb("audience").$type<{ role?: string; minCoins?: number; maxCoins?: number; lastActiveWithinDays?: number }>(),
+  status: varchar("status", { length: 20 }).notNull().default("draft").$type<"draft" | "scheduled" | "active" | "expired">(),
+  scheduledAt: timestamp("scheduled_at"),
+  expiresAt: timestamp("expires_at"),
+  views: integer("views").default(0),
+  clicks: integer("clicks").default(0),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index("idx_announcements_status").on(table.status),
+  typeIdx: index("idx_announcements_type").on(table.type),
+  createdByIdx: index("idx_announcements_created_by").on(table.createdBy),
+}));
+
+export const insertAnnouncementSchema = createInsertSchema(announcements).omit({
+  id: true,
+  createdAt: true,
+  views: true,
+  clicks: true,
+}).extend({
+  title: z.string().min(1).max(200),
+  content: z.string().min(1),
+  type: z.enum(["banner", "modal", "toast"]),
+  audience: z.object({
+    role: z.string().optional(),
+    minCoins: z.number().int().min(0).optional(),
+    maxCoins: z.number().int().min(0).optional(),
+    lastActiveWithinDays: z.number().int().min(0).optional(),
+  }).optional(),
+  status: z.enum(["draft", "scheduled", "active", "expired"]).default("draft"),
+  scheduledAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime().optional(),
+  createdBy: z.string().uuid().optional(),
+});
+export type InsertAnnouncement = z.infer<typeof insertAnnouncementSchema>;
+export type Announcement = typeof announcements.$inferSelect;
+
+/**
+ * Email Campaigns - Mass email campaigns with targeting and tracking
+ * Supports scheduling and delivery tracking
+ */
+export const emailCampaigns = pgTable("email_campaigns", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  subject: text("subject").notNull(),
+  htmlContent: text("html_content").notNull(),
+  audience: jsonb("audience"),
+  status: varchar("status", { length: 20 }).notNull().default("draft").$type<"draft" | "scheduled" | "sending" | "sent" | "failed">(),
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  totalRecipients: integer("total_recipients").default(0),
+  opens: integer("opens").default(0),
+  clicks: integer("clicks").default(0),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index("idx_email_campaigns_status").on(table.status),
+  createdByIdx: index("idx_email_campaigns_created_by").on(table.createdBy),
+}));
+
+export const insertEmailCampaignSchema = createInsertSchema(emailCampaigns).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  totalRecipients: true,
+  opens: true,
+  clicks: true,
+}).extend({
+  name: z.string().min(1).max(200),
+  subject: z.string().min(1).max(300),
+  htmlContent: z.string().min(1),
+  audience: z.record(z.any()).optional(),
+  status: z.enum(["draft", "scheduled", "sending", "sent", "failed"]).default("draft"),
+  scheduledAt: z.string().datetime().optional(),
+  createdBy: z.string().uuid().optional(),
+});
+export type InsertEmailCampaign = z.infer<typeof insertEmailCampaignSchema>;
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+
+/**
+ * Email Deliveries - Individual email delivery tracking for campaigns
+ * Tracks opens, clicks, and delivery status per recipient
+ */
+export const emailDeliveries = pgTable("email_deliveries", {
+  id: serial("id").primaryKey(),
+  campaignId: integer("campaign_id").notNull().references(() => emailCampaigns.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  trackingId: varchar("tracking_id", { length: 50 }).notNull().unique(),
+  email: varchar("email").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending").$type<"pending" | "sent" | "opened" | "clicked" | "failed">(),
+  sentAt: timestamp("sent_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  campaignIdx: index("idx_email_deliveries_campaign").on(table.campaignId),
+  trackingIdx: index("idx_email_deliveries_tracking").on(table.trackingId),
+  userIdx: index("idx_email_deliveries_user").on(table.userId),
+}));
+
+export const insertEmailDeliverySchema = createInsertSchema(emailDeliveries).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  openedAt: true,
+  clickedAt: true,
+}).extend({
+  campaignId: z.number().int().positive(),
+  userId: z.string().uuid(),
+  trackingId: z.string().max(50),
+  email: z.string().email(),
+  status: z.enum(["pending", "sent", "opened", "clicked", "failed"]).default("pending"),
+});
+export type InsertEmailDelivery = z.infer<typeof insertEmailDeliverySchema>;
+export type EmailDelivery = typeof emailDeliveries.$inferSelect;
+
+/**
+ * Announcement Views - Track which users have viewed announcements
+ * Used for analytics and ensuring announcements are seen
+ */
+export const announcementViews = pgTable("announcement_views", {
+  id: serial("id").primaryKey(),
+  announcementId: integer("announcement_id").notNull().references(() => announcements.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id),
+  viewedAt: timestamp("viewed_at").notNull().defaultNow(),
+}, (table) => ({
+  announcementIdx: index("idx_announcement_views_announcement").on(table.announcementId),
+  userIdx: index("idx_announcement_views_user").on(table.userId),
+}));
+
+export const insertAnnouncementViewSchema = createInsertSchema(announcementViews).omit({
+  id: true,
+  viewedAt: true,
+}).extend({
+  announcementId: z.number().int().positive(),
+  userId: z.string().uuid().optional(),
+});
+export type InsertAnnouncementView = z.infer<typeof insertAnnouncementViewSchema>;
+export type AnnouncementView = typeof announcementViews.$inferSelect;

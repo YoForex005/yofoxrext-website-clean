@@ -189,6 +189,9 @@ import { seoFixOrchestrator } from './services/seo-fixer.js';
 import { featureFlagService } from './services/featureFlagService.js';
 import { getSweetsService } from './services/sweetsService.js';
 import { getSecurityService } from './services/securityService.js';
+import { publishAnnouncement, getAudiencePreview, scheduleAnnouncement, expireAnnouncement } from './services/communicationsService.js';
+import { sendCampaign, updateCampaignStats } from './services/campaignService.js';
+import { insertAnnouncementSchema, insertEmailCampaignSchema } from "../shared/schema.js";
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -16078,6 +16081,264 @@ export async function registerRoutes(app: Express): Promise<Express> {
       }
       console.error('[Sweets XP] Error fetching leaderboard:', error);
       res.status(500).json({ error: 'Failed to fetch leaderboard' });
+    }
+  });
+
+  // ==================== COMMUNICATIONS SYSTEM API ROUTES ====================
+  
+  // Rate limiter for communications endpoints (20 req/min)
+  const communicationsLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 20,
+    message: 'Too many requests to communications API',
+  });
+
+  // ========== Announcements Endpoints ==========
+  
+  // GET /api/admin/communications/announcements - List announcements with filters
+  app.get("/api/admin/communications/announcements", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const { status, type } = req.query;
+      const announcements = await storage.listAnnouncements({
+        status: status as string | undefined,
+        type: type as string | undefined,
+      });
+      res.json(announcements);
+    } catch (error) {
+      console.error('Error listing announcements:', error);
+      res.status(500).json({ error: 'Failed to list announcements' });
+    }
+  });
+
+  // POST /api/admin/communications/announcements - Create announcement
+  app.post("/api/admin/communications/announcements", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const validatedData = insertAnnouncementSchema.parse(req.body);
+      
+      const announcement = await storage.createAnnouncement({
+        ...validatedData,
+        createdBy: user.id,
+      });
+      
+      res.status(201).json(announcement);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', details: error.errors });
+      }
+      console.error('Error creating announcement:', error);
+      res.status(500).json({ error: 'Failed to create announcement' });
+    }
+  });
+
+  // PUT /api/admin/communications/announcements/:id - Update announcement
+  app.put("/api/admin/communications/announcements/:id", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const announcement = await storage.updateAnnouncement(id, req.body);
+      res.json(announcement);
+    } catch (error) {
+      console.error('Error updating announcement:', error);
+      res.status(500).json({ error: 'Failed to update announcement' });
+    }
+  });
+
+  // DELETE /api/admin/communications/announcements/:id - Delete announcement
+  app.delete("/api/admin/communications/announcements/:id", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      await storage.deleteAnnouncement(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting announcement:', error);
+      res.status(500).json({ error: 'Failed to delete announcement' });
+    }
+  });
+
+  // POST /api/admin/communications/announcements/:id/publish - Publish announcement now
+  app.post("/api/admin/communications/announcements/:id/publish", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const announcement = await publishAnnouncement(id);
+      
+      // Broadcast via WebSocket (will be implemented in server/index.ts)
+      const io = (req.app as any).get('io');
+      if (io) {
+        io.emit('announcement:published', announcement);
+      }
+      
+      res.json(announcement);
+    } catch (error) {
+      console.error('Error publishing announcement:', error);
+      res.status(500).json({ error: 'Failed to publish announcement' });
+    }
+  });
+
+  // GET /api/admin/communications/announcements/active - Get active announcements
+  app.get("/api/admin/communications/announcements/active", async (req, res) => {
+    try {
+      const announcements = await storage.getActiveAnnouncements();
+      res.json(announcements);
+    } catch (error) {
+      console.error('Error getting active announcements:', error);
+      res.status(500).json({ error: 'Failed to get active announcements' });
+    }
+  });
+
+  // ========== Email Campaigns Endpoints ==========
+  
+  // GET /api/admin/communications/campaigns - List campaigns with filters
+  app.get("/api/admin/communications/campaigns", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const { status } = req.query;
+      const campaigns = await storage.listEmailCampaigns({
+        status: status as string | undefined,
+      });
+      res.json(campaigns);
+    } catch (error) {
+      console.error('Error listing campaigns:', error);
+      res.status(500).json({ error: 'Failed to list campaigns' });
+    }
+  });
+
+  // POST /api/admin/communications/campaigns - Create campaign
+  app.post("/api/admin/communications/campaigns", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const validatedData = insertEmailCampaignSchema.parse(req.body);
+      
+      const campaign = await storage.createEmailCampaign({
+        ...validatedData,
+        createdBy: user.id,
+      });
+      
+      res.status(201).json(campaign);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation error', details: error.errors });
+      }
+      console.error('Error creating campaign:', error);
+      res.status(500).json({ error: 'Failed to create campaign' });
+    }
+  });
+
+  // PUT /api/admin/communications/campaigns/:id - Update campaign
+  app.put("/api/admin/communications/campaigns/:id", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const campaign = await storage.updateEmailCampaign(id, req.body);
+      res.json(campaign);
+    } catch (error) {
+      console.error('Error updating campaign:', error);
+      res.status(500).json({ error: 'Failed to update campaign' });
+    }
+  });
+
+  // DELETE /api/admin/communications/campaigns/:id - Delete campaign
+  app.delete("/api/admin/communications/campaigns/:id", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      await storage.deleteEmailCampaign(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting campaign:', error);
+      res.status(500).json({ error: 'Failed to delete campaign' });
+    }
+  });
+
+  // POST /api/admin/communications/campaigns/:id/send - Send campaign now
+  app.post("/api/admin/communications/campaigns/:id/send", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const campaign = await sendCampaign(id);
+      
+      // Broadcast via WebSocket
+      const io = (req.app as any).get('io');
+      if (io) {
+        io.emit('campaign:sent', campaign);
+      }
+      
+      res.json(campaign);
+    } catch (error) {
+      console.error('Error sending campaign:', error);
+      res.status(500).json({ error: 'Failed to send campaign' });
+    }
+  });
+
+  // GET /api/admin/communications/campaigns/:id/stats - Get campaign delivery stats
+  app.get("/api/admin/communications/campaigns/:id/stats", isAdminMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const stats = await storage.getCampaignDeliveryStats(id);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting campaign stats:', error);
+      res.status(500).json({ error: 'Failed to get campaign stats' });
+    }
+  });
+
+  // ========== Audience Preview Endpoint ==========
+  
+  // POST /api/admin/communications/audience/preview - Get user count for targeting rules
+  app.post("/api/admin/communications/audience/preview", isAdminMiddleware, communicationsLimiter, async (req, res) => {
+    try {
+      const count = await getAudiencePreview(req.body);
+      res.json({ count });
+    } catch (error) {
+      console.error('Error getting audience preview:', error);
+      res.status(500).json({ error: 'Failed to get audience preview' });
+    }
+  });
+
+  // ========== Email Tracking Endpoints (Public) ==========
+  
+  // GET /track/email/:trackingId.png - Tracking pixel (1x1 transparent PNG)
+  app.get("/track/email/:trackingId.png", async (req, res) => {
+    try {
+      const { trackingId } = req.params;
+      
+      // Mark email as opened
+      await storage.markEmailOpened(trackingId);
+      
+      // Return 1x1 transparent PNG
+      const transparentPixel = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64'
+      );
+      
+      res.set('Content-Type', 'image/png');
+      res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+      res.send(transparentPixel);
+    } catch (error) {
+      console.error('Error tracking email open:', error);
+      // Still return a pixel even if tracking fails
+      const transparentPixel = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        'base64'
+      );
+      res.set('Content-Type', 'image/png');
+      res.send(transparentPixel);
+    }
+  });
+
+  // GET /track/email/:trackingId - Click tracking redirect
+  app.get("/track/email/:trackingId", async (req, res) => {
+    try {
+      const { trackingId } = req.params;
+      const { redirect } = req.query;
+      
+      // Mark email as clicked
+      await storage.markEmailClicked(trackingId);
+      
+      // Redirect to destination URL
+      if (redirect && typeof redirect === 'string') {
+        res.redirect(redirect);
+      } else {
+        res.status(400).send('Missing redirect URL');
+      }
+    } catch (error) {
+      console.error('Error tracking email click:', error);
+      res.status(500).send('Tracking error');
     }
   });
 

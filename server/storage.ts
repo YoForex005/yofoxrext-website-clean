@@ -76,6 +76,12 @@ import {
   type InsertSupportTicket,
   type Announcement,
   type InsertAnnouncement,
+  type EmailCampaign,
+  type InsertEmailCampaign,
+  type EmailDelivery,
+  type InsertEmailDelivery,
+  type AnnouncementView,
+  type InsertAnnouncementView,
   type IpBan,
   type InsertIpBan,
   type EmailTemplate,
@@ -210,6 +216,9 @@ import {
   systemSettings,
   supportTickets,
   announcements,
+  emailCampaigns,
+  emailDeliveries,
+  announcementViews,
   ipBans,
   pageControls,
   emailTemplates,
@@ -2950,6 +2959,117 @@ export interface IStorage {
    * Get all rank tiers (sorted by sortOrder)
    */
   getAllRankTiers(): Promise<RankTier[]>;
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Announcements
+  // ============================================================================
+  
+  /**
+   * List announcements with optional filters
+   */
+  listAnnouncements(filters?: { status?: string; type?: string }): Promise<Announcement[]>;
+  
+  /**
+   * Get announcement by ID
+   */
+  getAnnouncementById(id: number): Promise<Announcement | null>;
+  
+  /**
+   * Create new announcement
+   */
+  createAnnouncement(data: InsertAnnouncement): Promise<Announcement>;
+  
+  /**
+   * Update announcement
+   */
+  updateAnnouncement(id: number, data: Partial<InsertAnnouncement>): Promise<Announcement>;
+  
+  /**
+   * Delete announcement
+   */
+  deleteAnnouncement(id: number): Promise<void>;
+  
+  /**
+   * Get active announcements
+   */
+  getActiveAnnouncements(): Promise<Announcement[]>;
+  
+  /**
+   * Track announcement view
+   */
+  trackAnnouncementView(announcementId: number, userId?: string): Promise<void>;
+  
+  /**
+   * Track announcement click
+   */
+  trackAnnouncementClick(announcementId: number): Promise<void>;
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Email Campaigns
+  // ============================================================================
+  
+  /**
+   * List email campaigns with optional filters
+   */
+  listEmailCampaigns(filters?: { status?: string }): Promise<EmailCampaign[]>;
+  
+  /**
+   * Get email campaign by ID
+   */
+  getEmailCampaignById(id: number): Promise<EmailCampaign | null>;
+  
+  /**
+   * Create new email campaign
+   */
+  createEmailCampaign(data: InsertEmailCampaign): Promise<EmailCampaign>;
+  
+  /**
+   * Update email campaign
+   */
+  updateEmailCampaign(id: number, data: Partial<InsertEmailCampaign>): Promise<EmailCampaign>;
+  
+  /**
+   * Delete email campaign
+   */
+  deleteEmailCampaign(id: number): Promise<void>;
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Email Deliveries
+  // ============================================================================
+  
+  /**
+   * Create email delivery
+   */
+  createEmailDelivery(data: InsertEmailDelivery): Promise<EmailDelivery>;
+  
+  /**
+   * Get email delivery by tracking ID
+   */
+  getEmailDeliveryByTrackingId(trackingId: string): Promise<EmailDelivery | null>;
+  
+  /**
+   * Mark email as opened
+   */
+  markEmailOpened(trackingId: string): Promise<void>;
+  
+  /**
+   * Mark email as clicked
+   */
+  markEmailClicked(trackingId: string): Promise<void>;
+  
+  /**
+   * Get campaign delivery stats
+   */
+  getCampaignDeliveryStats(campaignId: number): Promise<{ sent: number; opened: number; clicked: number }>;
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Audience Targeting
+  // ============================================================================
+  
+  /**
+   * Get users matching audience criteria
+   */
+  getUsersByAudience(audience: any): Promise<User[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -19802,6 +19922,368 @@ export class DrizzleStorage implements IStorage {
       return tiers;
     } catch (error) {
       console.error('Error getting all rank tiers:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Announcements
+  // ============================================================================
+
+  async listAnnouncements(filters?: { status?: string; type?: string }): Promise<Announcement[]> {
+    try {
+      const conditions = [];
+      
+      if (filters?.status) {
+        conditions.push(eq(announcements.status, filters.status as any));
+      }
+      if (filters?.type) {
+        conditions.push(eq(announcements.type, filters.type as any));
+      }
+      
+      const query = db
+        .select()
+        .from(announcements)
+        .orderBy(desc(announcements.createdAt));
+      
+      if (conditions.length > 0) {
+        return await query.where(and(...conditions));
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error('Error listing announcements:', error);
+      throw error;
+    }
+  }
+
+  async getAnnouncementById(id: number): Promise<Announcement | null> {
+    try {
+      const [announcement] = await db
+        .select()
+        .from(announcements)
+        .where(eq(announcements.id, id))
+        .limit(1);
+      return announcement || null;
+    } catch (error) {
+      console.error('Error getting announcement by ID:', error);
+      throw error;
+    }
+  }
+
+  async createAnnouncement(data: InsertAnnouncement): Promise<Announcement> {
+    try {
+      const [announcement] = await db
+        .insert(announcements)
+        .values(data)
+        .returning();
+      return announcement;
+    } catch (error) {
+      console.error('Error creating announcement:', error);
+      throw error;
+    }
+  }
+
+  async updateAnnouncement(id: number, data: Partial<InsertAnnouncement>): Promise<Announcement> {
+    try {
+      const [announcement] = await db
+        .update(announcements)
+        .set(data)
+        .where(eq(announcements.id, id))
+        .returning();
+      return announcement;
+    } catch (error) {
+      console.error('Error updating announcement:', error);
+      throw error;
+    }
+  }
+
+  async deleteAnnouncement(id: number): Promise<void> {
+    try {
+      await db
+        .delete(announcements)
+        .where(eq(announcements.id, id));
+    } catch (error) {
+      console.error('Error deleting announcement:', error);
+      throw error;
+    }
+  }
+
+  async getActiveAnnouncements(): Promise<Announcement[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(announcements)
+        .where(
+          and(
+            eq(announcements.status, 'active'),
+            or(
+              isNull(announcements.expiresAt),
+              gt(announcements.expiresAt, now)
+            )
+          )
+        )
+        .orderBy(desc(announcements.createdAt));
+    } catch (error) {
+      console.error('Error getting active announcements:', error);
+      throw error;
+    }
+  }
+
+  async trackAnnouncementView(announcementId: number, userId?: string): Promise<void> {
+    try {
+      // Insert view record
+      await db
+        .insert(announcementViews)
+        .values({
+          announcementId,
+          userId: userId || null,
+        });
+      
+      // Increment views count
+      await db
+        .update(announcements)
+        .set({
+          views: sql`${announcements.views} + 1`,
+        })
+        .where(eq(announcements.id, announcementId));
+    } catch (error) {
+      console.error('Error tracking announcement view:', error);
+      throw error;
+    }
+  }
+
+  async trackAnnouncementClick(announcementId: number): Promise<void> {
+    try {
+      await db
+        .update(announcements)
+        .set({
+          clicks: sql`${announcements.clicks} + 1`,
+        })
+        .where(eq(announcements.id, announcementId));
+    } catch (error) {
+      console.error('Error tracking announcement click:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Email Campaigns
+  // ============================================================================
+
+  async listEmailCampaigns(filters?: { status?: string }): Promise<EmailCampaign[]> {
+    try {
+      const conditions = [];
+      
+      if (filters?.status) {
+        conditions.push(eq(emailCampaigns.status, filters.status as any));
+      }
+      
+      const query = db
+        .select()
+        .from(emailCampaigns)
+        .orderBy(desc(emailCampaigns.createdAt));
+      
+      if (conditions.length > 0) {
+        return await query.where(and(...conditions));
+      }
+      
+      return await query;
+    } catch (error) {
+      console.error('Error listing email campaigns:', error);
+      throw error;
+    }
+  }
+
+  async getEmailCampaignById(id: number): Promise<EmailCampaign | null> {
+    try {
+      const [campaign] = await db
+        .select()
+        .from(emailCampaigns)
+        .where(eq(emailCampaigns.id, id))
+        .limit(1);
+      return campaign || null;
+    } catch (error) {
+      console.error('Error getting email campaign by ID:', error);
+      throw error;
+    }
+  }
+
+  async createEmailCampaign(data: InsertEmailCampaign): Promise<EmailCampaign> {
+    try {
+      const [campaign] = await db
+        .insert(emailCampaigns)
+        .values(data)
+        .returning();
+      return campaign;
+    } catch (error) {
+      console.error('Error creating email campaign:', error);
+      throw error;
+    }
+  }
+
+  async updateEmailCampaign(id: number, data: Partial<InsertEmailCampaign>): Promise<EmailCampaign> {
+    try {
+      const [campaign] = await db
+        .update(emailCampaigns)
+        .set(data)
+        .where(eq(emailCampaigns.id, id))
+        .returning();
+      return campaign;
+    } catch (error) {
+      console.error('Error updating email campaign:', error);
+      throw error;
+    }
+  }
+
+  async deleteEmailCampaign(id: number): Promise<void> {
+    try {
+      await db
+        .delete(emailCampaigns)
+        .where(eq(emailCampaigns.id, id));
+    } catch (error) {
+      console.error('Error deleting email campaign:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Email Deliveries
+  // ============================================================================
+
+  async createEmailDelivery(data: InsertEmailDelivery): Promise<EmailDelivery> {
+    try {
+      const [delivery] = await db
+        .insert(emailDeliveries)
+        .values(data)
+        .returning();
+      return delivery;
+    } catch (error) {
+      console.error('Error creating email delivery:', error);
+      throw error;
+    }
+  }
+
+  async getEmailDeliveryByTrackingId(trackingId: string): Promise<EmailDelivery | null> {
+    try {
+      const [delivery] = await db
+        .select()
+        .from(emailDeliveries)
+        .where(eq(emailDeliveries.trackingId, trackingId))
+        .limit(1);
+      return delivery || null;
+    } catch (error) {
+      console.error('Error getting email delivery by tracking ID:', error);
+      throw error;
+    }
+  }
+
+  async markEmailOpened(trackingId: string): Promise<void> {
+    try {
+      const delivery = await this.getEmailDeliveryByTrackingId(trackingId);
+      if (!delivery) return;
+
+      // Update delivery status
+      await db
+        .update(emailDeliveries)
+        .set({
+          status: 'opened',
+          openedAt: new Date(),
+        })
+        .where(eq(emailDeliveries.trackingId, trackingId));
+
+      // Increment campaign opens count
+      await db
+        .update(emailCampaigns)
+        .set({
+          opens: sql`${emailCampaigns.opens} + 1`,
+        })
+        .where(eq(emailCampaigns.id, delivery.campaignId));
+    } catch (error) {
+      console.error('Error marking email opened:', error);
+      throw error;
+    }
+  }
+
+  async markEmailClicked(trackingId: string): Promise<void> {
+    try {
+      const delivery = await this.getEmailDeliveryByTrackingId(trackingId);
+      if (!delivery) return;
+
+      // Update delivery status
+      await db
+        .update(emailDeliveries)
+        .set({
+          status: 'clicked',
+          clickedAt: new Date(),
+        })
+        .where(eq(emailDeliveries.trackingId, trackingId));
+
+      // Increment campaign clicks count
+      await db
+        .update(emailCampaigns)
+        .set({
+          clicks: sql`${emailCampaigns.clicks} + 1`,
+        })
+        .where(eq(emailCampaigns.id, delivery.campaignId));
+    } catch (error) {
+      console.error('Error marking email clicked:', error);
+      throw error;
+    }
+  }
+
+  async getCampaignDeliveryStats(campaignId: number): Promise<{ sent: number; opened: number; clicked: number }> {
+    try {
+      const [stats] = await db
+        .select({
+          sent: sql<number>`COUNT(CASE WHEN ${emailDeliveries.status} = 'sent' OR ${emailDeliveries.status} = 'opened' OR ${emailDeliveries.status} = 'clicked' THEN 1 END)`,
+          opened: sql<number>`COUNT(CASE WHEN ${emailDeliveries.status} = 'opened' OR ${emailDeliveries.status} = 'clicked' THEN 1 END)`,
+          clicked: sql<number>`COUNT(CASE WHEN ${emailDeliveries.status} = 'clicked' THEN 1 END)`,
+        })
+        .from(emailDeliveries)
+        .where(eq(emailDeliveries.campaignId, campaignId));
+
+      return {
+        sent: Number(stats?.sent) || 0,
+        opened: Number(stats?.opened) || 0,
+        clicked: Number(stats?.clicked) || 0,
+      };
+    } catch (error) {
+      console.error('Error getting campaign delivery stats:', error);
+      throw error;
+    }
+  }
+
+  // ============================================================================
+  // COMMUNICATIONS SYSTEM - Audience Targeting
+  // ============================================================================
+
+  async getUsersByAudience(audience: any): Promise<User[]> {
+    try {
+      const conditions = [eq(users.status, 'active')];
+
+      if (audience?.role) {
+        conditions.push(eq(users.role, audience.role));
+      }
+      if (audience?.minCoins !== undefined) {
+        conditions.push(gte(users.totalCoins, audience.minCoins));
+      }
+      if (audience?.maxCoins !== undefined) {
+        conditions.push(lte(users.totalCoins, audience.maxCoins));
+      }
+      if (audience?.lastActiveWithinDays !== undefined) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - audience.lastActiveWithinDays);
+        conditions.push(gte(users.lastActive, cutoffDate));
+      }
+
+      return await db
+        .select()
+        .from(users)
+        .where(and(...conditions));
+    } catch (error) {
+      console.error('Error getting users by audience:', error);
       throw error;
     }
   }

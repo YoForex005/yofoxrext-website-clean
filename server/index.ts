@@ -223,6 +223,7 @@ async function initializeServer() {
     // Create HTTP server and initialize WebSocket
     const httpServer = createServer(expressApp);
     const io = initializeDashboardWebSocket(httpServer);
+    expressApp.set('io', io); // Make WebSocket available to routes
     log("WebSocket server initialized on /ws/dashboard");
 
     // Express API server runs on port 3001 (internal)
