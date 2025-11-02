@@ -6,7 +6,7 @@ import { getThreadUrl } from '../../../lib/category-path';
 import { getMetadataWithOverrides } from '../../lib/metadata-helper';
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug: string[] }>;
 }
 
 async function fetchData(url: string) {
@@ -43,7 +43,8 @@ function createExcerpt(html: string, maxLength: number = 155): string {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const thread: ForumThread | null = await fetchData(`/api/threads/slug/${slug}`);
+  const slugPath = slug.join('/');
+  const thread: ForumThread | null = await fetchData(`/api/threads/slug/${slugPath}`);
 
   if (!thread) {
     return {
@@ -72,7 +73,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title,
       description,
       type: 'article',
-      url: `https://yoforex.com/thread/${slug}`,
+      url: `https://yoforex.com/thread/${slugPath}`,
       siteName: 'YoForex',
     },
     twitter: {
@@ -83,24 +84,25 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 
   // Try to fetch SEO overrides for this thread
-  const pathname = `/thread/${slug}`;
+  const pathname = `/thread/${slugPath}`;
   return await getMetadataWithOverrides(pathname, defaultMetadata);
 }
 
 export default async function ThreadDetailPage({ params }: PageProps) {
   const { slug } = await params;
+  const slugPath = slug.join('/');
   
   // Fetch thread data from Express API
-  const thread: ForumThread | null = await fetchData(`/api/threads/slug/${slug}`);
+  const thread: ForumThread | null = await fetchData(`/api/threads/slug/${slugPath}`);
   
   // Return 404 if thread doesn't exist
   if (!thread) {
     notFound();
   }
   
-  // Generate hierarchical URL and perform permanent redirect (308 for SEO)
-  // Note: Next.js uses 308 (not 301) for permanent redirects to preserve HTTP method
-  // Both 301 and 308 transfer SEO equity equally; 308 is the modern standard
-  const hierarchicalUrl = await getThreadUrl(thread);
-  permanentRedirect(hierarchicalUrl);
+  // Fetch replies for the thread
+  const replies: ForumReply[] = await fetchData(`/api/threads/${thread.id}/replies`) || [];
+  
+  // Display the thread directly with correct prop names
+  return <ThreadDetailClient initialThread={thread} initialReplies={replies} />;
 }

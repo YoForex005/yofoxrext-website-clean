@@ -21,7 +21,7 @@ import { forumCategories } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 
 // Dynamic imports for components with dynamic route segments
-const loadThreadClient = () => import('../../thread/[slug]/ThreadDetailClient');
+const loadThreadClient = () => import('../../thread/[...slug]/ThreadDetailClient');
 const loadCategoryClient = () => import('../[slug]/CategoryDiscussionClient');
 const loadContentClient = () => import('../../content/[slug]/ContentDetailClient');
 

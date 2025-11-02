@@ -5178,9 +5178,11 @@ export async function registerRoutes(app: Express): Promise<Express> {
     res.json(thread);
   });
   
-  // Get thread by slug (increments views)
-  app.get("/api/threads/slug/:slug", async (req, res) => {
-    const thread = await storage.getForumThreadBySlug(req.params.slug);
+  // Get thread by slug (increments views) - supports nested slugs
+  app.get("/api/threads/slug/*", async (req, res) => {
+    // Extract the full slug path from the URL (everything after /slug/)
+    const fullSlug = req.params[0];
+    const thread = await storage.getForumThreadBySlug(fullSlug);
     if (!thread) {
       return res.status(404).json({ error: "Thread not found" });
     }

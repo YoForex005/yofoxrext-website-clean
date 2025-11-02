@@ -2,12 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   
-  // Temporarily ignore TypeScript and ESLint errors during build
+  // Temporarily ignore TypeScript errors during build
   typescript: {
     ignoreBuildErrors: true,
-  },
-  eslint: {
-    ignoreDuringBuilds: true,
   },
   
   // Environment variables (NO DEFAULTS - must be set in production)

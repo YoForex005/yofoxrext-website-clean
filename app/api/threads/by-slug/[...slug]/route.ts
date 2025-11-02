@@ -10,13 +10,14 @@ import { getInternalApiUrl } from '@/lib/api-config';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ slug: string }> }
+  { params }: { params: Promise<{ slug: string[] }> }
 ) {
   try {
     const { slug } = await params;
+    const slugPath = slug.join('/');
     // Forward to the backend Express API
     const apiUrl = getInternalApiUrl();
-    const response = await fetch(`${apiUrl}/api/threads/slug/${slug}`);
+    const response = await fetch(`${apiUrl}/api/threads/slug/${slugPath}`);
     
     if (!response.ok) {
       return NextResponse.json(
