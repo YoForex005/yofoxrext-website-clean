@@ -13714,6 +13714,47 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  async getCategoryRedirect(oldUrl: string): Promise<any | undefined> {
+    try {
+      const { categoryRedirects } = await import('../shared/schema.js');
+      const { eq, and } = await import('drizzle-orm');
+      
+      const [redirect] = await db
+        .select()
+        .from(categoryRedirects)
+        .where(
+          and(
+            eq(categoryRedirects.oldUrl, oldUrl),
+            eq(categoryRedirects.isActive, true)
+          )
+        )
+        .limit(1);
+      
+      return redirect;
+    } catch (error) {
+      console.error("Error getting category redirect:", error);
+      return undefined;
+    }
+  }
+
+  async trackRedirectHit(redirectId: string): Promise<void> {
+    try {
+      const { categoryRedirects } = await import('../shared/schema.js');
+      const { eq, sql } = await import('drizzle-orm');
+      
+      await db
+        .update(categoryRedirects)
+        .set({
+          hitCount: sql`${categoryRedirects.hitCount} + 1`,
+          lastUsed: new Date()
+        })
+        .where(eq(categoryRedirects.id, redirectId));
+    } catch (error) {
+      console.error("Error tracking redirect hit:", error);
+      // Don't throw - this is non-critical tracking
+    }
+  }
+
   async logAdminAction(action: {
     adminId: string;
     actionType: string;

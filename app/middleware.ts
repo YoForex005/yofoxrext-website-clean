@@ -48,6 +48,27 @@ function matchRoute(pathname: string, controls: any[]) {
   return null;
 }
 
+async function checkCategoryRedirect(pathname: string, request: NextRequest): Promise<NextResponse | null> {
+  try {
+    const apiUrl = new URL('/api/public/category-redirect', request.url);
+    apiUrl.searchParams.set('path', pathname);
+    const response = await fetch(apiUrl, {
+      next: { revalidate: 300 }, // Cache redirects for 5 minutes
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.redirect) {
+        console.log(`[Middleware] Redirecting ${pathname} to ${data.newUrl}`);
+        return NextResponse.redirect(new URL(data.newUrl, request.url), data.type === 301 ? 301 : 302);
+      }
+    }
+  } catch (error) {
+    console.error('[Middleware] Error checking redirects:', error);
+  }
+  return null;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -61,6 +82,12 @@ export async function middleware(request: NextRequest) {
     pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff|woff2|ttf|eot|webp|gif)$/) // File extensions
   ) {
     return NextResponse.next();
+  }
+
+  // Check for category redirects first
+  const redirectResponse = await checkCategoryRedirect(pathname, request);
+  if (redirectResponse) {
+    return redirectResponse;
   }
 
   // Fetch page controls

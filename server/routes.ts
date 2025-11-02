@@ -7882,6 +7882,36 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // PUBLIC: Category redirect lookup for middleware (no auth required)
+  app.get('/api/public/category-redirect', async (req, res) => {
+    try {
+      const path = req.query.path as string;
+      if (!path) {
+        return res.json({ redirect: false });
+      }
+
+      const redirect = await storage.getCategoryRedirect(path);
+      
+      if (redirect && redirect.isActive) {
+        // Track redirect usage
+        await storage.trackRedirectHit(redirect.id);
+        
+        res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min cache
+        return res.json({
+          redirect: true,
+          newUrl: redirect.newUrl,
+          type: redirect.redirectType || 301
+        });
+      }
+      
+      res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min cache
+      res.json({ redirect: false });
+    } catch (error: any) {
+      console.error('[Public API] Error checking redirect:', error);
+      res.json({ redirect: false }); // Fail open - no redirect
+    }
+  });
+
   // ============================================
   // ADMIN: PAGE CONTROLS MANAGEMENT
   // ============================================
