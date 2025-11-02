@@ -67,6 +67,23 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
+## Recent Changes
+
+### November 2, 2025: Fixed Image Upload Failure in Thread Creation Wizard
+
+**Critical Bug Fix - Multiple Image Uploads:**
+- **Issue**: Users couldn't upload images when creating threads - uploads failed with "Upload failed - Failed to upload images. Please try again." error
+- **Root Cause**: Multer configuration had `files: 1` limit but `/api/upload` endpoint expected up to 10 files using `upload.array('files', 10)`
+- **Solution**: Split multer into two instances for different use cases
+  - `uploadSingle`: For single file uploads (files: 1, fileSize: 20MB) - used by profile photos and message attachments
+  - `uploadMultiple`: For batch uploads (files: 10, fileSize: 10MB per image) - used by thread creation and EA publishing
+- **Memory Safety**: Maintained with worst-case 100MB limit (10 files × 10MB)
+- **Impact**: Thread creation wizard can now accept multiple images as designed
+- **Files Modified**:
+  - `server/routes.ts` - Split multer configuration and updated `/api/upload` and `/api/upload/images` endpoints
+- **Testing Recommended**: End-to-end thread creation with multiple images
+- **Architect Feedback**: Approved - solution correctly resolves limit mismatch while preserving memory safety
+
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.
