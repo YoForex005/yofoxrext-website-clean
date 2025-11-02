@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
+import { useAdminWebSocket } from "@/hooks/useAdminWebSocket";
 import { 
   BarChart3, 
   Users, 
@@ -93,6 +95,20 @@ const sections = [
 export function AdminDashboardClient() {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Fetch current user for WebSocket authentication
+  const { data: user } = useQuery<{ id: string; role: string } | null>({
+    queryKey: ['/api/me'],
+    queryFn: async () => {
+      const response = await fetch('/api/me');
+      if (!response.ok) return null;
+      return response.json();
+    },
+    retry: false,
+  });
+
+  // Initialize admin WebSocket connection
+  const { connected, recentEvents } = useAdminWebSocket(user);
 
   // Determine which section to render based on pathname
   const renderSection = () => {
@@ -221,6 +237,17 @@ export function AdminDashboardClient() {
                 <Menu className="h-5 w-5" />
               </Button>
               <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+              
+              {/* Real-time WebSocket connection status */}
+              <div className="flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium" data-testid="admin-ws-status">
+                <div className={cn(
+                  "w-2 h-2 rounded-full",
+                  connected ? "bg-green-500 animate-pulse" : "bg-gray-400"
+                )} />
+                <span className="text-muted-foreground">
+                  {connected ? "Live" : "Offline"}
+                </span>
+              </div>
             </div>
             <ThemeToggle />
           </header>

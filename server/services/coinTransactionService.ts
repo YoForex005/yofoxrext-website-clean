@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { users, coinTransactions, userWallet, coinLedgerTransactions, auditLogs, SWEETS_TRIGGERS, SWEETS_CHANNELS } from '@shared/schema';
 import { eq, sql, and } from 'drizzle-orm';
+import { emitAdminSweetsTransaction, emitSweetsBalanceUpdated } from './dashboardWebSocket';
 
 interface CoinTransactionRequest {
   userId: string;
@@ -212,6 +213,23 @@ export class CoinTransactionService {
       });
 
       console.log(`[CoinTransactionService] Transaction completed: ${result.transactionId}, User: ${request.userId}, Amount: ${request.amount}, New Balance: ${result.newBalance}`);
+      
+      // Emit to CLIENT namespace (user gets notified)
+      emitSweetsBalanceUpdated(request.userId, {
+        newBalance: result.newBalance!,
+        change: request.amount,
+      });
+      
+      // Emit to ADMIN namespace (admins get notified of ALL transactions)
+      emitAdminSweetsTransaction({
+        userId: request.userId,
+        transactionId: result.transactionId!,
+        amount: request.amount,
+        trigger: request.trigger,
+        channel: request.channel,
+        newBalance: result.newBalance!,
+      });
+      
       return result;
 
     } catch (error) {

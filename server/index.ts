@@ -228,7 +228,7 @@ async function initializeServer() {
     const httpServer = createServer(expressApp);
     const io = initializeDashboardWebSocket(httpServer);
     expressApp.set('io', io); // Make WebSocket available to routes
-    log("WebSocket server initialized on /ws/dashboard");
+    log("WebSocket server initialized on /ws/dashboard and /ws/admin");
 
     // Express API server runs on port 3001 (internal)
     // Next.js frontend runs on port 5000 (user-facing, required by Replit)

@@ -256,6 +256,7 @@ import { publishAnnouncement, getAudiencePreview, scheduleAnnouncement, expireAn
 import { sendCampaign, updateCampaignStats } from './services/campaignService.js';
 import { insertAnnouncementSchema, insertEmailCampaignSchema } from "../shared/schema.js";
 import { coinTransactionService } from './services/coinTransactionService.js';
+import { emitAdminUserRegistered, emitAdminContentSubmitted, emitAdminModerationFlagged } from './services/dashboardWebSocket.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -537,6 +538,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error("Failed to send verification email:", emailError);
         // Don't fail registration if email fails - user can resend
       }
+
+      // Emit to admin namespace
+      emitAdminUserRegistered({
+        userId: newUser.id,
+        username: newUser.username,
+        email: newUser.email!,
+        registrationMethod: 'email',
+      });
 
       res.status(201).json({
         message: "Account created! Please check your email to verify your account.",
