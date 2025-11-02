@@ -144,7 +144,7 @@ export function MarketplaceItemsTable({
                     </TableCell>
                     
                     {/* Created Column */}
-                    <TableCell>
+                    <TableCell suppressHydrationWarning>
                       {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
                     </TableCell>
                     

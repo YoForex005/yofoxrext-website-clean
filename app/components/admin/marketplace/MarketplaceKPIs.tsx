@@ -58,10 +58,10 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <ShoppingBag className="h-4 w-4 text-blue-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-items">
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-items" suppressHydrationWarning>
             {stats?.totalItems.toLocaleString() || 0}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-pending-approval">
+          <p className="text-xs text-green-400 mt-1" data-testid="text-pending-approval" suppressHydrationWarning>
             {stats?.pendingApproval || 0} pending approval
           </p>
         </CardContent>
@@ -73,10 +73,10 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <TrendingUp className="h-4 w-4 text-green-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-sales">
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-sales" suppressHydrationWarning>
             {stats?.totalSales.toLocaleString() || 0}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-sales">
+          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-sales" suppressHydrationWarning>
             +{stats?.weeklySales.toLocaleString() || 0} this week
           </p>
         </CardContent>
@@ -88,10 +88,10 @@ export function MarketplaceKPIs({ stats, isLoading, error, onRetry }: Marketplac
           <DollarSign className="h-4 w-4 text-amber-500" />
         </CardHeader>
         <CardContent>
-          <p className="text-3xl font-bold text-foreground" data-testid="value-total-revenue">
+          <p className="text-3xl font-bold text-foreground" data-testid="value-total-revenue" suppressHydrationWarning>
             ${stats?.totalRevenue.toLocaleString() || 0}
           </p>
-          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-revenue">
+          <p className="text-xs text-green-400 mt-1" data-testid="text-weekly-revenue" suppressHydrationWarning>
             +${stats?.weeklyRevenue.toLocaleString() || 0} this week
           </p>
         </CardContent>
