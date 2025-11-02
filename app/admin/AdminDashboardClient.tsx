@@ -37,7 +37,8 @@ import {
   Folder,
   TestTube,
   Code,
-  AlertCircle
+  AlertCircle,
+  Flag
 } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AdminAuthCheck } from "./auth-check";
