@@ -5775,6 +5775,20 @@ export async function registerRoutes(app: Express): Promise<Express> {
     res.json(users);
   });
 
+  // Get member stats (real data for community stats widget)
+  app.get("/api/members/stats", async (req, res) => {
+    // Cache for 30 seconds
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
+    
+    try {
+      const stats = await storage.getMemberStats();
+      res.json(stats);
+    } catch (error: any) {
+      console.error('Error fetching member stats:', error);
+      res.status(500).json({ error: "Failed to fetch member stats" });
+    }
+  });
+
   // ===== USER FOLLOWS ENDPOINTS =====
   
   // Follow user

@@ -3,6 +3,35 @@
 ## Overview
 YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
 
+## Recent Changes
+
+### November 2, 2025 - Members Page Real Data Fix
+**Fixed:** Community Stats widget now displays real database data instead of fake calculated percentages.
+
+**What Changed:**
+- Added `getMemberStats()` method to storage interface (`server/storage.ts`)
+- Implemented efficient database queries for member statistics
+- Created `/api/members/stats` endpoint (`server/routes.ts`)
+- Updated Members page frontend to fetch real data (`app/members/MembersClient.tsx`)
+
+**Before (Fake Data):**
+- "Online Now" was calculated as 15% of total members
+- "New This Week" was calculated as 8% of total members
+- Stats calculated from leaderboard data (only top 50 users)
+
+**After (Real Data):**
+- Total Members: Direct COUNT query on users table
+- Online Now: COUNT of users with `last_active` within last 15 minutes
+- New This Week: COUNT of users with `created_at` within last 7 days
+- Total Coins Earned: SUM of all user `total_coins`
+
+**Files Modified:**
+- `server/storage.ts` - Added getMemberStats() interface method and implementation
+- `server/routes.ts` - Added GET /api/members/stats endpoint with 30s cache
+- `app/members/MembersClient.tsx` - Removed fake calculations, added real API query
+
+**Test Data Created:** 101 realistic Asian users across 13 countries with varied coins (1,520-6,120), ranks, and profile pictures for demonstration.
+
 ## User Preferences
 ### Communication Style
 - Use simple, everyday language

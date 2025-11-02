@@ -466,6 +466,12 @@ export interface IStorage {
       content: number;
     };
   }>;
+  getMemberStats(): Promise<{
+    totalMembers: number;
+    onlineNow: number;
+    newThisWeek: number;
+    totalCoinsEarned: number;
+  }>;
   getUserStats(userId: string): Promise<{
     threadsCreated: number;
     repliesPosted: number;
@@ -9348,6 +9354,37 @@ export class DrizzleStorage implements IStorage {
         threads: Number(todayThreads[0]?.count || 0),
         content: Number(todayContent[0]?.count || 0)
       }
+    };
+  }
+
+  async getMemberStats(): Promise<{
+    totalMembers: number;
+    onlineNow: number;
+    newThisWeek: number;
+    totalCoinsEarned: number;
+  }> {
+    // Calculate time boundaries
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    
+    // Execute efficient COUNT queries in parallel
+    const [membersCount, onlineCount, newMembersCount, coinsSum] = await Promise.all([
+      db.select({ count: count(users.id) }).from(users),
+      db.select({ count: count(users.id) })
+        .from(users)
+        .where(gte(users.lastActive, fifteenMinutesAgo)),
+      db.select({ count: count(users.id) })
+        .from(users)
+        .where(gte(users.createdAt, oneWeekAgo)),
+      db.select({ total: sql<number>`COALESCE(SUM(${users.totalCoins}), 0)` })
+        .from(users)
+    ]);
+    
+    return {
+      totalMembers: Number(membersCount[0]?.count || 0),
+      onlineNow: Number(onlineCount[0]?.count || 0),
+      newThisWeek: Number(newMembersCount[0]?.count || 0),
+      totalCoinsEarned: Number(coinsSum[0]?.total || 0)
     };
   }
 

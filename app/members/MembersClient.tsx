@@ -128,6 +128,23 @@ export default function MembersClient({ initialData }: MembersClientProps) {
     refetchInterval: 30000,
   });
 
+  const { data: memberStats } = useQuery<{
+    totalMembers: number;
+    onlineNow: number;
+    newThisWeek: number;
+    totalCoinsEarned: number;
+  }>({
+    queryKey: ['/api/members/stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/members/stats', {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch');
+      return res.json();
+    },
+    refetchInterval: 30000,
+  });
+
   const clearFilters = () => {
     setRoleFilters({
       regular: false,
@@ -237,14 +254,6 @@ export default function MembersClient({ initialData }: MembersClientProps) {
       </Link>
     );
   };
-
-  const uniqueMembers = new Set([
-    ...(topByCoins || []).map(u => u.id),
-    ...(topByContributions || []).map(u => u.id),
-    ...(topByUploads || []).map(u => u.id)
-  ]).size;
-
-  const totalCoinsEarned = (topByCoins || []).reduce((sum, u) => sum + (u.totalCoins || 0), 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -570,10 +579,10 @@ export default function MembersClient({ initialData }: MembersClientProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 {[
-                  { label: 'Total Members', value: uniqueMembers, icon: Users, color: 'text-primary' },
-                  { label: 'Online Now', value: Math.floor(uniqueMembers * 0.15), icon: Activity, color: 'text-green-600 dark:text-green-400' },
-                  { label: 'New This Week', value: Math.floor(uniqueMembers * 0.08), icon: UserPlus, color: 'text-blue-600 dark:text-blue-400' },
-                  { label: 'Total Coins Earned', value: totalCoinsEarned.toLocaleString(), icon: Coins, color: 'text-yellow-600 dark:text-yellow-400' },
+                  { label: 'Total Members', value: memberStats?.totalMembers ?? 0, icon: Users, color: 'text-primary' },
+                  { label: 'Online Now', value: memberStats?.onlineNow ?? 0, icon: Activity, color: 'text-green-600 dark:text-green-400' },
+                  { label: 'New This Week', value: memberStats?.newThisWeek ?? 0, icon: UserPlus, color: 'text-blue-600 dark:text-blue-400' },
+                  { label: 'Total Coins Earned', value: (memberStats?.totalCoinsEarned ?? 0).toLocaleString(), icon: Coins, color: 'text-yellow-600 dark:text-yellow-400' },
                 ].map(({ label, value, icon: Icon, color }, idx) => (
                   <div key={idx} className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
