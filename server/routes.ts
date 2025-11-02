@@ -4586,8 +4586,30 @@ export async function registerRoutes(app: Express): Promise<Express> {
         });
       }
       
-      // 2. Sanitize inputs - allow HTML in body only
-      const validated = sanitizeRequestBody(validationResult.data, ['body']);
+      // 2. Sanitize inputs - allow HTML in body and contentHtml
+      const validated = sanitizeRequestBody(validationResult.data, ['body', 'contentHtml']);
+      
+      // If contentHtml is provided (from TipTap editor), sanitize it with DOMPurify
+      if (validated.contentHtml) {
+        validated.contentHtml = DOMPurify.sanitize(validated.contentHtml, {
+          ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre'],
+          ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
+        });
+      }
+      
+      // Process attachments if provided  
+      if (validated.attachments && Array.isArray(validated.attachments)) {
+        // Validate each attachment
+        validated.attachments = validated.attachments.map((att: any) => ({
+          id: att.id || crypto.randomUUID(),
+          filename: att.filename,
+          size: att.size,
+          url: att.url,
+          mimeType: att.mimeType || 'application/octet-stream',
+          price: Math.max(0, Math.min(10000, att.price || 0)), // Cap price between 0-10000
+          downloads: 0
+        }));
+      }
       
       // Generate full slug with category path
       const slug = generateFullSlug(
@@ -4596,9 +4618,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
         validated.title
       );
       
-      // Generate meta description
+      // Generate meta description (prefer contentHtml text if available)
+      const textContent = validated.contentHtml 
+        ? DOMPurify.sanitize(validated.contentHtml, { ALLOWED_TAGS: [] }) // Strip HTML for meta
+        : validated.body;
       const metaDescription = generateMetaDescription(
-        validated.body,
+        textContent,
         validated.seoExcerpt
       );
       
@@ -5367,6 +5392,102 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.get("/api/threads/:threadId/replies", async (req, res) => {
     const replies = await storage.listForumReplies(req.params.threadId);
     res.json(replies);
+  });
+
+  // Download thread attachment with Sweets payment
+  app.post("/api/threads/:threadId/attachments/:attachmentId/download", isAuthenticated, coinOperationLimiter, async (req, res) => {
+    try {
+      const { threadId, attachmentId } = req.params;
+      const authenticatedUserId = getAuthenticatedUserId(req);
+
+      // Get the thread
+      const thread = await storage.getForumThreadById(threadId);
+      if (!thread) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+
+      // Find the attachment
+      const attachments = thread.attachments as any[] || [];
+      const attachment = attachments.find((a: any) => a.id === attachmentId);
+      if (!attachment) {
+        return res.status(404).json({ error: "Attachment not found" });
+      }
+
+      // Check if user is the thread author (free for authors)
+      const isFree = thread.authorId === authenticatedUserId || attachment.price === 0;
+
+      if (!isFree) {
+        // Check user balance
+        const userBalance = await storage.getUserCoinBalance(authenticatedUserId);
+        if (userBalance < attachment.price) {
+          return res.status(400).json({ 
+            error: "Insufficient Sweets", 
+            required: attachment.price, 
+            balance: userBalance 
+          });
+        }
+
+        // Process payment
+        await coinTransactionService.executeTransaction({
+          userId: authenticatedUserId,
+          amount: -attachment.price, // Negative for spending
+          trigger: COIN_TRIGGERS.MARKETPLACE_PURCHASE_ITEM,
+          channel: COIN_CHANNELS.MARKETPLACE,
+          description: `Downloaded attachment: ${attachment.filename}`,
+          metadata: {
+            threadId,
+            attachmentId,
+            filename: attachment.filename,
+            price: attachment.price,
+            authorId: thread.authorId
+          },
+          idempotencyKey: `attachment-download-${attachmentId}-${authenticatedUserId}`
+        });
+
+        // Credit the thread author
+        if (thread.authorId !== authenticatedUserId) {
+          await coinTransactionService.executeTransaction({
+            userId: thread.authorId,
+            amount: attachment.price,
+            trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
+            channel: COIN_CHANNELS.MARKETPLACE,
+            description: `Attachment downloaded: ${attachment.filename}`,
+            metadata: {
+              threadId,
+              attachmentId,
+              buyerId: authenticatedUserId,
+              filename: attachment.filename,
+              price: attachment.price
+            },
+            idempotencyKey: `attachment-sale-${attachmentId}-${authenticatedUserId}`
+          });
+        }
+
+        // Update download count
+        const updatedAttachments = attachments.map((a: any) => 
+          a.id === attachmentId 
+            ? { ...a, downloads: (a.downloads || 0) + 1 }
+            : a
+        );
+        
+        // Update thread with new download count
+        await db.update(forumThreads)
+          .set({ attachments: updatedAttachments })
+          .where(eq(forumThreads.id, threadId))
+          .execute();
+      }
+
+      // Return the download URL
+      res.json({ 
+        downloadUrl: attachment.url,
+        filename: attachment.filename,
+        message: isFree ? "Free download" : `Downloaded for ${attachment.price} Sweets`
+      });
+
+    } catch (error: any) {
+      console.error("Attachment download error:", error);
+      res.status(500).json({ error: error.message || "Failed to process download" });
+    }
   });
   
   // Mark reply as accepted answer

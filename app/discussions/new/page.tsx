@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import ThreadComposeClient from "./ThreadComposeClient";
+import ThreadComposeClient from "./EnhancedThreadComposeClient";
 import type { ForumCategory } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
 

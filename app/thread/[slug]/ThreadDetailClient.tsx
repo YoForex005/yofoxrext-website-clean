@@ -24,7 +24,14 @@ import {
   ArrowLeft, 
   Bookmark, 
   Share2,
-  Clock
+  Clock,
+  Download,
+  File,
+  FileText,
+  FileCode,
+  FileArchive,
+  FileImage,
+  Coins
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -35,10 +42,135 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
+import DOMPurify from 'isomorphic-dompurify';
 
 interface ThreadDetailClientProps {
   initialThread: ForumThread | undefined;
   initialReplies: ForumReply[];
+}
+
+interface Attachment {
+  id: string;
+  filename: string;
+  size: number;
+  url: string;
+  mimeType: string;
+  price: number;
+  downloads: number;
+}
+
+// Component for displaying and handling file attachments
+function AttachmentsSection({ 
+  threadId, 
+  attachments, 
+  isAuthor 
+}: { 
+  threadId: string;
+  attachments: Attachment[];
+  isAuthor: boolean;
+}) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const { requireAuth, AuthPrompt } = useAuthPrompt("download attachments");
+
+  const getFileIcon = (mimeType: string) => {
+    if (mimeType.includes('image')) return FileImage;
+    if (mimeType.includes('pdf')) return FileText;
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return FileArchive;
+    if (mimeType.includes('text') || mimeType.includes('code')) return FileCode;
+    return File;
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1048576) return Math.round(bytes / 1024) + ' KB';
+    return (bytes / 1048576).toFixed(2) + ' MB';
+  };
+
+  const handleDownload = async (attachment: Attachment) => {
+    requireAuth(async () => {
+      try {
+        const response = await apiRequest('POST', `/api/threads/${threadId}/attachments/${attachment.id}/download`);
+        
+        if (response.downloadUrl) {
+          // Create a download link
+          const link = document.createElement('a');
+          link.href = response.downloadUrl;
+          link.download = attachment.filename;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          
+          toast({ 
+            title: response.message || "Download started!",
+            description: attachment.filename
+          });
+        }
+      } catch (error: any) {
+        toast({
+          title: "Download failed",
+          description: error.message || "Unable to download file",
+          variant: "destructive",
+        });
+      }
+    });
+  };
+
+  return (
+    <div className="mt-8 p-6 bg-muted/30 rounded-lg border">
+      <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+        <FileArchive className="h-5 w-5" />
+        Attachments ({attachments.length})
+      </h3>
+      
+      <div className="space-y-3">
+        {attachments.map((attachment) => {
+          const Icon = getFileIcon(attachment.mimeType);
+          const isFree = attachment.price === 0 || isAuthor;
+          
+          return (
+            <div
+              key={attachment.id}
+              className="flex items-center justify-between p-3 bg-background rounded-lg border hover:border-primary/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Icon className="h-8 w-8 text-muted-foreground" />
+                <div>
+                  <p className="font-medium">{attachment.filename}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatFileSize(attachment.size)} • {attachment.downloads} downloads
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                {!isFree && (
+                  <div className="flex items-center gap-1 text-amber-500 font-semibold">
+                    <Coins className="h-4 w-4" />
+                    {attachment.price}
+                  </div>
+                )}
+                
+                <Button
+                  size="sm"
+                  variant={isFree ? "secondary" : "default"}
+                  onClick={() => handleDownload(attachment)}
+                  data-testid={`button-download-${attachment.id}`}
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  {isFree ? "Free" : "Download"}
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      
+      {!user && (
+        <AuthPrompt />
+      )}
+    </div>
+  );
 }
 
 function ReadingProgressBar() {
@@ -396,6 +528,7 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
 
             <Separator className="mb-8" />
 
+            {/* Render rich HTML content if available, otherwise fallback to markdown */}
             <div 
               className="prose prose-lg dark:prose-invert max-w-none
                 prose-headings:font-bold prose-headings:tracking-tight
@@ -408,13 +541,33 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
                 prose-li:marker:text-primary"
               data-testid="text-thread-body"
             >
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeRaw]}
-              >
-                {thread.body || ""}
-              </ReactMarkdown>
+              {(thread as any).contentHtml ? (
+                <div 
+                  dangerouslySetInnerHTML={{ 
+                    __html: DOMPurify.sanitize((thread as any).contentHtml, {
+                      ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img', 'blockquote', 'code', 'pre'],
+                      ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
+                    })
+                  }} 
+                />
+              ) : (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                >
+                  {thread.body || ""}
+                </ReactMarkdown>
+              )}
             </div>
+
+            {/* File attachments section */}
+            {(thread as any).attachments && (thread as any).attachments.length > 0 && (
+              <AttachmentsSection 
+                threadId={thread.id}
+                attachments={(thread as any).attachments}
+                isAuthor={user?.id === thread.authorId}
+              />
+            )}
           </article>
 
           <Separator className="my-12" />

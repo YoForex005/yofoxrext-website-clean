@@ -875,6 +875,20 @@ export const forumThreads = pgTable("forum_threads", {
   // Attachments
   attachmentUrls: text("attachment_urls").array().default(sql`'{}'::text[]`),
   
+  // Rich content support
+  contentHtml: text("content_html"), // Rich HTML content from TipTap editor
+  
+  // File attachments with Sweets pricing
+  attachments: jsonb("attachments").$type<Array<{
+    id: string;
+    filename: string;
+    size: number;
+    url: string;
+    mimeType: string;
+    price: number; // Price in Sweets (0 = free)
+    downloads: number; // Download count
+  }>>().default(sql`'[]'::jsonb`),
+  
   // Status & Moderation
   isPinned: boolean("is_pinned").notNull().default(false),
   isLocked: boolean("is_locked").notNull().default(false),
