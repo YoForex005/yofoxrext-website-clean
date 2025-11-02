@@ -229,7 +229,7 @@ const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max file size (increased for EA files)
+    fileSize: 50 * 1024 * 1024 // 50MB max file size for EA files, PDFs, and trading files
   }
 });
 
