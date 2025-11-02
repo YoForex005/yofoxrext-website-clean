@@ -61,6 +61,7 @@ import {
   referrals,
   aiNudges,
   brokers,
+  brokerReviews,
   messageAttachments,
   messages,
   conversations,
@@ -6890,6 +6891,279 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('Error fetching admin activity feed:', error);
       res.status(500).json({ message: 'Failed to fetch activity feed' });
+    }
+  });
+
+  // ============================================
+  // ADMIN ANALYTICS DASHBOARD ENDPOINTS
+  // ============================================
+
+  // GET /api/admin/analytics/stats - KPI summary
+  app.get('/api/admin/analytics/stats', isAdminMiddleware, async (req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // Get total users count (excluding bots)
+      const totalUsersResult = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.isBot, false));
+      const totalUsers = totalUsersResult[0]?.count || 0;
+
+      // Get active users today (users with lastActive >= today)
+      const activeUsersTodayResult = await db
+        .select({ count: count() })
+        .from(users)
+        .where(
+          and(
+            eq(users.isBot, false),
+            gte(users.lastActive, todayStart)
+          )
+        );
+      const activeUsersToday = activeUsersTodayResult[0]?.count || 0;
+
+      // Get total content count
+      const totalContentResult = await db
+        .select({ count: count() })
+        .from(content);
+      const totalContent = totalContentResult[0]?.count || 0;
+
+      // Get total revenue (sum of all completed coin transactions of type 'earn')
+      const totalRevenueResult = await db
+        .select({ total: sql<number>`COALESCE(SUM(${coinTransactions.amount}), 0)` })
+        .from(coinTransactions)
+        .where(
+          and(
+            eq(coinTransactions.type, 'earn'),
+            eq(coinTransactions.status, 'completed')
+          )
+        );
+      const totalRevenue = Number(totalRevenueResult[0]?.total || 0);
+
+      // Get total transactions count
+      const totalTransactionsResult = await db
+        .select({ count: count() })
+        .from(coinTransactions);
+      const totalTransactions = totalTransactionsResult[0]?.count || 0;
+
+      // Get forum threads count
+      const forumThreadsResult = await db
+        .select({ count: count() })
+        .from(forumThreads);
+      const totalForumThreads = forumThreadsResult[0]?.count || 0;
+
+      // Get forum replies count
+      const forumRepliesResult = await db
+        .select({ count: count() })
+        .from(forumReplies);
+      const totalForumReplies = forumRepliesResult[0]?.count || 0;
+
+      // Get broker reviews count
+      const brokerReviewsResult = await db
+        .select({ count: count() })
+        .from(brokerReviews);
+      const totalBrokerReviews = brokerReviewsResult[0]?.count || 0;
+
+      res.json({
+        totalUsers,
+        activeUsersToday,
+        totalContent,
+        totalRevenue,
+        totalTransactions,
+        forumThreads: totalForumThreads,
+        forumReplies: totalForumReplies,
+        brokerReviews: totalBrokerReviews,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error fetching admin analytics stats:', error);
+      res.status(500).json({ error: 'Failed to fetch analytics stats' });
+    }
+  });
+
+  // GET /api/admin/analytics/user-growth - Daily user registrations for last 30 days
+  app.get('/api/admin/analytics/user-growth', isAdminMiddleware, async (req, res) => {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Get daily user registrations for the last 30 days (excluding bots)
+      const userGrowthData = await db
+        .select({
+          date: sql<string>`DATE(${users.createdAt})`,
+          users: count(),
+        })
+        .from(users)
+        .where(
+          and(
+            gte(users.createdAt, thirtyDaysAgo),
+            eq(users.isBot, false)
+          )
+        )
+        .groupBy(sql`DATE(${users.createdAt})`)
+        .orderBy(asc(sql`DATE(${users.createdAt})`));
+
+      // Fill in missing dates with 0 users
+      const dataMap = new Map(userGrowthData.map(d => [d.date, Number(d.users)]));
+      const result = [];
+      
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        result.push({
+          date: dateStr,
+          users: dataMap.get(dateStr) || 0,
+        });
+      }
+
+      res.json({
+        data: result,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error fetching user growth data:', error);
+      res.status(500).json({ error: 'Failed to fetch user growth data' });
+    }
+  });
+
+  // GET /api/admin/analytics/content-trends - Content creation by type over last 30 days
+  app.get('/api/admin/analytics/content-trends', isAdminMiddleware, async (req, res) => {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      // Get daily content creation by type for the last 30 days
+      const contentTrendsData = await db
+        .select({
+          date: sql<string>`DATE(${content.createdAt})`,
+          type: content.type,
+          count: count(),
+        })
+        .from(content)
+        .where(gte(content.createdAt, thirtyDaysAgo))
+        .groupBy(sql`DATE(${content.createdAt})`, content.type)
+        .orderBy(asc(sql`DATE(${content.createdAt})`));
+
+      // Organize data by date
+      const dataByDate = new Map<string, { ea: number; indicator: number; article: number; source_code: number }>();
+      
+      contentTrendsData.forEach(row => {
+        if (!dataByDate.has(row.date)) {
+          dataByDate.set(row.date, { ea: 0, indicator: 0, article: 0, source_code: 0 });
+        }
+        const dateData = dataByDate.get(row.date)!;
+        const countNum = Number(row.count);
+        
+        if (row.type === 'ea') dateData.ea = countNum;
+        else if (row.type === 'indicator') dateData.indicator = countNum;
+        else if (row.type === 'article') dateData.article = countNum;
+        else if (row.type === 'source_code') dateData.source_code = countNum;
+      });
+
+      // Fill in missing dates with 0 values
+      const result = [];
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        result.push({
+          date: dateStr,
+          ...(dataByDate.get(dateStr) || { ea: 0, indicator: 0, article: 0, source_code: 0 }),
+        });
+      }
+
+      res.json({
+        data: result,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error fetching content trends data:', error);
+      res.status(500).json({ error: 'Failed to fetch content trends data' });
+    }
+  });
+
+  // GET /api/admin/analytics/revenue - Revenue breakdown by source, top earners, recent transactions
+  app.get('/api/admin/analytics/revenue', isAdminMiddleware, async (req, res) => {
+    try {
+      // Revenue breakdown by transaction type
+      const revenueBySourceData = await db
+        .select({
+          source: coinTransactions.type,
+          amount: sql<number>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
+        })
+        .from(coinTransactions)
+        .where(eq(coinTransactions.status, 'completed'))
+        .groupBy(coinTransactions.type);
+
+      const bySource = revenueBySourceData.map(row => ({
+        source: row.source,
+        amount: Number(row.amount),
+      }));
+
+      // Top 10 earners (users with highest total coins, excluding bots)
+      const topEarnersData = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          totalEarnings: users.totalCoins,
+        })
+        .from(users)
+        .where(eq(users.isBot, false))
+        .orderBy(desc(users.totalCoins))
+        .limit(10);
+
+      const topEarners = topEarnersData.map(row => ({
+        userId: row.userId,
+        username: row.username,
+        totalEarnings: row.totalEarnings,
+      }));
+
+      // Recent high-value transactions (top 20 by amount)
+      // First get the transactions
+      const recentTransactionsData = await db
+        .select({
+          id: coinTransactions.id,
+          amount: coinTransactions.amount,
+          type: coinTransactions.type,
+          createdAt: coinTransactions.createdAt,
+          userId: coinTransactions.userId,
+        })
+        .from(coinTransactions)
+        .where(eq(coinTransactions.status, 'completed'))
+        .orderBy(desc(coinTransactions.amount))
+        .limit(20);
+
+      // Get user info for these transactions (avoiding join to prevent orderSelectedFields error)
+      const userIds = [...new Set(recentTransactionsData.map(t => t.userId))];
+      const usersData = await db
+        .select({
+          id: users.id,
+          username: users.username,
+        })
+        .from(users)
+        .where(sql`${users.id} = ANY(${userIds})`);
+
+      const userMap = new Map(usersData.map(u => [u.id, u.username]));
+
+      const recentTransactions = recentTransactionsData.map(row => ({
+        id: row.id,
+        amount: row.amount,
+        type: row.type,
+        createdAt: row.createdAt.toISOString(),
+        username: userMap.get(row.userId) || 'Unknown',
+      }));
+
+      res.json({
+        bySource,
+        topEarners,
+        recentTransactions,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error('Error fetching revenue analytics data:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue analytics data' });
     }
   });
 
