@@ -14041,16 +14041,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/admin/errors/groups - List error groups with filters
-  app.get("/api/admin/errors/groups", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.get("/api/admin/errors/groups", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
 
       // Parse query parameters
       const {
@@ -14087,16 +14080,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/admin/errors/groups/:id - Get error group details with events
-  app.get("/api/admin/errors/groups/:id", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.get("/api/admin/errors/groups/:id", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
 
       const groupId = req.params.id;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
@@ -14124,16 +14110,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // PATCH /api/admin/errors/groups/:id/status - Update error group status
-  app.patch("/api/admin/errors/groups/:id/status", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.patch("/api/admin/errors/groups/:id/status", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
+      const user = req.user as any;
 
       const groupId = req.params.id;
       const { status, reason } = req.body;
@@ -14167,16 +14147,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/admin/errors/stats - Get error statistics
-  app.get("/api/admin/errors/stats", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.get("/api/admin/errors/stats", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
 
       const period = req.query.period as "24h" | "7d" | "30d" || "24h";
 
@@ -14191,23 +14164,18 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/admin/errors/cleanup - Manually trigger error cleanup
-  app.post("/api/admin/errors/cleanup", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.post("/api/admin/errors/cleanup", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
+      const user = req.user as any;
 
       // Clean up old resolved errors (30 days)
       const cleanupResult = await storage.cleanupOldErrors(30);
 
-      // Auto-resolve inactive errors (1 hour = 1/24 days)
-      // Most errors repeat every 30 min if not fixed - 1 hour is aggressive cleanup
-      const autoResolveResult = await storage.autoResolveInactiveErrors(1/24);
+      // Auto-resolve inactive errors (7 days)
+      // Only auto-resolve errors that haven't occurred in 7 days - they're likely fixed
+      // This prevents over-aggressive resolution of intermittent errors
+      const autoResolveResult = await storage.autoResolveInactiveErrors(7);
 
       // Log admin action
       await storage.createAdminAction({
@@ -14234,21 +14202,15 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/admin/errors/auto-resolve-fixed - Auto-resolve fixed errors
-  app.post("/api/admin/errors/auto-resolve-fixed", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.post("/api/admin/errors/auto-resolve-fixed", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
+      const user = req.user as any;
 
-      const { minutesInactive = 60 } = req.body;
+      const { minutesInactive = 10080 } = req.body; // Default to 7 days (10080 minutes)
 
-      // Auto-resolve fixed errors (default 60 minutes)
-      // If error hasn't occurred in 1 hour, it's likely fixed
+      // Auto-resolve fixed errors (default 7 days)
+      // Only auto-resolve errors that haven't occurred in 7 days - they're likely truly fixed
       const result = await storage.autoResolveFixedErrors(minutesInactive);
 
       // Log admin action
@@ -14271,16 +14233,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/admin/errors/bulk-resolve - Bulk resolve errors by pattern or criteria
-  app.post("/api/admin/errors/bulk-resolve", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.post("/api/admin/errors/bulk-resolve", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
+      const user = req.user as any;
 
       const { fingerprints, patterns, severity, statusCode } = req.body;
       let resolvedCount = 0;
@@ -14379,16 +14335,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // POST /api/admin/errors/merge-duplicates - Merge duplicate error groups
-  app.post("/api/admin/errors/merge-duplicates", isAuthenticated, adminOperationLimiter, async (req, res) => {
+  app.post("/api/admin/errors/merge-duplicates", isAuthenticated, isAdminMiddleware, adminOperationLimiter, async (req, res) => {
     try {
-      // Check if user is admin
-      if (!req.user) {
-        return res.status(401).json({ error: "Authentication required" });
-      }
-      const user = await storage.getUser((req.user as any).id);
-      if (user?.role !== 'admin') {
-        return res.status(403).json({ error: "Admin access required" });
-      }
+      // User is already authenticated and verified as admin by middleware
+      const user = req.user as any;
 
       // Merge duplicate error groups using Levenshtein distance
       const result = await storage.mergeDuplicateErrors(0.1); // 10% similarity threshold
