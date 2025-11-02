@@ -104,6 +104,9 @@ export default function AutoSEOPanel({
     internalLinks: []
   });
   const [hashtagInput, setHashtagInput] = useState("");
+  const [isEditingHashtags, setIsEditingHashtags] = useState(false);
+  const [showAutoFixSuggestion, setShowAutoFixSuggestion] = useState(false);
+  const [persistedHashtags, setPersistedHashtags] = useState<string[] | null>(null);
 
   // Debounce title and body for performance
   const debouncedTitle = useDebounce(title, 500);
@@ -170,18 +173,40 @@ export default function AutoSEOPanel({
   // Initialize manual fields with auto-generated values when switching modes
   useEffect(() => {
     if (!autoOptimize && autoSEOData.primaryKeyword) {
-      setManualFields(autoSEOData);
+      // Preserve persisted hashtags when switching to manual mode
+      const hashtags = persistedHashtags !== null ? persistedHashtags : autoSEOData.hashtags;
+      setManualFields({ ...autoSEOData, hashtags });
     }
-  }, [autoOptimize, autoSEOData]);
+  }, [autoOptimize, autoSEOData, persistedHashtags]);
 
   // Update parent component with SEO data
   useEffect(() => {
-    const data = autoOptimize ? autoSEOData : manualFields;
+    let data = autoOptimize ? autoSEOData : manualFields;
+    
+    // If in auto mode, use persisted or editing hashtags
+    if (autoOptimize) {
+      const hashtags = isEditingHashtags 
+        ? manualFields.hashtags 
+        : (persistedHashtags !== null ? persistedHashtags : autoSEOData.hashtags);
+      
+      data = { ...autoSEOData, hashtags };
+    }
+    
     onSEOUpdate(data);
-  }, [autoOptimize, autoSEOData, manualFields, onSEOUpdate]);
+  }, [autoOptimize, autoSEOData, manualFields, onSEOUpdate, isEditingHashtags, persistedHashtags]);
 
   // Calculate current SEO data
-  const currentSEOData = autoOptimize ? autoSEOData : manualFields;
+  const currentSEOData = useMemo(() => {
+    if (autoOptimize) {
+      // Use persisted hashtags if available, otherwise use auto-generated
+      const hashtags = isEditingHashtags 
+        ? manualFields.hashtags 
+        : (persistedHashtags !== null ? persistedHashtags : autoSEOData.hashtags);
+      
+      return { ...autoSEOData, hashtags };
+    }
+    return manualFields;
+  }, [autoOptimize, autoSEOData, manualFields, isEditingHashtags, persistedHashtags]);
 
   // Generate optimization tips
   const optimizationTips = useMemo((): OptimizationTip[] => {
@@ -321,6 +346,51 @@ export default function AutoSEOPanel({
     handleManualFieldChange("hashtags", manualFields.hashtags.filter((_, i) => i !== index));
   };
 
+  // Apply keyword suggestion - switches to manual mode
+  const applyKeywordSuggestion = (keyword: string) => {
+    setAutoOptimize(false);
+    setTimeout(() => {
+      handleManualFieldChange("primaryKeyword", keyword);
+      // Recalculate keyword density with new keyword
+      const newDensity = calculateKeywordDensity(`${debouncedTitle} ${debouncedBody}`, keyword);
+      handleManualFieldChange("keywordDensity", newDensity);
+    }, 100);
+  };
+
+  // Auto-fix keyword density by suggesting alternatives
+  const autoFixKeywordDensity = () => {
+    if (!currentSEOData.primaryKeyword) return;
+    
+    // Switch to manual mode
+    setAutoOptimize(false);
+    setTimeout(() => {
+      // If density is too high, suggest synonyms or variations
+      if (currentSEOData.keywordDensity > 3) {
+        // Get alternative keywords from suggestions
+        const alternatives = keywordSuggestions.filter(kw => kw !== currentSEOData.primaryKeyword);
+        if (alternatives.length > 0) {
+          handleManualFieldChange("primaryKeyword", alternatives[0]);
+        }
+      }
+      // If density is too low, just switch to manual and let user add it manually
+      setShowAutoFixSuggestion(true);
+      setTimeout(() => setShowAutoFixSuggestion(false), 5000);
+    }, 100);
+  };
+
+  // Toggle hashtag editing mode
+  const toggleHashtagEditing = () => {
+    if (!isEditingHashtags) {
+      // Entering edit mode - copy current hashtags to manual fields
+      const currentHashtags = persistedHashtags !== null ? persistedHashtags : autoSEOData.hashtags;
+      setManualFields(prev => ({ ...prev, hashtags: [...currentHashtags] }));
+    } else {
+      // Exiting edit mode - persist the edited hashtags
+      setPersistedHashtags([...manualFields.hashtags]);
+    }
+    setIsEditingHashtags(!isEditingHashtags);
+  };
+
   // Get keyword density badge color
   const getKeywordDensityColor = (density: number) => {
     if (density >= 0.5 && density <= 3) return "bg-green-500";
@@ -447,55 +517,87 @@ export default function AutoSEOPanel({
                         <Label className="text-blue-900 dark:text-blue-100">Suggested Keywords</Label>
                       </div>
                       <p className="text-xs text-blue-700 dark:text-blue-300">
-                        Based on your content. Click to use as primary keyword.
+                        Based on your content. Click any suggestion to apply it.
                       </p>
                       <div className="flex flex-wrap gap-2 mt-2">
                         {keywordSuggestions.map((keyword, index) => (
                           <Badge
                             key={index}
-                            variant="outline"
-                            className="cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900 transition-colors border-blue-300 dark:border-blue-700"
-                            onClick={() => {
-                              if (!autoOptimize) {
-                                handleManualFieldChange("primaryKeyword", keyword);
-                              }
-                            }}
+                            variant={currentSEOData.primaryKeyword === keyword ? "default" : "outline"}
+                            className={`cursor-pointer transition-all ${
+                              currentSEOData.primaryKeyword === keyword
+                                ? "bg-blue-600 text-white hover:bg-blue-700"
+                                : "hover:bg-blue-100 dark:hover:bg-blue-900 border-blue-300 dark:border-blue-700"
+                            }`}
+                            onClick={() => applyKeywordSuggestion(keyword)}
                             data-testid={`keyword-suggestion-${index}`}
                           >
                             <Search className="h-3 w-3 mr-1" />
                             {keyword}
+                            {currentSEOData.primaryKeyword === keyword && (
+                              <Check className="h-3 w-3 ml-1" />
+                            )}
                           </Badge>
                         ))}
                       </div>
                       {autoOptimize && (
-                        <p className="text-xs text-blue-600 dark:text-blue-400 italic mt-2">
-                          Turn off auto-optimize to select a keyword manually
+                        <p className="text-xs text-green-600 dark:text-green-400 italic mt-2 flex items-center gap-1">
+                          <Info className="h-3 w-3" />
+                          Click any keyword to switch to manual mode and apply it
                         </p>
+                      )}
+                      {showAutoFixSuggestion && (
+                        <Alert className="mt-2 border-green-500 bg-green-50 dark:bg-green-950">
+                          <Check className="h-4 w-4" />
+                          <AlertDescription className="text-xs">
+                            Keyword applied! You can now manually adjust the content to optimize density.
+                          </AlertDescription>
+                        </Alert>
                       )}
                     </div>
                   )}
 
                   {/* Primary Keyword */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Search className="h-4 w-4 text-muted-foreground" />
                       <Label>Primary Keyword</Label>
                       {currentSEOData.keywordDensity > 0 && (
                         <Badge 
-                          className={`ml-auto ${getKeywordDensityColor(currentSEOData.keywordDensity)} text-white`}
+                          className={`${getKeywordDensityColor(currentSEOData.keywordDensity)} text-white`}
                         >
                           {currentSEOData.keywordDensity.toFixed(1)}% density
                         </Badge>
                       )}
+                      {/* Auto-fix button for bad keyword density */}
+                      {currentSEOData.keywordDensity > 0 && (currentSEOData.keywordDensity < 0.5 || currentSEOData.keywordDensity > 3) && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="ml-auto text-xs h-7"
+                          onClick={autoFixKeywordDensity}
+                          data-testid="button-auto-fix-density"
+                        >
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          Auto-Fix
+                        </Button>
+                      )}
                     </div>
                     {autoOptimize ? (
                       <div className="p-3 rounded-md bg-muted">
-                        <p className="font-medium">{currentSEOData.primaryKeyword || "Generating..."}</p>
+                        <p className="font-medium">{currentSEOData.primaryKeyword || "Analyzing content..."}</p>
                       </div>
                     ) : (
                       <Input
                         value={manualFields.primaryKeyword}
-                        onChange={(e) => handleManualFieldChange("primaryKeyword", e.target.value)}
+                        onChange={(e) => {
+                          const keyword = e.target.value;
+                          handleManualFieldChange("primaryKeyword", keyword);
+                          // Recalculate density on change
+                          const newDensity = calculateKeywordDensity(`${debouncedTitle} ${debouncedBody}`, keyword);
+                          handleManualFieldChange("keywordDensity", newDensity);
+                        }}
                         placeholder="Enter your primary keyword..."
                         maxLength={50}
                         data-testid="input-primary-keyword"
@@ -536,12 +638,47 @@ export default function AutoSEOPanel({
 
                   {/* Hashtags */}
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Hash className="h-4 w-4 text-muted-foreground" />
                       <Label>Hashtags</Label>
-                      <span className="text-xs text-muted-foreground">({currentSEOData.hashtags.length}/10)</span>
+                      <span className="text-xs text-muted-foreground">({(isEditingHashtags ? manualFields.hashtags.length : currentSEOData.hashtags.length)}/10)</span>
+                      {/* Customized indicator */}
+                      {autoOptimize && persistedHashtags !== null && !isEditingHashtags && (
+                        <Badge variant="secondary" className="text-xs">
+                          Customized
+                        </Badge>
+                      )}
+                      {/* Edit and reset buttons for auto mode */}
+                      {autoOptimize && (
+                        <div className="ml-auto flex gap-1">
+                          {persistedHashtags !== null && !isEditingHashtags && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs h-7"
+                              onClick={() => setPersistedHashtags(null)}
+                              data-testid="button-reset-hashtags"
+                            >
+                              <X className="h-3 w-3 mr-1" />
+                              Reset
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={isEditingHashtags ? "default" : "outline"}
+                            className="text-xs h-7"
+                            onClick={toggleHashtagEditing}
+                            data-testid="button-edit-hashtags"
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            {isEditingHashtags ? "Done" : "Edit"}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                    {autoOptimize ? (
+                    {autoOptimize && !isEditingHashtags ? (
                       <div className="flex flex-wrap gap-2 p-3 rounded-md bg-muted min-h-[60px]">
                         {currentSEOData.hashtags.length > 0 ? (
                           currentSEOData.hashtags.map((tag, index) => (
@@ -550,7 +687,10 @@ export default function AutoSEOPanel({
                             </Badge>
                           ))
                         ) : (
-                          <span className="text-sm text-muted-foreground">Generating hashtags...</span>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Info className="h-4 w-4" />
+                            <span>No hashtags found. Click "Edit" to add manually.</span>
+                          </div>
                         )}
                       </div>
                     ) : (
@@ -559,7 +699,7 @@ export default function AutoSEOPanel({
                           <Input
                             value={hashtagInput}
                             onChange={(e) => setHashtagInput(e.target.value)}
-                            placeholder="Add hashtag..."
+                            placeholder="Add hashtag (e.g., forex, trading)..."
                             onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), addHashtag())}
                             data-testid="input-hashtag"
                           />
@@ -567,25 +707,33 @@ export default function AutoSEOPanel({
                             type="button"
                             onClick={addHashtag}
                             size="sm"
+                            disabled={(isEditingHashtags ? manualFields.hashtags.length : currentSEOData.hashtags.length) >= 10}
                             data-testid="button-add-hashtag"
                           >
+                            <Hash className="h-3 w-3 mr-1" />
                             Add
                           </Button>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          {manualFields.hashtags.map((tag, index) => (
+                          {(isEditingHashtags ? manualFields.hashtags : currentSEOData.hashtags).map((tag, index) => (
                             <Badge key={index} variant="secondary" className="group">
                               {tag}
                               <button
                                 type="button"
                                 onClick={() => removeHashtag(index)}
                                 className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                data-testid={`button-remove-hashtag-${index}`}
                               >
                                 <X className="h-3 w-3" />
                               </button>
                             </Badge>
                           ))}
                         </div>
+                        {(isEditingHashtags ? manualFields.hashtags : currentSEOData.hashtags).length === 0 && (
+                          <p className="text-xs text-muted-foreground italic">
+                            Add relevant trading hashtags like #forex, #trading, #EURUSD, etc.
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
