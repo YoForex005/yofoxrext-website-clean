@@ -207,37 +207,27 @@ export function startBackgroundJobs(storage: IStorage) {
   // ERROR TRACKING BACKGROUND JOBS
   // ============================================
   
-  // Auto-resolve inactive errors - Runs daily at 4 AM
-  cron.schedule('0 4 * * *', async () => {
+  // Hourly error cleanup and auto-resolve - Runs every hour
+  cron.schedule('0 * * * *', async () => {
     try {
-      console.log('[ERROR CLEANUP] Starting auto-resolve of inactive errors...');
+      console.log('[ERROR CLEANUP] Starting hourly error cleanup and auto-resolve...');
       
-      // Auto-resolve errors that haven't occurred in 7 days
-      const resolvedResult = await storage.autoResolveInactiveErrors(7);
+      // Auto-resolve errors that haven't occurred in 1 hour (1/24 days)
+      // Most errors repeat every 30 min if not fixed - 1 hour is aggressive cleanup
+      const resolvedResult = await storage.autoResolveInactiveErrors(1/24);
       
-      console.log(`[ERROR CLEANUP] Auto-resolved ${resolvedResult.resolvedCount} inactive errors`);
+      // Delete:
+      // - All "solved" errors immediately (historical, no value)
+      // - "resolved" errors older than 7 days
+      const cleanupResult = await storage.cleanupOldErrors(30); // Parameter ignored, always uses 7 days for resolved
+      
+      console.log(`[ERROR CLEANUP] Hourly cleanup completed - Auto-resolved: ${resolvedResult.resolvedCount}, Deleted groups: ${cleanupResult.deletedGroups}, Deleted events: ${cleanupResult.deletedEvents}`);
     } catch (error: any) {
-      console.error('[ERROR CLEANUP] Error during auto-resolve:', error);
+      console.error('[ERROR CLEANUP] Error during hourly cleanup:', error);
     }
   });
   
-  console.log('[JOBS] Error auto-resolve scheduled (runs daily at 4 AM)');
-  
-  // Clean up old resolved errors - Runs daily at 4:30 AM
-  cron.schedule('30 4 * * *', async () => {
-    try {
-      console.log('[ERROR CLEANUP] Starting cleanup of old resolved errors...');
-      
-      // Delete resolved errors older than 30 days
-      const cleanupResult = await storage.cleanupOldErrors(30);
-      
-      console.log(`[ERROR CLEANUP] Deleted ${cleanupResult.deletedGroups} error groups and ${cleanupResult.deletedEvents} error events`);
-    } catch (error: any) {
-      console.error('[ERROR CLEANUP] Error during cleanup:', error);
-    }
-  });
-  
-  console.log('[JOBS] Error cleanup scheduled (runs daily at 4:30 AM)');
+  console.log('[JOBS] Hourly error cleanup and auto-resolve scheduled (runs every hour)');
   
   // ============================================
   // SWEETS ECONOMY AUTOMATION JOBS

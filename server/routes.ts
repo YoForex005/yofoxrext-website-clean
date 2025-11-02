@@ -2555,8 +2555,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const userId = getAuthenticatedUserId(req);
       const user = await storage.getUser(userId);
       
+      // Return empty object if user not found instead of 404
+      // This prevents error tracking spam when the endpoint is called during initial load
       if (!user) {
-        return res.status(404).json({ error: "User not found" });
+        return res.json({
+          progress: {},
+          completed: false,
+          dismissed: false
+        });
       }
       
       res.json({
@@ -14067,8 +14073,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Clean up old resolved errors (30 days)
       const cleanupResult = await storage.cleanupOldErrors(30);
 
-      // Auto-resolve inactive errors (7 days)
-      const autoResolveResult = await storage.autoResolveInactiveErrors(7);
+      // Auto-resolve inactive errors (1 hour = 1/24 days)
+      // Most errors repeat every 30 min if not fixed - 1 hour is aggressive cleanup
+      const autoResolveResult = await storage.autoResolveInactiveErrors(1/24);
 
       // Log admin action
       await storage.createAdminAction({
@@ -14106,9 +14113,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(403).json({ error: "Admin access required" });
       }
 
-      const { minutesInactive = 30 } = req.body;
+      const { minutesInactive = 60 } = req.body;
 
-      // Auto-resolve fixed errors
+      // Auto-resolve fixed errors (default 60 minutes)
+      // If error hasn't occurred in 1 hour, it's likely fixed
       const result = await storage.autoResolveFixedErrors(minutesInactive);
 
       // Log admin action

@@ -18492,21 +18492,29 @@ export class DrizzleStorage implements IStorage {
   }
 
   /**
-   * Delete resolved errors older than specified days
+   * Delete resolved and solved errors based on age
+   * - "solved" errors: Deleted immediately (historical, no value)
+   * - "resolved" errors: Deleted after 7 days (daysOld parameter is ignored for resolved, always 7 days)
    */
   async cleanupOldErrors(daysOld: number): Promise<{ deletedGroups: number; deletedEvents: number }> {
     try {
-      const cutoffDate = new Date();
-      cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+      // Calculate cutoff date for resolved errors (always 7 days)
+      const resolvedCutoffDate = new Date();
+      resolvedCutoffDate.setDate(resolvedCutoffDate.getDate() - 7);
 
-      // Get groups to delete
+      // Get groups to delete:
+      // 1. All "solved" errors (immediate deletion)
+      // 2. "resolved" errors older than 7 days
       const groupsToDelete = await db
         .select({ id: errorGroups.id })
         .from(errorGroups)
         .where(
-          and(
-            eq(errorGroups.status, 'resolved'),
-            lte(errorGroups.resolvedAt, cutoffDate)
+          or(
+            eq(errorGroups.status, 'solved'),
+            and(
+              eq(errorGroups.status, 'resolved'),
+              lte(errorGroups.resolvedAt, resolvedCutoffDate)
+            )
           )
         );
 
@@ -18527,6 +18535,8 @@ export class DrizzleStorage implements IStorage {
         .delete(errorGroups)
         .where(inArray(errorGroups.id, groupIds))
         .returning({ id: errorGroups.id });
+
+      console.log(`[CLEANUP] Deleted ${deletedGroupsResult.length} error groups (solved + old resolved) and ${deletedEventsResult.length} events`);
 
       return {
         deletedGroups: deletedGroupsResult.length,

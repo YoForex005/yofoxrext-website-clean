@@ -122,8 +122,15 @@ export class ErrorTracker {
     // Extract top 3 stack frames if available
     const stackFrames = stackTrace?.split('\n').slice(0, 4).join('\n') || '';
     
-    // Create a unique fingerprint using message, component, and top stack frames
-    const fingerprintData = `${message}|${component || 'unknown'}|${stackFrames}`;
+    // Normalize message to strip URL query parameters to reduce duplicates
+    // Example: "404 RSC error [GET .../page?_rsc=1r34m]" becomes "404 RSC error [GET .../page]"
+    let normalizedMessage = message;
+    
+    // Strip query parameters from URLs in the message
+    normalizedMessage = normalizedMessage.replace(/\?[^\s\]]+/g, '');
+    
+    // Create a unique fingerprint using normalized message, component, and top stack frames
+    const fingerprintData = `${normalizedMessage}|${component || 'unknown'}|${stackFrames}`;
     
     // Simple hash function for browser compatibility
     let hash = 0;
@@ -406,8 +413,11 @@ export class ErrorTracker {
       timestamp: new Date().toISOString(),
     });
     
+    // Normalize URL for fingerprint generation (strip query params)
+    const normalizedUrl = url.split('?')[0];
+    
     const errorEvent: ErrorEvent = {
-      fingerprint: this.generateFingerprint(message, 'api', url),
+      fingerprint: this.generateFingerprint(message, 'api', normalizedUrl),
       message,
       component: 'api',
       severity,
