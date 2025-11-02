@@ -2995,6 +2995,11 @@ export async function registerRoutes(app: Express): Promise<Express> {
             const contentType = item.type as keyof typeof calculateCommission;
             const commission = calculateCommission(item.priceCoins, contentType);
             
+            // Use display name for bots (firstName + lastName), username for regular users
+            const buyerDisplayName = buyer?.isBot && buyer?.firstName && buyer?.lastName
+              ? `${buyer.firstName} ${buyer.lastName}`
+              : buyer?.username || 'A user';
+            
             // Queue sale notification to seller
             await emailQueueService.queueEmail({
               userId: seller.id,
@@ -3004,7 +3009,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
               payload: {
                 recipientName: seller.username,
                 itemTitle: item.title,
-                buyerName: buyer?.username || 'A user',
+                buyerName: buyerDisplayName,
                 salePrice: item.priceCoins,
                 sellerEarnings: commission.sellerAmount,
                 itemType: item.type
@@ -3203,14 +3208,20 @@ export async function registerRoutes(app: Express): Promise<Express> {
             // Don't send email if user likes their own content
             if (contentAuthor?.email && contentAuthor.id !== authenticatedUserId) {
               const contentUrl = `/content/${content.slug}`;
+              
+              // Use display name for bots (firstName + lastName), username for regular users
+              const likerDisplayName = liker.isBot && liker.firstName && liker.lastName
+                ? `${liker.firstName} ${liker.lastName}`
+                : liker.username;
+              
               await emailQueueService.queueEmail({
                 userId: contentAuthor.id,
                 templateKey: 'like_notification',
                 recipientEmail: contentAuthor.email,
-                subject: `${liker.username} liked your ${content.type}`,
+                subject: `${likerDisplayName} liked your ${content.type}`,
                 payload: {
                   recipientName: contentAuthor.username,
-                  likerName: liker.username,
+                  likerName: likerDisplayName,
                   contentType: content.type,
                   contentTitle: content.title,
                   contentUrl
@@ -4517,14 +4528,20 @@ export async function registerRoutes(app: Express): Promise<Express> {
                 // Don't send email if user replies to their own thread
                 if (threadAuthor?.email && threadAuthor.id !== authenticatedUserId) {
                   const replyPreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
+                  
+                  // Use display name for bots (firstName + lastName), username for regular users
+                  const replierDisplayName = replier.isBot && replier.firstName && replier.lastName
+                    ? `${replier.firstName} ${replier.lastName}`
+                    : replier.username;
+                  
                   await emailQueueService.queueEmail({
                     userId: threadAuthor.id,
                     templateKey: 'thread_reply',
                     recipientEmail: threadAuthor.email,
-                    subject: `${replier.username} replied to your thread`,
+                    subject: `${replierDisplayName} replied to your thread`,
                     payload: {
                       recipientName: threadAuthor.username,
-                      replierName: replier.username,
+                      replierName: replierDisplayName,
                       threadTitle: thread.title,
                       replyPreview,
                       threadUrl: `/threads/${thread.slug}`
@@ -4563,9 +4580,15 @@ export async function registerRoutes(app: Express): Promise<Express> {
             // Don't send email if user replies to their own thread
             if (threadAuthor?.username && threadAuthor.id !== authenticatedUserId) {
               const replyPreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
+              
+              // Use display name for bots (firstName + lastName), username for regular users
+              const replierDisplayName = replier.isBot && replier.firstName && replier.lastName
+                ? `${replier.firstName} ${replier.lastName}`
+                : replier.username;
+              
               await emailService.sendThreadReply(
                 threadAuthor.username,
-                replier.username,
+                replierDisplayName,
                 thread.title,
                 replyPreview,
                 thread.slug
@@ -5061,14 +5084,19 @@ export async function registerRoutes(app: Express): Promise<Express> {
           const followedUser = await storage.getUser(validated.followingId);
           
           if (follower?.username && follower?.email && followedUser?.email) {
+            // Use display name for bots (firstName + lastName), username for regular users
+            const followerDisplayName = follower.isBot && follower.firstName && follower.lastName
+              ? `${follower.firstName} ${follower.lastName}`
+              : follower.username;
+            
             await emailQueueService.queueEmail({
               userId: followedUser.id,
               templateKey: 'new_follower',
               recipientEmail: followedUser.email,
-              subject: `${follower.username} started following you`,
+              subject: `${followerDisplayName} started following you`,
               payload: {
                 recipientName: followedUser.username,
-                followerName: follower.username,
+                followerName: followerDisplayName,
                 followerProfileUrl: `/user/${follower.username}`
               },
               priority: EmailPriority.LOW,

@@ -4029,6 +4029,8 @@ export const bots = pgTable("bots", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: varchar("username", { length: 50 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull().unique(),
+  firstName: varchar("first_name", { length: 50 }), // Human-like first name for email display
+  lastName: varchar("last_name", { length: 50 }), // Human-like last name for email display
   bio: text("bio"),
   profilePictureUrl: text("profile_picture_url"),
   isBot: boolean("is_bot").notNull().default(true),

@@ -18475,10 +18475,53 @@ export class DrizzleStorage implements IStorage {
 
   async createBot(bot: InsertBot): Promise<Bot> {
     try {
+      // Create the bot entry in bots table
       const [newBot] = await db
         .insert(bots)
         .values(bot as any)
         .returning();
+      
+      // CRITICAL: Create corresponding user entry with same ID
+      // This ensures email triggers can find firstName/lastName from users table
+      const botId = newBot.id;
+      
+      // Check if user entry already exists
+      const existingUser = await db.query.users.findFirst({
+        where: eq(users.id, botId)
+      });
+      
+      if (!existingUser) {
+        // Create user entry with bot data synced
+        await db.insert(users).values({
+          id: botId, // Same ID as bot
+          username: newBot.username,
+          email: newBot.email,
+          firstName: newBot.firstName, // Sync firstName for email display
+          lastName: newBot.lastName,   // Sync lastName for email display
+          profileImageUrl: newBot.profilePictureUrl,
+          isBot: true,
+          role: 'member',
+          status: 'active',
+          totalCoins: 0,
+          weeklyEarned: 0,
+          level: 0,
+          emailNotifications: true,
+          timezone: newBot.timezone || 'UTC',
+          reputationScore: 0,
+        });
+      } else {
+        // Update existing user entry with firstName/lastName from bot
+        await db.update(users)
+          .set({
+            firstName: newBot.firstName,
+            lastName: newBot.lastName,
+            profileImageUrl: newBot.profilePictureUrl,
+            isBot: true,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, botId));
+      }
+      
       return newBot;
     } catch (error) {
       console.error('Error creating bot:', error);
@@ -18496,6 +18539,19 @@ export class DrizzleStorage implements IStorage {
       
       if (!updated) {
         throw new Error('Bot not found');
+      }
+      
+      // Sync firstName/lastName changes to users table
+      const userUpdates: any = {};
+      if (updates.firstName !== undefined) userUpdates.firstName = updates.firstName;
+      if (updates.lastName !== undefined) userUpdates.lastName = updates.lastName;
+      if (updates.profilePictureUrl !== undefined) userUpdates.profileImageUrl = updates.profilePictureUrl;
+      
+      if (Object.keys(userUpdates).length > 0) {
+        userUpdates.updatedAt = new Date();
+        await db.update(users)
+          .set(userUpdates)
+          .where(eq(users.id, id));
       }
       
       return updated;

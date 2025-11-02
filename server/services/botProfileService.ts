@@ -5,6 +5,8 @@ interface BotProfileTemplate {
   bioTemplates: string[];
   favoritePairs: string[][];
   timezones: string[];
+  firstNames: string[];
+  lastNames: string[];
 }
 
 export class BotProfileService {
@@ -39,7 +41,9 @@ export class BotProfileService {
       ["AUD/USD", "NZD/USD"],
       ["EUR/JPY", "XAU/USD"]
     ],
-    timezones: ["America/New_York", "Europe/London", "Asia/Tokyo", "Australia/Sydney", "America/Los_Angeles"]
+    timezones: ["America/New_York", "Europe/London", "Asia/Tokyo", "Australia/Sydney", "America/Los_Angeles"],
+    firstNames: ["Alex", "Sarah", "Mike", "Emma", "Jordan", "Casey", "Taylor", "Morgan", "Riley", "Sam"],
+    lastNames: ["Thompson", "Johnson", "Williams", "Brown", "Davis", "Miller", "Wilson", "Moore", "Anderson", "Taylor"]
   };
 
   generateUsername(): string {
@@ -92,11 +96,23 @@ export class BotProfileService {
     return `https://i.pravatar.cc/150?img=${avatarId}`;
   }
 
+  generateFirstName(): string {
+    return this.templates.firstNames[Math.floor(Math.random() * this.templates.firstNames.length)];
+  }
+
+  generateLastName(): string {
+    return this.templates.lastNames[Math.floor(Math.random() * this.templates.lastNames.length)];
+  }
+
   createBotProfile(purpose: string, squad: string, aggressionLevel: number = 5): Partial<InsertBot> {
     const username = this.generateUsername();
+    const firstName = this.generateFirstName();
+    const lastName = this.generateLastName();
     
     return {
       username,
+      firstName,
+      lastName,
       email: `${username.toLowerCase()}@yoforex-bot.internal`,
       bio: this.generateBio(),
       profilePictureUrl: this.generateProfilePictureUrl(),
