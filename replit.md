@@ -3,113 +3,6 @@
 ## Overview
 YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
 
-## Recent Changes
-
-### November 2, 2025 - Bot Email Hiding Implementation
-**Status:** ✅ COMPLETED - Bots now appear as real humans in all email notifications
-**Impact:** Enhanced community engagement with invisible bot presence in emails
-
-**Implementation Details:**
-1. **Bot Profile Enhancement** (`server/services/botProfileService.ts`)
-   - Added `generateFirstName()` and `generateLastName()` methods
-   - Generates realistic human names: Alex, Sarah, Mike, Jessica, David, etc.
-   - Bots now have firstName/lastName fields in database
-
-2. **Database Schema Updates** (`shared/schema.ts`)
-   - Added `first_name` and `last_name` columns to bots table
-   - Database columns created via SQL and verified
-   - Both bots and users tables store bot names with same ID
-
-3. **Data Synchronization** (`server/storage.ts`)
-   - `createBot()` syncs firstName/lastName to BOTH bots and users tables
-   - `updateBot()` keeps both tables synchronized
-   - Bot data flow: bots table → users table → email templates
-
-4. **Email Notification Updates** (`server/routes.ts`)
-   - Updated 5 email notification triggers to use display names
-   - Email subjects now show "Alex Thompson" instead of "ScalpPro123"
-   - No "bot" keyword anywhere in user-visible content
-
-5. **Legacy Bot Backfill** (`server/scripts/backfill-bot-names.ts`)
-   - Created backfill script to generate names for existing bots
-   - Successfully ran: TraderBot_1 → "Alex Anderson"
-   - Script is idempotent (safe to re-run)
-   - 100% of bots now have human names in both tables
-
-**Email Examples:**
-- Before: "ScalpPro123 liked your post"
-- After: "Alex Thompson liked your post"
-- Before: "TraderBot_1 replied to your thread"
-- After: "Alex Anderson replied to your thread"
-
-**Admin Panel:**
-- Bots remain fully visible and controllable in admin panel
-- Admin sees bot username (TraderBot_1) with human name displayed
-- Full bot management capabilities preserved
-
-**Production Readiness:**
-- ✅ New bots automatically get human names via botProfileService
-- ✅ Production server running without errors
-- ✅ Database schema properly synchronized
-- ✅ Email triggers display human names, not usernames
-- ✅ All bots have non-null firstName/lastName in both tables
-
-### November 2, 2025 - Email System Configuration
-**Status:** ✅ COMPLETED - Email system fully operational
-**Impact:** All email features now working (password reset, notifications, admin emails)
-
-**Implemented:**
-1. **SMTP Configuration Complete**
-   - Added `SMTP_FROM_EMAIL` and `SMTP_FROM_NAME` secrets
-   - All email functionality now operational
-   - Password reset emails sending successfully
-   - Admin notification emails enabled
-
-2. **Verified Working Features:**
-   - Password reset flow: `/api/auth/forgot-password` → email → `/reset-password`
-   - Email service properly configured in `server/services/emailService.ts`
-   - Using Hostinger SMTP with proper from address
-   - All email templates functional
-
-3. **Test Results:**
-   - Password reset email sent successfully to admin@yoforex.net
-   - Response time: ~2 seconds (includes SMTP delivery)
-   - Email queue processing active
-   - No errors in email delivery
-
-### November 2, 2025 - Critical Production Build Fixes
-**Status:** ✅ COMPLETED - Production server running successfully
-**Impact:** All critical errors resolved, clean production builds achieved
-
-**Fixed Issues:**
-1. **API /api/hot Endpoint Fix** (`server/routes.ts`)
-   - Changed content status filter from `'published'` to `'approved'`
-   - Ensures only approved content appears in hot content feed
-   - Verified working in production
-
-2. **Storage Duplicate Methods Cleanup** (`server/storage.ts`)
-   - Removed 15 duplicate method definitions causing build warnings
-   - Affected methods: `createSecurityEvent`, `getSecurityEvents`, `getIpBans`, `getModerationStats`, `getSupportStats`, `getAuditLogs`, and others
-   - Result: Clean Express build with zero warnings
-
-3. **Maintenance Page Client Component Fix** (`app/maintenance/page.tsx`)
-   - Added `'use client'` directive to allow onClick handlers
-   - Removed metadata export (not allowed in Client Components)
-   - Fixed Next.js build error preventing production deployment
-
-4. **Production Build Verification**
-   - Express API build: ✅ Clean (0 warnings)
-   - Next.js build: ✅ Clean (78 routes built successfully)
-   - Both servers running: Express on port 3001, Next.js on port 5000
-   - All health checks passing
-
-**Production Status:**
-- Database pool: 8 active connections
-- Background jobs: 11 cron jobs scheduled and running
-- Error monitoring: Active and tracking all errors
-- All critical endpoints responding correctly
-- Email system: Fully operational
-
 ## User Preferences
 ### Communication Style
 - Use simple, everyday language
@@ -189,20 +82,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
 - **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage.
-- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning mechanisms (publishing, community engagement, backtests, referrals, marketplace sales), spending mechanisms (marketplace purchases, redemptions, withdrawals), XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement using Gemini AI.
-- **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails to enhance user engagement.
-- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors, smart grouping, and an admin dashboard for resolution.
+- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning/spending mechanisms, XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement.
+- **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails.
+- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an admin dashboard for resolution.
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
 - **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
-- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls. This includes a robust Page Control System (ON/OFF/Coming Soon/Maintenance) with database storage, caching, API endpoints, Next.js middleware, dedicated page templates, and an admin UI.
-- **Admin Analytics Dashboard:** Real-time analytics dashboard at `/admin/overview` with KPI cards, interactive Recharts visualizations, React Query auto-refresh, and role-based access control.
-- **User Management Admin Dashboard:** Comprehensive user management dashboard at `/admin/users` with admin-only access, featuring KPI cards, real-time search, advanced filtering, sorting, paginated data table, ban/unban functionality, CSV export, and URL param synchronization.
-- **Marketplace Management Admin Dashboard:** Full-featured marketplace moderation dashboard at `/admin/marketplace` with admin-only access, featuring KPI cards, revenue trend chart, items table with pagination and filtering, approve/reject workflows, and email notifications to sellers.
-- **Content Moderation Admin Dashboard:** Comprehensive forum content moderation system at `/admin/moderation` with admin-only access, featuring tab navigation, content type filtering, moderation queue table, approve/reject workflows with mandatory reasons, and immutable audit logging.
-- **Security & Safety Admin Dashboard:** Enterprise-grade security monitoring and IP ban management system at `/admin/security` with admin-only access. Auto-blocking is triggered by 5 failed login attempts within 15 minutes, with severity escalation.
-- **Communications Admin Dashboard:** Enterprise-grade announcement and email campaign management system at `/admin/communications` with admin-only access.
-- **Support & Tickets Admin System:** Enterprise-grade customer support and ticket management system with dual interfaces at `/support` (user) and `/admin/support` (admin).
-- **Audit Logs Admin System:** Enterprise-grade audit logging system for comprehensive tracking of all administrative actions at `/admin/audit` with admin-only access.
+- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls, with a robust Page Control System.
+- **Admin Dashboards:** Real-time analytics, user management, marketplace management, content moderation, security & safety, communications, support & tickets, and audit logging dashboards.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies
