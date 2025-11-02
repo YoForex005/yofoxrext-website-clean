@@ -141,6 +141,7 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
   const [replyBody, setReplyBody] = useState("");
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isBookmarked, setIsBookmarked] = useState(false);
+  const [threadTimeAgo, setThreadTimeAgo] = useState<string>("");
 
   const { data: thread, isLoading: threadLoading } = useQuery<ForumThread>({
     queryKey: ["/api/threads/slug", slug],
@@ -154,6 +155,12 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
     refetchInterval: 15000,
     initialData: initialReplies,
   });
+
+  useEffect(() => {
+    if (thread?.createdAt) {
+      setThreadTimeAgo(formatDistanceToNow(new Date(thread.createdAt), { addSuffix: true }));
+    }
+  }, [thread?.createdAt]);
 
   const createReplyMutation = useMutation({
     mutationFn: (data: { body: string; parentId?: string }) => {
@@ -362,7 +369,7 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
                     </div>
                     <div className="text-xs text-muted-foreground flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      <span suppressHydrationWarning>{formatDistanceToNow(new Date(thread.createdAt!), { addSuffix: true })}</span>
+                      <span>{threadTimeAgo}</span>
                     </div>
                   </div>
                 </Link>
@@ -513,7 +520,14 @@ function ReplyCard({
   currentUserId?: string;
   depth?: number;
 }) {
+  const [replyTimeAgo, setReplyTimeAgo] = useState<string>("");
   const children = allReplies.filter((r) => r.parentId === reply.id);
+
+  useEffect(() => {
+    if (reply?.createdAt) {
+      setReplyTimeAgo(formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true }));
+    }
+  }, [reply?.createdAt]);
 
   const { data: badges, isError } = useQuery<Array<{ id: string; name: string; description: string }>>({
     queryKey: ['/api/users', reply.userId, 'badges'],
@@ -570,7 +584,7 @@ function ReplyCard({
               
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                <span suppressHydrationWarning>{formatDistanceToNow(new Date(reply.createdAt!), { addSuffix: true })}</span>
+                <span>{replyTimeAgo}</span>
               </p>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import cors from "cors";
+import crypto from "crypto";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { generalApiLimiter } from "./rateLimiting";
@@ -52,53 +53,41 @@ const corsOptions = {
     // Allow requests with no origin (e.g., mobile apps, Postman, same-origin)
     if (!origin) return callback(null, true);
     
-    // In development, be more permissive with origins
-    if (process.env.NODE_ENV !== "production") {
-      const allowedPatterns = [
-        /^https?:\/\/localhost:\d+$/,        // Any localhost port
-        /^https?:\/\/127\.0\.0\.1:\d+$/,     // Any 127.0.0.1 port
-        /^https?:\/\/0\.0\.0\.0:\d+$/,       // Any 0.0.0.0 port
-        /^https?:\/\/.*\.replit\.dev$/,      // Any Replit dev domain (multi-level)
-        /^https?:\/\/.*\.repl\.co$/,         // Any Replit co domain (multi-level)
-        /^https?:\/\/.*\.replit\.app$/,      // Any Replit app domain (multi-level)
-        /^https?:\/\/.*\.repl\.run$/,        // Any Replit run domain (multi-level)
-      ];
-      
-      // Check if origin matches any pattern
-      const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
-      
-      if (isAllowed) {
-        return callback(null, true);
-      }
-      
-      // Log for debugging CORS issues
-      console.log('CORS: Origin not allowed in development:', origin);
-    }
-    
-    // In production, use environment variable or allow common domains
-    const allowedProductionOrigins = [
-      'https://yoforex.net',
-      'https://www.yoforex.net',
-      ...(process.env.ALLOWED_ORIGINS?.split(',') || [])
+    // Always allow localhost and 127.0.0.1 origins (safe local origins for development and error reporting)
+    const localOriginPatterns = [
+      /^https?:\/\/localhost:\d+$/,        // Any localhost port
+      /^https?:\/\/127\.0\.0\.1:\d+$/,     // Any 127.0.0.1 port
+      /^https?:\/\/0\.0\.0\.0:\d+$/,       // Any 0.0.0.0 port
     ];
     
-    if (allowedProductionOrigins.includes(origin)) {
+    if (localOriginPatterns.some(pattern => pattern.test(origin))) {
       return callback(null, true);
     }
     
-    // For production Replit domains (multi-level subdomains) - allow all Replit domains
+    // Always allow Replit domains (development and production)
     const replitDomainPatterns = [
-      /^https?:\/\/.*\.replit\.app$/,      // Replit app domains
-      /^https?:\/\/.*\.replit\.dev$/,      // Replit dev domains
-      /^https?:\/\/.*\.repl\.co$/,         // Replit co domains
-      /^https?:\/\/.*\.repl\.run$/,        // Replit run domains
+      /^https?:\/\/.*\.replit\.app$/,      // Replit app domains (multi-level)
+      /^https?:\/\/.*\.replit\.dev$/,      // Replit dev domains (multi-level)
+      /^https?:\/\/.*\.repl\.co$/,         // Replit co domains (multi-level)
+      /^https?:\/\/.*\.repl\.run$/,        // Replit run domains (multi-level)
     ];
     
     if (replitDomainPatterns.some(pattern => pattern.test(origin))) {
       return callback(null, true);
     }
     
-    // Log and deny
+    // Production domains
+    const allowedProductionOrigins = [
+      'https://yoforex.net',
+      'https://www.yoforex.net',
+      ...(process.env.ALLOWED_ORIGINS?.split(',').filter(Boolean) || [])
+    ];
+    
+    if (allowedProductionOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Log and deny unrecognized origins
     console.log('CORS: Origin not allowed:', origin);
     callback(new Error('Not allowed by CORS'));
   },
@@ -194,7 +183,7 @@ async function initializeServer() {
         await serverErrorTracker.captureError(
           err,
           {
-            requestId: (req as any).requestId || (req as any).session?.id || require('crypto').randomUUID(),
+            requestId: (req as any).requestId || (req as any).session?.id || crypto.randomUUID(),
             method: req.method,
             path: req.path,
             query: req.query,

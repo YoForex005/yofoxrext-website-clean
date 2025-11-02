@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -117,6 +118,14 @@ export default function ForumThreadCard({
   isLiveVerified = false,
   lastActivity
 }: ForumThreadCardProps) {
+  const [timeAgo, setTimeAgo] = useState<string>("");
+  const [formattedViews, setFormattedViews] = useState<string>("");
+  
+  useEffect(() => {
+    setTimeAgo(formatDistanceToNow(lastActivity, { addSuffix: true }));
+    setFormattedViews(viewCount.toLocaleString('en-US'));
+  }, [lastActivity, viewCount]);
+  
   const categoryStyles = getCategoryStyles(category);
   const threadUrl = fullUrl || (slug ? `/thread/${slug}` : `/thread/${id}`);
   const threadConfig = threadTypeConfig[threadType];
@@ -206,7 +215,7 @@ export default function ForumThreadCard({
                   <span>{author.reputation}</span>
                 </div>
                 <span className="hidden sm:inline">•</span>
-                <span suppressHydrationWarning className="hidden sm:inline truncate">{formatDistanceToNow(lastActivity, { addSuffix: true })}</span>
+                <span className="hidden sm:inline truncate">{timeAgo}</span>
               </div>
             </div>
           </div>
@@ -220,7 +229,7 @@ export default function ForumThreadCard({
             </div>
             <div className="flex items-center gap-1" data-testid="stat-views">
               <Eye className="h-3.5 w-3.5" />
-              <span>{viewCount.toLocaleString()} views</span>
+              <span>{formattedViews || viewCount} views</span>
             </div>
           </div>
         </CardContent>

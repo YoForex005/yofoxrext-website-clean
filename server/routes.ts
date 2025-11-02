@@ -1622,6 +1622,75 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // GET /api/users - Search/list users (requires authentication)
+  app.get("/api/users", isAuthenticated, async (req, res) => {
+    try {
+      const { page = '1', limit = '20', search = '' } = req.query;
+      const pageNum = parseInt(page as string);
+      const limitNum = Math.min(parseInt(limit as string), 50); // Max 50 users per request
+      const offset = (pageNum - 1) * limitNum;
+      
+      // Build search conditions
+      const conditions: any[] = [
+        eq(users.isBot, false), // Exclude bots from user search
+      ];
+      
+      // Add search filter if provided
+      if (search && typeof search === 'string' && search.trim()) {
+        conditions.push(
+          or(
+            ilike(users.username, `%${search.trim()}%`),
+            ilike(users.email, `%${search.trim()}%`)
+          )
+        );
+      }
+      
+      const whereClause = and(...conditions);
+      
+      // Fetch users with pagination
+      const usersList = await db
+        .select({
+          id: users.id,
+          username: users.username,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          profileImageUrl: users.profileImageUrl,
+          isVerifiedTrader: users.isVerifiedTrader,
+          badges: users.badges,
+          reputationScore: users.reputationScore,
+          rank: users.rank,
+          level: users.level,
+          createdAt: users.createdAt,
+        })
+        .from(users)
+        .where(whereClause)
+        .orderBy(desc(users.reputationScore)) // Order by reputation
+        .limit(limitNum)
+        .offset(offset);
+      
+      // Get total count
+      const totalCountResult = await db
+        .select({ count: count() })
+        .from(users)
+        .where(whereClause);
+      
+      const total = Number(totalCountResult[0]?.count || 0);
+      const totalPages = Math.ceil(total / limitNum);
+      
+      res.json({
+        users: usersList,
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages,
+      });
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error);
+      res.status(500).json({ error: 'Failed to fetch users', message: error.message });
+    }
+  });
+
   // Coin balance endpoint (requires authentication - own profile or admin)
   app.get("/api/user/:userId/coins", isAuthenticated, async (req, res) => {
     try {
@@ -2476,6 +2545,27 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const summary = await storage.getUserEarningsSummary(userId);
       res.json(summary);
     } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET /api/user/onboarding-progress - Get user onboarding progress
+  app.get("/api/user/onboarding-progress", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({
+        progress: user.onboardingProgress || {},
+        completed: user.onboardingCompleted || false,
+        dismissed: user.onboardingDismissed || false
+      });
+    } catch (error: any) {
+      console.error('[GET /api/user/onboarding-progress] Error:', error);
       res.status(500).json({ error: error.message });
     }
   });
