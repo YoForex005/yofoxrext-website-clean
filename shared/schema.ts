@@ -724,6 +724,12 @@ export const forumThreads = pgTable("forum_threads", {
   lastActivityAt: timestamp("last_activity_at").notNull().defaultNow(),
   status: text("status").notNull().$type<"pending" | "approved" | "rejected">().default("approved"),
   
+  // Moderation fields
+  moderatedBy: varchar("moderated_by").references(() => users.id),
+  moderatedAt: timestamp("moderated_at"),
+  rejectionReason: text("rejection_reason"),
+  publishedAt: timestamp("published_at"),
+  
   // Ranking system
   engagementScore: integer("engagement_score").notNull().default(0),
   lastScoreUpdate: timestamp("last_score_update"),
@@ -772,6 +778,40 @@ export const forumReplies = pgTable("forum_replies", {
   slugIdx: index("idx_forum_replies_slug").on(table.slug),
   helpfulVotesIdx: index("idx_forum_replies_helpful_votes").on(table.helpfulVotes),
   statusIdx: index("idx_forum_replies_status").on(table.status),
+}));
+
+// Moderation Events - Audit log for content moderation actions
+export const moderationEvents = pgTable("moderation_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contentType: text("content_type").notNull().$type<"thread" | "reply">(),
+  contentId: varchar("content_id").notNull(),
+  action: text("action").notNull().$type<"approve" | "reject" | "unreject">(),
+  actorId: varchar("actor_id").notNull().references(() => users.id),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  contentTypeIdIdx: index("idx_moderation_events_content").on(table.contentType, table.contentId),
+  actorIdIdx: index("idx_moderation_events_actor").on(table.actorId),
+  createdAtIdx: index("idx_moderation_events_created_at").on(table.createdAt),
+}));
+
+// Content Reports - User-reported content (future feature)
+export const contentReports = pgTable("content_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  reporterId: varchar("reporter_id").notNull().references(() => users.id),
+  contentType: text("content_type").notNull().$type<"thread" | "reply">(),
+  contentId: varchar("content_id").notNull(),
+  reason: text("reason").notNull(),
+  description: text("description"),
+  status: text("status").notNull().$type<"pending" | "reviewing" | "resolved" | "dismissed">().default("pending"),
+  resolvedBy: varchar("resolved_by").references(() => users.id),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  contentTypeIdIdx: index("idx_content_reports_content").on(table.contentType, table.contentId),
+  reporterIdIdx: index("idx_content_reports_reporter").on(table.reporterId),
+  statusIdx: index("idx_content_reports_status").on(table.status),
+  createdAtIdx: index("idx_content_reports_created_at").on(table.createdAt),
 }));
 
 // Forum Categories with dynamic stats and hierarchical support
@@ -2196,6 +2236,16 @@ export const insertActivityFeedSchema = createInsertSchema(activityFeed).omit({
   description: z.string().max(500).optional(),
 });
 
+export const insertModerationEventSchema = createInsertSchema(moderationEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertContentReportSchema = createInsertSchema(contentReports).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type ForumThread = typeof forumThreads.$inferSelect;
 export type InsertForumThread = z.infer<typeof insertForumThreadSchema>;
 export type ForumReply = typeof forumReplies.$inferSelect;
@@ -2210,6 +2260,10 @@ export type UserBadge = typeof userBadges.$inferSelect;
 export type InsertUserBadge = z.infer<typeof insertUserBadgeSchema>;
 export type ActivityFeed = typeof activityFeed.$inferSelect;
 export type InsertActivityFeed = z.infer<typeof insertActivityFeedSchema>;
+export type ModerationEvent = typeof moderationEvents.$inferSelect;
+export type InsertModerationEvent = z.infer<typeof insertModerationEventSchema>;
+export type ContentReport = typeof contentReports.$inferSelect;
+export type InsertContentReport = z.infer<typeof insertContentReportSchema>;
 
 // Double-Entry Ledger schemas
 export const insertUserWalletSchema = createInsertSchema(userWallet).omit({ walletId: true, updatedAt: true });

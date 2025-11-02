@@ -66,7 +66,9 @@ import {
   messages,
   conversations,
   messageReactions,
-  seoScanHistory
+  seoScanHistory,
+  moderationEvents,
+  contentReports
 } from "../shared/schema.js";
 import { z } from "zod";
 import { db } from "./db.js";
@@ -83,6 +85,9 @@ import {
   revenueTrendSchema,
   marketplaceItemsSchema,
   rejectItemSchema,
+  moderationQueueSchema,
+  approveContentSchema,
+  rejectContentSchema,
 } from "./validation.js";
 import { 
   ObjectStorageService, 
@@ -101,6 +106,7 @@ import {
   marketplaceActionLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
+import DOMPurify from 'isomorphic-dompurify';
 import { generateSlug, generateFocusKeyword, generateMetaDescription as generateMetaDescriptionOld, generateImageAltTexts } from './seo.js';
 import { autoGenerateSEOFields } from './seo-utils.js';
 import { emailService } from './services/emailService.js';
@@ -9003,6 +9009,210 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('Error fetching marketplace stats:', error);
       res.status(500).json({ message: 'Failed to fetch marketplace stats' });
+    }
+  });
+
+  // ===== Content Moderation System =====
+  
+  // Rate limiter for moderation actions
+  const moderationActionLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // 100 requests per 15 minutes
+    message: 'Too many moderation actions. Please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // GET /api/admin/moderation/queue - Get pending content for moderation
+  app.get('/api/admin/moderation/queue', isAdminMiddleware, moderationActionLimiter, async (req, res) => {
+    try {
+      const { type, limit, cursor, search } = moderationQueueSchema.parse(req.query);
+      
+      let threadQuery = db.select({
+        id: forumThreads.id,
+        title: forumThreads.title,
+        body: forumThreads.body,
+        authorId: forumThreads.authorId,
+        authorName: users.username,
+        authorEmail: users.email,
+        contentType: sql<'thread'>`'thread'`,
+        status: forumThreads.status,
+        createdAt: forumThreads.createdAt,
+      })
+      .from(forumThreads)
+      .leftJoin(users, eq(forumThreads.authorId, users.id))
+      .where(eq(forumThreads.status, 'pending'))
+      .orderBy(desc(forumThreads.createdAt))
+      .limit(limit);
+
+      let replyQuery = db.select({
+        id: forumReplies.id,
+        title: sql<string>`NULL`,
+        body: forumReplies.body,
+        authorId: forumReplies.userId,
+        authorName: users.username,
+        authorEmail: users.email,
+        contentType: sql<'reply'>`'reply'`,
+        status: forumReplies.status,
+        createdAt: forumReplies.createdAt,
+      })
+      .from(forumReplies)
+      .leftJoin(users, eq(forumReplies.userId, users.id))
+      .where(eq(forumReplies.status, 'pending'))
+      .orderBy(desc(forumReplies.createdAt))
+      .limit(limit);
+
+      let items: any[] = [];
+      
+      if (type === 'all') {
+        const [threads, replies] = await Promise.all([threadQuery, replyQuery]);
+        items = [...threads, ...replies].sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ).slice(0, limit);
+      } else if (type === 'threads') {
+        items = await threadQuery;
+      } else {
+        items = await replyQuery;
+      }
+
+      // Sanitize body content (prevent XSS)
+      const sanitizedItems = items.map(item => ({
+        ...item,
+        body: item.body ? item.body.substring(0, 300) + (item.body.length > 300 ? '...' : '') : '',
+        snippet: item.body ? DOMPurify.sanitize(item.body.substring(0, 150)) : '',
+      }));
+
+      res.json({
+        items: sanitizedItems,
+        hasMore: items.length === limit,
+        nextCursor: items.length > 0 ? items[items.length - 1].createdAt : null,
+      });
+    } catch (error) {
+      console.error('Error fetching moderation queue:', error);
+      res.status(500).json({ error: 'Failed to fetch moderation queue' });
+    }
+  });
+
+  // POST /api/admin/moderation/approve/:id - Approve content
+  app.post('/api/admin/moderation/approve/:id', isAdminMiddleware, moderationActionLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { contentType } = req.body;
+      
+      // Validate contentType
+      if (!['thread', 'reply'].includes(contentType)) {
+        return res.status(400).json({ error: 'Invalid content type' });
+      }
+
+      const adminId = (req.user as any)?.id;
+      if (!adminId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const now = new Date();
+
+      // Update content status
+      if (contentType === 'thread') {
+        await db.update(forumThreads)
+          .set({
+            status: 'approved',
+            moderatedBy: adminId,
+            moderatedAt: now,
+            publishedAt: now,
+          })
+          .where(eq(forumThreads.id, id));
+      } else {
+        await db.update(forumReplies)
+          .set({
+            status: 'approved',
+            approvedBy: adminId,
+            approvedAt: now,
+          })
+          .where(eq(forumReplies.id, id));
+      }
+
+      // Create audit log
+      await db.insert(moderationEvents).values({
+        contentType,
+        contentId: id,
+        action: 'approve',
+        actorId: adminId,
+      });
+
+      // Create admin action log
+      await db.insert(adminActions).values({
+        adminId,
+        actionType: 'content_approve',
+        targetType: contentType,
+        targetId: id,
+        details: `Approved ${contentType} ${id}`,
+      });
+
+      res.json({ success: true, message: `${contentType} approved successfully` });
+    } catch (error) {
+      console.error('Error approving content:', error);
+      res.status(500).json({ error: 'Failed to approve content' });
+    }
+  });
+
+  // POST /api/admin/moderation/reject/:id - Reject content with reason
+  app.post('/api/admin/moderation/reject/:id', isAdminMiddleware, moderationActionLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { contentType, reason } = req.body;
+      
+      // Validate
+      const validated = rejectContentSchema.parse({ contentType, contentId: id, reason });
+      
+      const adminId = (req.user as any)?.id;
+      if (!adminId) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      const now = new Date();
+
+      // Update content status
+      if (contentType === 'thread') {
+        await db.update(forumThreads)
+          .set({
+            status: 'rejected',
+            moderatedBy: adminId,
+            moderatedAt: now,
+            rejectionReason: reason,
+          })
+          .where(eq(forumThreads.id, id));
+      } else {
+        await db.update(forumReplies)
+          .set({
+            status: 'rejected',
+            rejectedBy: adminId,
+            rejectedAt: now,
+          })
+          .where(eq(forumReplies.id, id));
+      }
+
+      // Create audit log
+      await db.insert(moderationEvents).values({
+        contentType,
+        contentId: id,
+        action: 'reject',
+        actorId: adminId,
+        reason,
+      });
+
+      // Create admin action log
+      await db.insert(adminActions).values({
+        adminId,
+        actionType: 'content_reject',
+        targetType: contentType,
+        targetId: id,
+        details: `Rejected ${contentType} ${id}: ${reason}`,
+      });
+
+      res.json({ success: true, message: `${contentType} rejected successfully` });
+    } catch (error) {
+      console.error('Error rejecting content:', error);
+      res.status(500).json({ error: 'Failed to reject content' });
     }
   });
 

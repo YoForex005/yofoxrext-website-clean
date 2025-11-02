@@ -298,3 +298,34 @@ export const marketplaceItemsSchema = z.object({
 export const rejectItemSchema = z.object({
   reason: z.string().min(1, "Rejection reason is required").max(1000, "Rejection reason must be less than 1000 characters"),
 });
+
+// ============================================================================
+// Content Moderation Validation Schemas
+// ============================================================================
+
+/**
+ * Moderation queue query schema for GET /api/admin/moderation/queue
+ */
+export const moderationQueueSchema = z.object({
+  type: z.enum(['all', 'threads', 'replies']).default('all'),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  cursor: z.string().optional(),
+  search: z.string().optional(),
+});
+
+/**
+ * Approve content schema for POST /api/admin/moderation/approve/:id
+ */
+export const approveContentSchema = z.object({
+  contentType: z.enum(['thread', 'reply']),
+  contentId: z.string().uuid(),
+});
+
+/**
+ * Reject content schema for POST /api/admin/moderation/reject/:id
+ */
+export const rejectContentSchema = z.object({
+  contentType: z.enum(['thread', 'reply']),
+  contentId: z.string().uuid(),
+  reason: z.string().min(10, "Rejection reason must be at least 10 characters").max(1000, "Rejection reason must be less than 1000 characters"),
+});
