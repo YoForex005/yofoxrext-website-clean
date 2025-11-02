@@ -67,90 +67,6 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
-## Recent Changes
-
-### November 2, 2025: Thread Creation Engagement Sidebars & Error Monitoring Fixes
-
-**Thread Creation Page Enhancement:**
-- **Issue**: Thread creation page was bare - only showing header, form, and footer without any engagement elements
-- **Solution**: Implemented responsive 3-column layout with engaging sidebars
-- **Features Added**:
-  - **Left Sidebar (280px)**: Static engagement content
-    - Posting Tips (4 actionable tips)
-    - Formatting Shortcuts (keyboard shortcuts guide)
-    - Community Guidelines reminder
-  - **Right Sidebar (320px)**: Dynamic community data
-    - Community Stats (156 active users, 4 threads today, 27 total threads, 60 categories)
-    - Trending Threads (top threads by views in last 24 hours)
-    - Popular Categories (categories ranked by thread count)
-    - Recent Activity (latest thread creations)
-  - **Responsive Design**: Sidebars hidden on mobile (<lg), visible on desktop
-  - **Sticky Positioning**: `lg:sticky lg:top-[88px]` for optimal UX
-- **New API Endpoints**:
-  - `GET /api/forum/trending?hours=24&limit=7` - Trending threads by views
-  - `GET /api/forum/popular-categories?limit=5` - Categories with thread counts
-  - `GET /api/forum/recent-activity?limit=10` - Recent thread activity
-  - `GET /api/forum/stats` - Community statistics
-- **New Storage Methods**: `listTrendingThreads()`, `listPopularCategories()`, `listRecentThreadActivity()`, `getCommunityStats()`
-- **Technical Implementation**: Fixed Drizzle ORM SQL syntax errors by using raw SQL queries for complex aggregations
-- **Files Created**:
-  - `app/discussions/new/LeftEngagementSidebar.tsx` - Static tips and guidelines
-  - `app/discussions/new/RightEngagementSidebar.tsx` - Dynamic data with React Query
-- **Files Modified**:
-  - `app/discussions/new/EnhancedThreadComposeClient.tsx` - 3-column grid layout
-  - `server/storage.ts` - Added 4 new sidebar data methods
-  - `server/routes.ts` - Added 4 new sidebar API endpoints
-
-**Error Monitoring System Fixes:**
-- **Issue**: Error dashboard showed 0 active errors despite 15 errors in database
-- **Solution**: Fixed authentication middleware chain for all 8 error monitoring endpoints
-- **Changes**:
-  - Updated endpoints to use proper `isAdminMiddleware` instead of manual role checks
-  - Extended auto-resolve timeout from 1 hour to 7 days to prevent premature resolution
-  - All error endpoints now return proper 200 responses with data
-- **Impact**: Error monitoring dashboard now correctly displays all 15 active errors
-
-### November 2, 2025: Critical Wallet System Backfill & Trigger Field Enhancements
-
-**Wallet System 100% Drift Fixed (Production-Ready):**
-- **Issue**: user_wallet table was 56% empty - only 87/196 users had wallet records, causing 100% balance drift (348,290 coins)
-- **Solution**: Executed comprehensive backfill using `backfillOpeningBalances()` method
-- **Results**: 
-  - Created 197 wallet records (100% coverage including system account)
-  - Fixed 59 users with missing journal entries
-  - Reduced drift from 348,290 coins to only 21 coins (3 users, 0.004%)
-  - 99.99% balance accuracy achieved
-- **Files Created**:
-  - `scripts/verify-wallet-integrity.ts` - Ongoing health check script
-  - `scripts/fix-missing-journal-entries.ts` - Journal entry creation script
-  - `docs/WALLET_SYSTEM_DOCUMENTATION.md` - Complete dual-write system guide
-  - `docs/WALLET_BACKFILL_EXECUTION_REPORT.md` - Execution report with metrics
-- **Critical Architecture**: Dual-write requirement - both `users.total_coins` AND `user_wallet.balance` must be updated together at every transaction point
-
-**Trigger Field System Enhancements (100% Coverage Verified):**
-- **Issue**: Initial report suggested all transactions missing trigger data
-- **Audit**: Database revealed 100% trigger coverage (97/97 transactions have valid triggers)
-- **Enhancements**:
-  - Added 8 new trigger types to taxonomy (treasury.withdraw.rejected, marketplace.sale.item, etc.)
-  - Standardized all triggers to dotted notation: `{domain}.{action}.{result}`
-  - Fixed incorrect trigger values in routes.ts and storage.ts
-  - Created admin trigger analytics dashboard (TriggerStatsCard component)
-- **Files Modified**:
-  - `shared/schema.ts` - Enhanced trigger taxonomy
-  - `server/routes.ts` - Fixed triggers + added `/api/admin/finance/trigger-stats` endpoint
-  - `server/storage.ts` - Standardized trigger values
-  - `app/admin/finance/page.tsx` - Added trigger statistics
-  - `app/components/admin/finance/TriggerStatsCard.tsx` - NEW analytics component
-  - `app/hooks/useTriggerStats.ts` - NEW data hook
-- **Fraud Detection**: Admin can now track earning patterns by source for fraud detection
-
-**System Health:**
-- ✅ 100% wallet coverage (197/197 users)
-- ✅ 100% trigger coverage (all transactions tracked)
-- ✅ 99.99% balance accuracy (21 coins drift across 3 users)
-- ✅ Complete audit trail via coin_ledger_transactions and coin_journal_entries
-- ✅ System account properly balances all user credits (-525,262 coins)
-
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.
@@ -165,7 +81,7 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
-- **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage. Features email verification, welcome bonuses, referral tracking, and account linking.
+- **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage, email verification, welcome bonuses, referral tracking, and account linking.
 - **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning/spending mechanisms, XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement.
 - **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails.
 - **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an admin dashboard for resolution.
@@ -174,6 +90,10 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls, with a robust Page Control System.
 - **Admin Dashboards:** Real-time analytics, user management, marketplace management, content moderation, security & safety, communications, support & tickets, and audit logging dashboards.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
+- **Rich Text Editor:** Enhanced TipTap editor with inline image insertion via toolbar, drag & drop, and paste from clipboard, including upload progress and responsive styling.
+- **Engagement Sidebars:** Responsive 3-column layout for thread creation page with static posting tips/guidelines and dynamic community stats, trending threads, and popular categories.
+- **Wallet System Integrity:** 100% wallet coverage, 99.99% balance accuracy, and comprehensive audit trail with dual-write requirement for `users.total_coins` and `user_wallet.balance`.
+- **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation for triggers, and admin analytics dashboard for fraud detection.
 
 ## External Dependencies
 
