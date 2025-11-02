@@ -69,6 +69,25 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 
 ## Recent Changes
 
+### November 2, 2025: Added Complete Layout to Thread Creation Wizard Page
+
+**UX Enhancement - Consistent Layout Across All States:**
+- **Issue**: Thread creation wizard at `/threads/create` was missing header, footer, and engagement sidebars, creating inconsistent user experience
+- **Solution**: Added full 3-column grid layout with sidebars to ALL render states
+  - **Loading State**: Shows header, footer, and sidebars with skeleton loading card
+  - **Error/Authentication State**: Shows header, footer, and sidebars with auth error message
+  - **Main Content State**: Shows header, footer, and sidebars with ThreadCreationWizard
+  - **Suspense Fallback**: Shows header, footer, and sidebars with skeleton loading
+- **Layout Structure**:
+  - Left sidebar (280px): LeftEngagementSidebar with posting tips and guidelines
+  - Main content area: ThreadCreationWizard or loading/error states
+  - Right sidebar (320px): RightEngagementSidebar with trending threads and community stats
+  - All sidebars sticky positioned at `top-[88px]`, hidden below `lg` breakpoint
+- **Impact**: No more jarring layout flashes between states, improved user experience
+- **Files Modified**:
+  - `app/threads/create/page.tsx` - Added complete layout wrapper to all render branches
+- **Architect Feedback**: Approved - all render states have consistent layout, no functional blockers
+
 ### November 2, 2025: Fixed Image Upload Failure in Thread Creation Wizard
 
 **Critical Bug Fix - Multiple Image Uploads:**
