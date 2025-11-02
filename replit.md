@@ -5,6 +5,55 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 
 ## Recent Changes
 
+### November 2, 2025 - Bot Email Hiding Implementation
+**Status:** ✅ COMPLETED - Bots now appear as real humans in all email notifications
+**Impact:** Enhanced community engagement with invisible bot presence in emails
+
+**Implementation Details:**
+1. **Bot Profile Enhancement** (`server/services/botProfileService.ts`)
+   - Added `generateFirstName()` and `generateLastName()` methods
+   - Generates realistic human names: Alex, Sarah, Mike, Jessica, David, etc.
+   - Bots now have firstName/lastName fields in database
+
+2. **Database Schema Updates** (`shared/schema.ts`)
+   - Added `first_name` and `last_name` columns to bots table
+   - Database columns created via SQL and verified
+   - Both bots and users tables store bot names with same ID
+
+3. **Data Synchronization** (`server/storage.ts`)
+   - `createBot()` syncs firstName/lastName to BOTH bots and users tables
+   - `updateBot()` keeps both tables synchronized
+   - Bot data flow: bots table → users table → email templates
+
+4. **Email Notification Updates** (`server/routes.ts`)
+   - Updated 5 email notification triggers to use display names
+   - Email subjects now show "Alex Thompson" instead of "ScalpPro123"
+   - No "bot" keyword anywhere in user-visible content
+
+5. **Legacy Bot Backfill** (`server/scripts/backfill-bot-names.ts`)
+   - Created backfill script to generate names for existing bots
+   - Successfully ran: TraderBot_1 → "Alex Anderson"
+   - Script is idempotent (safe to re-run)
+   - 100% of bots now have human names in both tables
+
+**Email Examples:**
+- Before: "ScalpPro123 liked your post"
+- After: "Alex Thompson liked your post"
+- Before: "TraderBot_1 replied to your thread"
+- After: "Alex Anderson replied to your thread"
+
+**Admin Panel:**
+- Bots remain fully visible and controllable in admin panel
+- Admin sees bot username (TraderBot_1) with human name displayed
+- Full bot management capabilities preserved
+
+**Production Readiness:**
+- ✅ New bots automatically get human names via botProfileService
+- ✅ Production server running without errors
+- ✅ Database schema properly synchronized
+- ✅ Email triggers display human names, not usernames
+- ✅ All bots have non-null firstName/lastName in both tables
+
 ### November 2, 2025 - Email System Configuration
 **Status:** ✅ COMPLETED - Email system fully operational
 **Impact:** All email features now working (password reset, notifications, admin emails)
