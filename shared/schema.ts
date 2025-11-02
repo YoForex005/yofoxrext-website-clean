@@ -1447,6 +1447,7 @@ export const apiKeys = pgTable("api_keys", {
   userId: varchar("user_id").notNull().references(() => users.id),
   permissions: text("permissions").array().default(sql`'{}'::text[]`),
   rateLimit: integer("rate_limit").notNull().default(60),
+  usageCount: integer("usage_count").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   lastUsed: timestamp("last_used"),
   expiresAt: timestamp("expires_at"),
@@ -1455,6 +1456,23 @@ export const apiKeys = pgTable("api_keys", {
   keyIdx: index("idx_api_keys_key").on(table.key),
   userIdIdx: index("idx_api_keys_user_id").on(table.userId),
   isActiveIdx: index("idx_api_keys_is_active").on(table.isActive),
+}));
+
+// 14.5. API Key Usage - Track API key usage logs
+export const apiKeyUsage = pgTable("api_key_usage", {
+  id: serial("id").primaryKey(),
+  apiKeyId: integer("api_key_id").notNull().references(() => apiKeys.id, { onDelete: "cascade" }),
+  endpoint: varchar("endpoint", { length: 255 }).notNull(),
+  method: varchar("method", { length: 10 }).notNull(),
+  statusCode: integer("status_code").notNull(),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  responseTime: integer("response_time"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  apiKeyIdIdx: index("idx_api_key_usage_api_key_id").on(table.apiKeyId),
+  createdAtIdx: index("idx_api_key_usage_created_at").on(table.createdAt),
+  endpointIdx: index("idx_api_key_usage_endpoint").on(table.endpoint),
 }));
 
 // 15. Webhooks - Webhook configurations
@@ -1472,6 +1490,25 @@ export const webhooks = pgTable("webhooks", {
 }, (table) => ({
   isActiveIdx: index("idx_webhooks_is_active").on(table.isActive),
   createdAtIdx: index("idx_webhooks_created_at").on(table.createdAt),
+}));
+
+// 15.5. Webhook Events - Track webhook delivery logs
+export const webhookEvents = pgTable("webhook_events", {
+  id: serial("id").primaryKey(),
+  webhookId: integer("webhook_id").notNull().references(() => webhooks.id, { onDelete: "cascade" }),
+  eventType: varchar("event_type", { length: 100 }).notNull(),
+  payload: jsonb("payload").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending").$type<"pending" | "success" | "failed" | "retrying">(),
+  responseCode: integer("response_code"),
+  responseBody: text("response_body"),
+  attempts: integer("attempts").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  webhookIdIdx: index("idx_webhook_events_webhook_id").on(table.webhookId),
+  statusIdx: index("idx_webhook_events_status").on(table.status),
+  createdAtIdx: index("idx_webhook_events_created_at").on(table.createdAt),
+  eventTypeIdx: index("idx_webhook_events_event_type").on(table.eventType),
 }));
 
 // 16. Scheduled Jobs - Cron job management
@@ -3071,6 +3108,27 @@ export const emailNotifications = pgTable("email_notifications", {
   statusCreatedAtIdx: index("idx_email_notifications_status_created").on(table.status, table.createdAt),
 }));
 
+// Email Queue - Email retry and delivery queue
+export const emailQueue = pgTable("email_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  toEmail: varchar("to_email").notNull(),
+  subject: text("subject").notNull(),
+  htmlContent: text("html_content").notNull(),
+  textContent: text("text_content"),
+  status: varchar("status", { length: 20 }).notNull().default("pending").$type<"pending" | "sent" | "failed">(),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  scheduledAt: timestamp("scheduled_at").defaultNow(),
+  sentAt: timestamp("sent_at"),
+  error: text("error"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index("idx_email_queue_status").on(table.status),
+  scheduledAtIdx: index("idx_email_queue_scheduled_at").on(table.scheduledAt),
+  toEmailIdx: index("idx_email_queue_to_email").on(table.toEmail),
+}));
+
 // Email Preferences - User email notification preferences
 export const emailPreferences = pgTable("email_preferences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -3803,6 +3861,38 @@ export const seoOverrides = pgTable("seo_overrides", {
 }, (table) => ({
   pageUrlIdx: index("seo_overrides_page_url_idx").on(table.pageUrl),
   activeIdx: index("seo_overrides_active_idx").on(table.active),
+}));
+
+// SEO Pages - Page-level SEO tracking
+export const seoPages = pgTable("seo_pages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  url: varchar("url", { length: 1000 }).notNull().unique(),
+  title: text("title"),
+  description: text("description"),
+  keywords: text("keywords").array().default(sql`'{}'::text[]`),
+  seoScore: integer("seo_score").default(0),
+  lastScanned: timestamp("last_scanned"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  urlIdx: index("idx_seo_pages_url").on(table.url),
+  seoScoreIdx: index("idx_seo_pages_seo_score").on(table.seoScore),
+  lastScannedIdx: index("idx_seo_pages_last_scanned").on(table.lastScanned),
+}));
+
+// Schema Validations - Structured data validation tracking
+export const schemaValidations = pgTable("schema_validations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  pageUrl: varchar("page_url", { length: 1000 }).notNull().unique(),
+  schemaTypes: text("schema_types").array().default(sql`'{}'::text[]`),
+  status: varchar("status", { length: 20 }).notNull().default("pending").$type<"pending" | "valid" | "warning" | "error">(),
+  warnings: jsonb("warnings").$type<Array<{ type: string; message: string }>>(),
+  errors: jsonb("errors").$type<Array<{ type: string; message: string }>>(),
+  lastValidated: timestamp("last_validated"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  pageUrlIdx: index("idx_schema_validations_page_url").on(table.pageUrl),
+  statusIdx: index("idx_schema_validations_status").on(table.status),
+  lastValidatedIdx: index("idx_schema_validations_last_validated").on(table.lastValidated),
 }));
 
 // SEO Fix Jobs - AI-generated fix jobs with approval workflow
