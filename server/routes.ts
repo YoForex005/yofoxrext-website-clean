@@ -51,6 +51,8 @@ import {
   userFollows,
   content,
   rechargeOrders,
+  withdrawalRequests,
+  payoutAuditLogs,
   adminActions,
   forumThreads,
   campaigns,
@@ -74,6 +76,7 @@ import {
   userRankProgress,
   rankTiers,
   weeklyEarnings,
+  contentPurchases,
   SWEETS_TRIGGERS,
   SWEETS_CHANNELS,
   COIN_TRIGGERS,
@@ -1286,7 +1289,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   
   const supportRateLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 20, // 20 requests per minute
+    max: 100, // 100 requests per minute (increased for admin operations)
     message: { error: "Too many requests, please try again later" },
   });
   
@@ -16316,87 +16319,83 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // 1. GET /api/admin/finance/stats - Finance statistics
   app.get("/api/admin/finance/stats", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
-      const validation = financeStatsSchema.safeParse(req.query);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
-      }
-      const { days } = validation.data;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      // Calculate total revenue and platform fees
-      const revenueData = await db
+      // Calculate total revenue from recharges
+      const [totalRevenueResult] = await db
         .select({
-          totalAmount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
-          totalPlatformFee: sql<string>`0`,
+          total: sql<string>`COALESCE(SUM(${rechargeOrders.priceUsd}), 0)`,
         })
-        .from(coinTransactions)
+        .from(rechargeOrders)
+        .where(eq(rechargeOrders.status, 'completed'));
+
+      // Calculate revenue this week
+      const [weekRevenueResult] = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${rechargeOrders.priceUsd}), 0)`,
+        })
+        .from(rechargeOrders)
         .where(
           and(
-            gte(coinTransactions.createdAt, startDate),
-            eq(coinTransactions.status, 'completed')
+            eq(rechargeOrders.status, 'completed'),
+            gte(rechargeOrders.createdAt, oneWeekAgo)
+          )
+        );
+
+      // Calculate revenue this month
+      const [monthRevenueResult] = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${rechargeOrders.priceUsd}), 0)`,
+        })
+        .from(rechargeOrders)
+        .where(
+          and(
+            eq(rechargeOrders.status, 'completed'),
+            gte(rechargeOrders.createdAt, oneMonthAgo)
+          )
+        );
+
+      // Calculate total withdrawals (completed)
+      const [totalWithdrawalsResult] = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${withdrawalRequests.amount}), 0)`,
+        })
+        .from(withdrawalRequests)
+        .where(
+          or(
+            eq(withdrawalRequests.status, 'completed'),
+            eq(withdrawalRequests.status, 'approved')
           )
         );
 
       // Calculate pending withdrawals
-      const pendingWithdrawals = await db
+      const [pendingWithdrawalsResult] = await db
         .select({
-          count: count(),
           total: sql<string>`COALESCE(SUM(${withdrawalRequests.amount}), 0)`,
         })
         .from(withdrawalRequests)
         .where(eq(withdrawalRequests.status, 'pending'));
 
-      // Calculate total transactions
-      const totalTransactions = await db
-        .select({ count: count() })
-        .from(coinTransactions)
-        .where(gte(coinTransactions.createdAt, startDate));
-
-      // Calculate today's transactions
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayTransactions = await db
-        .select({ count: count() })
-        .from(coinTransactions)
-        .where(gte(coinTransactions.createdAt, todayStart));
-
-      // Find top earner
-      const topEarner = await db
-        .select({
-          username: users.username,
-          amount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
-        })
-        .from(coinTransactions)
-        .innerJoin(users, eq(coinTransactions.userId, users.id))
-        .where(
-          and(
-            gte(coinTransactions.createdAt, startDate),
-            eq(coinTransactions.type, 'earn')
-          )
-        )
-        .groupBy(users.id, users.username)
-        .orderBy(desc(sql`COALESCE(SUM(${coinTransactions.amount}), 0)`))
-        .limit(1);
+      const totalRevenue = parseInt(totalRevenueResult?.total || '0');
+      const revenueThisWeek = parseInt(weekRevenueResult?.total || '0');
+      const revenueThisMonth = parseInt(monthRevenueResult?.total || '0');
+      const totalWithdrawals = parseInt(totalWithdrawalsResult?.total || '0');
+      const pendingWithdrawals = parseInt(pendingWithdrawalsResult?.total || '0');
+      
+      // Platform fee: 10% of total revenue
+      const platformFee = Math.floor(totalRevenue * 0.1);
+      const netRevenue = totalRevenue - platformFee - totalWithdrawals;
 
       res.json({
-        totalRevenue: {
-          amount: parseFloat(revenueData[0]?.totalAmount || '0'),
-          platformFee: parseFloat(revenueData[0]?.totalPlatformFee || '0'),
-          percentChange: 0, // Stub - would need previous period data
-        },
-        pendingWithdrawals: {
-          count: pendingWithdrawals[0]?.count || 0,
-          total: parseInt(pendingWithdrawals[0]?.total || '0'),
-        },
-        transactions: {
-          total: totalTransactions[0]?.count || 0,
-          today: todayTransactions[0]?.count || 0,
-        },
-        topEarner: topEarner.length > 0 ? {
-          username: topEarner[0].username,
-          amount: parseFloat(topEarner[0].amount),
-        } : null,
+        totalRevenue,
+        revenueThisWeek,
+        revenueThisMonth,
+        totalWithdrawals,
+        pendingWithdrawals,
+        platformFee,
+        netRevenue,
       });
     } catch (error) {
       console.error('[Finance Stats] Error:', error);
@@ -16407,38 +16406,33 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // 2. GET /api/admin/finance/revenue-trend - Revenue trend over time
   app.get("/api/admin/finance/revenue-trend", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
-      const validation = financeRevenueTrendSchema.safeParse(req.query);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
+      const period = parseInt(req.query.period as string) || 30;
+      if (![7, 30, 90].includes(period)) {
+        return res.status(400).json({ error: 'Period must be 7, 30, or 90 days' });
       }
-      const { days } = validation.data;
+
       const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      startDate.setDate(startDate.getDate() - period);
+      startDate.setHours(0, 0, 0, 0);
 
       const trendData = await db
         .select({
-          date: sql<string>`DATE(${coinTransactions.createdAt})`,
-          totalRevenue: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
-          platformFee: sql<string>`0`,
-          netPayout: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
-          count: count(),
+          date: sql<string>`DATE(${rechargeOrders.createdAt})`,
+          amount: sql<string>`COALESCE(SUM(${rechargeOrders.priceUsd}), 0)`,
         })
-        .from(coinTransactions)
+        .from(rechargeOrders)
         .where(
           and(
-            gte(coinTransactions.createdAt, startDate),
-            eq(coinTransactions.status, 'completed')
+            eq(rechargeOrders.status, 'completed'),
+            gte(rechargeOrders.createdAt, startDate)
           )
         )
-        .groupBy(sql`DATE(${coinTransactions.createdAt})`)
-        .orderBy(asc(sql`DATE(${coinTransactions.createdAt})`));
+        .groupBy(sql`DATE(${rechargeOrders.createdAt})`)
+        .orderBy(asc(sql`DATE(${rechargeOrders.createdAt})`));
 
       res.json(trendData.map(row => ({
         date: row.date,
-        totalRevenue: parseFloat(row.totalRevenue),
-        platformFee: parseFloat(row.platformFee),
-        netPayout: parseFloat(row.netPayout),
-        count: row.count,
+        amount: parseInt(row.amount),
       })));
     } catch (error) {
       console.error('[Revenue Trend] Error:', error);
@@ -16449,35 +16443,33 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // 3. GET /api/admin/finance/revenue-sources - Revenue by source type
   app.get("/api/admin/finance/revenue-sources", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
-      const validation = revenueSourcesSchema.safeParse(req.query);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
-      }
-      const { days } = validation.data;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-
-      const sourcesData = await db
+      // Get recharges revenue
+      const [rechargesResult] = await db
         .select({
-          source: coinTransactions.type,
-          amount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
-          count: count(),
+          total: sql<string>`COALESCE(SUM(${rechargeOrders.priceUsd}), 0)`,
         })
-        .from(coinTransactions)
-        .where(
-          and(
-            gte(coinTransactions.createdAt, startDate),
-            eq(coinTransactions.status, 'completed')
-          )
-        )
-        .groupBy(coinTransactions.type)
-        .orderBy(desc(sql`COALESCE(SUM(${coinTransactions.amount}), 0)`));
+        .from(rechargeOrders)
+        .where(eq(rechargeOrders.status, 'completed'));
 
-      res.json(sourcesData.map(row => ({
-        source: row.source,
-        amount: parseFloat(row.amount),
-        count: row.count,
-      })));
+      // Get marketplace revenue from content purchases
+      const [marketplaceResult] = await db
+        .select({
+          total: sql<string>`COALESCE(SUM(${contentPurchases.priceCoins}), 0)`,
+        })
+        .from(contentPurchases);
+
+      // Get subscriptions revenue (stub - no subscriptions table implemented yet)
+      const subscriptionsRevenue = 0;
+
+      // Get other revenue (misc transactions)
+      const otherRevenue = 0;
+
+      res.json({
+        recharges: parseInt(rechargesResult?.total || '0'),
+        marketplace: parseInt(marketplaceResult?.total || '0'),
+        subscriptions: subscriptionsRevenue,
+        other: otherRevenue,
+      });
     } catch (error) {
       console.error('[Revenue Sources] Error:', error);
       res.status(500).json({ error: 'Failed to fetch revenue sources' });
@@ -16487,44 +16479,21 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // 4. GET /api/admin/finance/withdrawals/pending - Get pending withdrawals
   app.get("/api/admin/finance/withdrawals/pending", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
-      const validation = pendingWithdrawalsSchema.safeParse(req.query);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
-      }
-      const { page, limit } = validation.data;
-      const offset = (page - 1) * limit;
+      const withdrawals = await db
+        .select({
+          id: withdrawalRequests.id,
+          userId: withdrawalRequests.userId,
+          username: users.username,
+          amount: withdrawalRequests.amount,
+          requestedAt: withdrawalRequests.requestedAt,
+          status: withdrawalRequests.status,
+        })
+        .from(withdrawalRequests)
+        .innerJoin(users, eq(withdrawalRequests.userId, users.id))
+        .where(eq(withdrawalRequests.status, 'pending'))
+        .orderBy(desc(withdrawalRequests.requestedAt));
 
-      const [withdrawals, totalCount] = await Promise.all([
-        db
-          .select({
-            id: withdrawalRequests.id,
-            userId: withdrawalRequests.userId,
-            username: users.username,
-            amount: withdrawalRequests.amount,
-            method: withdrawalRequests.method,
-            walletAddress: withdrawalRequests.walletAddress,
-            status: withdrawalRequests.status,
-            requestedAt: withdrawalRequests.requestedAt,
-          })
-          .from(withdrawalRequests)
-          .innerJoin(users, eq(withdrawalRequests.userId, users.id))
-          .where(eq(withdrawalRequests.status, 'pending'))
-          .orderBy(desc(withdrawalRequests.requestedAt))
-          .limit(limit)
-          .offset(offset),
-        db
-          .select({ count: count() })
-          .from(withdrawalRequests)
-          .where(eq(withdrawalRequests.status, 'pending'))
-      ]);
-
-      res.json({
-        withdrawals,
-        page,
-        limit,
-        total: totalCount[0]?.count || 0,
-        totalPages: Math.ceil((totalCount[0]?.count || 0) / limit),
-      });
+      res.json(withdrawals);
     } catch (error) {
       console.error('[Pending Withdrawals] Error:', error);
       res.status(500).json({ error: 'Failed to fetch pending withdrawals' });
@@ -16535,11 +16504,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.post("/api/admin/finance/withdrawals/approve/:id", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
       const { id } = req.params;
-      const validation = approveWithdrawalSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
-      }
-      const { notes } = validation.data;
+      const { notes } = req.body;
       const adminUser = req.user as User;
 
       const [withdrawal] = await db
@@ -16562,11 +16527,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
           status: 'approved',
           approvedBy: adminUser.id,
           approvedAt: new Date(),
-          adminNotes: notes,
+          adminNotes: notes || null,
           updatedAt: new Date(),
         })
         .where(eq(withdrawalRequests.id, id));
 
+      // Log the action in audit logs
       await db.insert(payoutAuditLogs).values({
         withdrawalId: id,
         action: 'approved',
@@ -16574,10 +16540,13 @@ export async function registerRoutes(app: Express): Promise<Express> {
         actorRole: adminUser.role,
         previousStatus: 'pending',
         newStatus: 'approved',
-        notes: notes,
+        notes: notes || null,
       });
 
-      res.json({ message: 'Withdrawal approved successfully' });
+      res.json({ 
+        success: true, 
+        withdrawalId: id 
+      });
     } catch (error) {
       console.error('[Approve Withdrawal] Error:', error);
       res.status(500).json({ error: 'Failed to approve withdrawal' });
@@ -16588,12 +16557,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.post("/api/admin/finance/withdrawals/reject/:id", isAdminMiddleware, financeActionLimiter, async (req, res) => {
     try {
       const { id } = req.params;
-      const validation = rejectWithdrawalSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ error: validation.error.errors[0].message });
-      }
-      const { reason } = validation.data;
+      const { reason } = req.body;
       const adminUser = req.user as User;
+
+      if (!reason || reason.trim().length === 0) {
+        return res.status(400).json({ error: 'Rejection reason is required' });
+      }
 
       const [withdrawal] = await db
         .select()
@@ -16620,6 +16589,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         })
         .where(eq(withdrawalRequests.id, id));
 
+      // Log the action in audit logs
       await db.insert(payoutAuditLogs).values({
         withdrawalId: id,
         action: 'rejected',
@@ -16630,9 +16600,13 @@ export async function registerRoutes(app: Express): Promise<Express> {
         notes: reason,
       });
 
-      // TODO: Refund coins to user (stub - would need treasury service integration)
+      // TODO: Refund coins to user wallet (using coinTransactionService)
+      // This should be implemented in a future update
 
-      res.json({ message: 'Withdrawal rejected successfully' });
+      res.json({ 
+        success: true, 
+        withdrawalId: id 
+      });
     } catch (error) {
       console.error('[Reject Withdrawal] Error:', error);
       res.status(500).json({ error: 'Failed to reject withdrawal' });

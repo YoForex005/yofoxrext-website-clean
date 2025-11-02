@@ -186,6 +186,8 @@ export const users = pgTable("users", {
   roleIdx: index("idx_users_role").on(table.role), // Index for admin filters
   statusIdx: index("idx_users_status").on(table.status), // Index for admin filters
   lastActiveIdx: index("idx_users_last_active").on(table.lastActive), // Index for online users query
+  // Performance optimization: User growth queries
+  createdAtIdx: index("idx_users_created_at").on(table.createdAt),
   coinsCheck: check("chk_user_coins_nonnegative", sql`${table.totalCoins} >= 0`),
 }));
 
@@ -244,6 +246,8 @@ export const coinTransactions = pgTable("coin_transactions", {
   // Composite indexes for analytics
   userCreatedIdx: index("idx_coin_tx_user_created").on(table.userId, table.createdAt),
   triggerChannelIdx: index("idx_coin_tx_trigger_channel").on(table.trigger, table.channel),
+  // Performance optimization: Revenue trend queries
+  dateTypeAmountIdx: index("idx_coin_transactions_date_type").on(table.createdAt, table.type, table.amount),
 }));
 
 export const rechargeOrders = pgTable("recharge_orders", {
@@ -470,6 +474,8 @@ export const content = pgTable("content", {
   salesCountIdx: index("idx_content_sales_count").on(table.salesCount),
   revenueIdx: index("idx_content_revenue").on(table.revenue),
   isPaidIdx: index("idx_content_is_paid").on(table.isPaid),
+  // Performance optimization: Content trend queries
+  createdAtIdx: index("idx_content_created_at").on(table.createdAt),
 }));
 
 export const contentPurchases = pgTable("content_purchases", {
@@ -483,6 +489,8 @@ export const contentPurchases = pgTable("content_purchases", {
 }, (table) => ({
   buyerIdIdx: index("idx_content_purchases_user_id").on(table.buyerId),
   contentIdIdx: index("idx_content_purchases_content_id").on(table.contentId),
+  // Performance optimization: Revenue trend queries
+  purchasedAtPriceIdx: index("idx_content_purchases_date_amount").on(table.purchasedAt, table.priceCoins),
 }));
 
 export const contentReviews = pgTable("content_reviews", {
@@ -1317,6 +1325,9 @@ export const moderationQueue = pgTable("moderation_queue", {
   statusIdx: index("idx_moderation_queue_status").on(table.status),
   priorityScoreIdx: index("idx_moderation_queue_priority_score").on(table.priorityScore),
   createdAtIdx: index("idx_moderation_queue_created_at").on(table.createdAt),
+  // Performance optimization: Moderation queue sorted queries
+  statusCreatedIdx: index("idx_moderation_queue_status_created").on(table.status, table.createdAt),
+  priorityCreatedIdx: index("idx_moderation_queue_priority_created").on(table.priorityScore, table.createdAt),
 }));
 
 // 3. Reported Content - User-reported violations
@@ -1381,6 +1392,10 @@ export const supportTickets = pgTable("support_tickets", {
   priorityIdx: index("idx_support_tickets_priority").on(table.priority),
   userIdx: index("idx_support_tickets_user").on(table.userId),
   categoryStatusIdx: index("idx_support_tickets_category_status").on(table.category, table.status),
+  // Performance optimization: Support ticket sorted queries
+  statusCreatedIdx: index("idx_support_status_created").on(table.status, table.createdAt),
+  priorityCreatedIdx: index("idx_support_priority_created").on(table.priority, table.createdAt),
+  categoryCreatedIdx: index("idx_support_category_created").on(table.category, table.createdAt),
 }));
 
 // 5.5. Ticket Messages - Support ticket messages

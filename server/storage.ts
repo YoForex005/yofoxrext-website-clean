@@ -10904,10 +10904,12 @@ export class DrizzleStorage implements IStorage {
         
         // Create audit log entry
         await tx.insert(auditLogs).values({
-          userId: bannedBy,
+          adminId: bannedBy,
           action: 'ban_user',
+          actionCategory: 'USER_MANAGEMENT',
+          targetType: 'user',
           targetId: userId,
-          details: { reason, hours: duration }
+          metadata: { reason, hours: duration }
         });
       });
     } catch (error) {
