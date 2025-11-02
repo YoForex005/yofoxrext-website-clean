@@ -91,6 +91,7 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
 - **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
 - **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, SEO-optimized "Coming Soon" pages, and admin dashboard controls. This includes a robust Page Control System (ON/OFF/Coming Soon/Maintenance) with database storage, caching, API endpoints, Next.js middleware, dedicated page templates, and an admin UI.
+- **Admin Analytics Dashboard:** Real-time analytics dashboard at `/admin/overview` with 8 KPI cards (users, content, revenue, transactions, forum stats, broker reviews), interactive Recharts visualizations (User Growth AreaChart, Content Trend BarChart, Revenue Breakdown PieChart), React Query auto-refresh (60s), role-based access control (admin/superadmin only), responsive grid layout, loading/error/empty states, and dark theme styling. Four backend API endpoints: `/api/admin/analytics/stats`, `/api/admin/analytics/user-growth`, `/api/admin/analytics/content-trends`, `/api/admin/analytics/revenue`.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
 
 ## External Dependencies
@@ -118,6 +119,7 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **TypeScript:** Type safety.
 - **shadcn/ui:** Component library.
 - **TailwindCSS:** Utility-first CSS framework.
+- **Recharts:** Composable charting library for React (admin analytics visualizations).
 - **Zod:** Runtime schema validation.
 - **Vitest:** Testing framework.
 - **Supertest:** API integration testing.
