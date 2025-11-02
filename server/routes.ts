@@ -235,7 +235,8 @@ const upload = multer({
   storage: multer.memoryStorage(),
   fileFilter: fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB max file size for EA files, PDFs, and trading files
+    fileSize: 20 * 1024 * 1024, // 20MB max file size for EA files, PDFs, and trading files (reduced from 50MB for security)
+    files: 1 // Only 1 file per upload to prevent memory exhaustion
   }
 });
 
@@ -3869,21 +3870,22 @@ export async function registerRoutes(app: Express): Promise<Express> {
           name: brokers.name,
           slug: brokers.slug,
           createdAt: brokers.createdAt,
-          submittedBy: brokers.submittedBy,
           reviewCount: brokers.reviewCount,
           overallRating: brokers.overallRating,
-          submitterUsername: users.username,
-          submitterProfileImageUrl: users.profileImageUrl,
         })
           .from(brokers)
-          .leftJoin(users, eq(brokers.submittedBy, users.id))
           .where(eq(brokers.isVerified, true))
           .orderBy(desc(brokers.overallRating))
           .limit(Math.floor(limit / 3)) // Limit brokers to 1/3 of total
       ]);
       
+      // Defensive null checks (prevent "Cannot convert undefined or null to object" error)
+      const safeThreads = threads || [];
+      const safeMarketplaceContent = marketplaceContent || [];
+      const safeTopBrokers = topBrokers || [];
+      
       // Prepare thread items (normalized score)
-      const threadItems = threads.map((thread) => ({
+      const threadItems = safeThreads.map((thread) => ({
         id: thread.id,
         type: 'thread' as const,
         title: thread.title,
@@ -3901,7 +3903,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       }));
       
       // Prepare marketplace items (normalized score)
-      const marketplaceItems = marketplaceContent.map((item) => ({
+      const marketplaceItems = safeMarketplaceContent.map((item) => ({
         id: item.id,
         type: item.type as 'ea' | 'indicator' | 'article' | 'source_code',
         title: item.title,
@@ -3921,7 +3923,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       }));
       
       // Prepare broker items (normalized score)
-      const brokerItems = topBrokers.map((broker) => ({
+      const brokerItems = safeTopBrokers.map((broker) => ({
         id: broker.id,
         type: 'broker' as const,
         title: broker.name,
@@ -3931,12 +3933,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         createdAt: broker.createdAt,
         normalizedScore: ((broker.overallRating || 0) / 100) * (broker.reviewCount || 0),
         reviewCount: broker.reviewCount || 0,
-        overallRating: broker.overallRating || 0,
-        author: {
-          id: broker.submittedBy,
-          username: broker.submitterUsername,
-          profileImageUrl: broker.submitterProfileImageUrl
-        }
+        overallRating: broker.overallRating || 0
       }));
       
       // Combine all items and sort by normalized score
@@ -3949,6 +3946,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
         lastUpdated: new Date().toISOString()
       });
     } catch (error: any) {
+      console.error("[/api/hot] Error details:", error);
+      console.error("[/api/hot] Error stack:", error.stack);
       res.status(500).json({ error: error.message });
     }
   });
@@ -5133,7 +5132,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // ===== MESSAGE ATTACHMENTS ENDPOINTS =====
   
   // Add attachment to message
-  app.post("/api/messages/:messageId/attachments", isAuthenticated, upload.single('file'), async (req, res) => {
+  app.post("/api/messages/:messageId/attachments", isAuthenticated, messagingLimiter, upload.single('file'), async (req, res) => {
     try {
       const authenticatedUserId = getAuthenticatedUserId(req);
       const file = req.file;
@@ -5172,10 +5171,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
         });
       }
 
-      // Validate file size (50MB max)
-      const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+      // Validate file size (20MB max for security - prevents memory exhaustion DoS)
+      const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
       if (file.size > MAX_FILE_SIZE) {
-        return res.status(400).json({ error: "File size exceeds 50MB limit" });
+        return res.status(400).json({ error: "File size exceeds 20MB limit" });
       }
       
       // Generate unique filename to avoid collisions (ext already declared above)
