@@ -11,10 +11,7 @@ export function usePrivacySettings() {
 export function useUpdatePrivacySettings() {
   return useMutation({
     mutationFn: async (settings: Partial<UserMessageSettings>) => {
-      return await apiRequest('/api/messages/settings', {
-        method: 'PUT',
-        body: JSON.stringify(settings),
-      });
+      return await apiRequest('PUT', '/api/messages/settings', settings);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/settings'] });
@@ -31,10 +28,7 @@ export function useBlockedUsers() {
 export function useBlockUser() {
   return useMutation({
     mutationFn: async ({ blockedId, reason }: { blockedId: string; reason?: string }) => {
-      return await apiRequest('/api/messages/block-user', {
-        method: 'POST',
-        body: JSON.stringify({ blockedId, reason }),
-      });
+      return await apiRequest('POST', '/api/messages/block-user', { blockedId, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/blocked-users'] });
@@ -45,9 +39,7 @@ export function useBlockUser() {
 export function useUnblockUser() {
   return useMutation({
     mutationFn: async (userId: string) => {
-      return await apiRequest(`/api/messages/unblock/${userId}`, {
-        method: 'DELETE',
-      });
+      return await apiRequest('DELETE', `/api/messages/unblock/${userId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/messages/blocked-users'] });
