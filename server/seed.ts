@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { users, brokers, contentReplies, forumCategories, forumThreads, forumReplies, userBadges, activityFeed } from "@shared/schema";
+import { users, brokers, contentReplies, forumCategories, forumThreads, forumReplies, userBadges, activityFeed, rankTiers, featureUnlocks } from "@shared/schema";
 import { storage } from "./storage";
 import { eq } from "drizzle-orm";
 
@@ -937,6 +937,111 @@ async function seed() {
 
   console.log("✅ Updated category statistics");
 
+  // ==================== SWEETS SYSTEM SEED DATA ====================
+  console.log("🏆 Seeding Sweets System (Rank Tiers & Feature Unlocks)...");
+  
+  // Define rank tiers
+  const rankTiersData = [
+    {
+      name: "Contributor",
+      minXp: 0,
+      maxXp: 1999,
+      colorHex: "#9CA3AF",
+      iconName: "star",
+      perks: ["Join community", "Browse marketplace"],
+      sortOrder: 1,
+    },
+    {
+      name: "Explorer",
+      minXp: 2000,
+      maxXp: 5999,
+      colorHex: "#60A5FA",
+      iconName: "compass",
+      perks: ["Upload attachments", "Create polls", "Post in forums"],
+      sortOrder: 2,
+    },
+    {
+      name: "Expert",
+      minXp: 6000,
+      maxXp: 14999,
+      colorHex: "#A78BFA",
+      iconName: "award",
+      perks: ["List items in marketplace", "Host webinars", "Custom badge"],
+      sortOrder: 3,
+    },
+    {
+      name: "Master",
+      minXp: 15000,
+      maxXp: 29999,
+      colorHex: "#F59E0B",
+      iconName: "trophy",
+      perks: ["Featured listings", "Premium support", "Revenue sharing 70%"],
+      sortOrder: 4,
+    },
+    {
+      name: "Legend",
+      minXp: 30000,
+      maxXp: null,
+      colorHex: "#EF4444",
+      iconName: "crown",
+      perks: ["VIP status", "Early feature access", "Revenue sharing 80%", "Exclusive channel"],
+      sortOrder: 5,
+    },
+  ];
+
+  // Insert rank tiers
+  const insertedRanks = [];
+  for (const rankData of rankTiersData) {
+    const [rank] = await db.insert(rankTiers).values(rankData).onConflictDoNothing().returning();
+    if (rank) {
+      insertedRanks.push(rank);
+    } else {
+      // Rank already exists, fetch it
+      const existing = await db.select().from(rankTiers).where(eq(rankTiers.name, rankData.name)).limit(1);
+      if (existing[0]) insertedRanks.push(existing[0]);
+    }
+  }
+
+  console.log(`✅ Created ${insertedRanks.length} rank tiers`);
+
+  // Define feature unlocks per rank
+  const featureUnlocksData = [
+    // Contributor (Rank 1)
+    { rankId: 1, featureKey: "browse_marketplace", featureName: "Browse Marketplace", featureDescription: "View and search marketplace items", iconName: "shopping-bag" },
+    { rankId: 1, featureKey: "join_community", featureName: "Join Community", featureDescription: "Participate in forums and discussions", iconName: "users" },
+    
+    // Explorer (Rank 2)
+    { rankId: 2, featureKey: "upload_attachments", featureName: "Upload attachments", featureDescription: "Attach files to forum posts", iconName: "paperclip" },
+    { rankId: 2, featureKey: "create_polls", featureName: "Create polls", featureDescription: "Create community polls", iconName: "bar-chart" },
+    { rankId: 2, featureKey: "post_in_forums", featureName: "Post in forums", featureDescription: "Create threads and replies", iconName: "message-square" },
+    
+    // Expert (Rank 3)
+    { rankId: 3, featureKey: "list_marketplace_items", featureName: "List items in marketplace", featureDescription: "Sell your EAs and indicators", iconName: "shopping-cart" },
+    { rankId: 3, featureKey: "host_webinars", featureName: "Host webinars", featureDescription: "Host educational webinars", iconName: "video" },
+    { rankId: 3, featureKey: "custom_badge", featureName: "Custom badge", featureDescription: "Display custom verified badge", iconName: "badge-check" },
+    
+    // Master (Rank 4)
+    { rankId: 4, featureKey: "featured_listings", featureName: "Featured listings", featureDescription: "Get your items featured on homepage", iconName: "trending-up" },
+    { rankId: 4, featureKey: "premium_support", featureName: "Premium support", featureDescription: "Priority customer support", iconName: "headphones" },
+    { rankId: 4, featureKey: "revenue_sharing_70", featureName: "Revenue sharing 70%", featureDescription: "Keep 70% of sales revenue", iconName: "dollar-sign" },
+    
+    // Legend (Rank 5)
+    { rankId: 5, featureKey: "vip_status", featureName: "VIP status", featureDescription: "Exclusive VIP member status", iconName: "crown" },
+    { rankId: 5, featureKey: "early_feature_access", featureName: "Early feature access", featureDescription: "Test new features before public release", iconName: "zap" },
+    { rankId: 5, featureKey: "revenue_sharing_80", featureName: "Revenue sharing 80%", featureDescription: "Keep 80% of sales revenue", iconName: "trending-up" },
+    { rankId: 5, featureKey: "exclusive_channel", featureName: "Exclusive channel", featureDescription: "Access to Legend-only Discord channel", iconName: "lock" },
+  ];
+
+  // Insert feature unlocks
+  let unlocksCreated = 0;
+  for (const unlockData of featureUnlocksData) {
+    await db.insert(featureUnlocks).values(unlockData).onConflictDoNothing();
+    unlocksCreated++;
+  }
+
+  console.log(`✅ Created ${unlocksCreated} feature unlocks across ${insertedRanks.length} ranks`);
+  console.log("✅ Sweets System seeding complete!");
+
   console.log("✨ Seeding complete!");
   console.log("\n📊 Summary:");
   console.log(`   - ${categoryData.length} forum categories`);
@@ -944,6 +1049,8 @@ async function seed() {
   console.log(`   - ${createdReplies.length} forum replies`);
   console.log(`   - ${badgeData.length} user badges`);
   console.log(`   - ${activityData.length} activity feed entries`);
+  console.log(`   - ${insertedRanks.length} rank tiers`);
+  console.log(`   - ${unlocksCreated} feature unlocks`);
 }
 
 seed()

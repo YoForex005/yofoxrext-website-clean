@@ -1740,6 +1740,75 @@ export const dashboardLayouts = pgTable("dashboard_layouts", {
   isDefaultIdx: index("idx_dashboard_layouts_is_default").on(table.isDefault),
 }));
 
+// ==================== SWEETS (COIN ECONOMY) SYSTEM TABLES ====================
+
+// Rank Tiers - Define rank levels and their requirements
+export const rankTiers = pgTable("rank_tiers", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 50 }).notNull().unique(),
+  minXp: integer("min_xp").notNull().default(0),
+  maxXp: integer("max_xp"),
+  colorHex: varchar("color_hex", { length: 7 }).default("#6B7280"),
+  iconName: varchar("icon_name", { length: 50 }).default("star"),
+  perks: text("perks").array().default(sql`'{}'::text[]`),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  nameIdx: index("idx_rank_tiers_name").on(table.name),
+  minXpIdx: index("idx_rank_tiers_min_xp").on(table.minXp),
+  sortOrderIdx: index("idx_rank_tiers_sort_order").on(table.sortOrder),
+}));
+
+// User Rank Progress - Track user XP and rank progression
+export const userRankProgress = pgTable("user_rank_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  currentRankId: integer("current_rank_id").notNull().references(() => rankTiers.id).default(1),
+  currentXp: integer("current_xp").notNull().default(0),
+  weeklyXp: integer("weekly_xp").notNull().default(0),
+  weekStartDate: date("week_start_date").notNull().defaultNow(),
+  lastXpEarnedAt: timestamp("last_xp_earned_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: uniqueIndex("idx_user_rank_progress_user_id").on(table.userId),
+  currentRankIdx: index("idx_user_rank_progress_current_rank").on(table.currentRankId),
+  currentXpIdx: index("idx_user_rank_progress_current_xp").on(table.currentXp),
+  weekStartIdx: index("idx_user_rank_progress_week_start").on(table.weekStartDate),
+}));
+
+// Feature Unlocks - Define which features are unlocked at each rank
+export const featureUnlocks = pgTable("feature_unlocks", {
+  id: serial("id").primaryKey(),
+  rankId: integer("rank_id").notNull().references(() => rankTiers.id, { onDelete: "cascade" }),
+  featureKey: varchar("feature_key", { length: 100 }).notNull(),
+  featureName: varchar("feature_name", { length: 200 }).notNull(),
+  featureDescription: text("feature_description"),
+  iconName: varchar("icon_name", { length: 50 }).default("check"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  rankIdIdx: index("idx_feature_unlocks_rank_id").on(table.rankId),
+  featureKeyIdx: index("idx_feature_unlocks_feature_key").on(table.featureKey),
+  rankFeatureIdx: uniqueIndex("idx_feature_unlocks_rank_feature").on(table.rankId, table.featureKey),
+}));
+
+// Weekly Earnings - Track weekly coin and XP earnings per user
+export const weeklyEarnings = pgTable("weekly_earnings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  weekStartDate: date("week_start_date").notNull(),
+  weekEndDate: date("week_end_date").notNull(),
+  coinsEarned: integer("coins_earned").notNull().default(0),
+  xpEarned: integer("xp_earned").notNull().default(0),
+  transactionCount: integer("transaction_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_weekly_earnings_user_id").on(table.userId),
+  weekStartIdx: index("idx_weekly_earnings_week_start").on(table.weekStartDate),
+  userWeekIdx: uniqueIndex("idx_weekly_earnings_user_week").on(table.userId, table.weekStartDate),
+}));
+
 // Upsert User schema for Replit Auth (OIDC)
 export const upsertUserSchema = createInsertSchema(users).pick({
   id: true,
@@ -1962,6 +2031,47 @@ export const insertUserFollowSchema = createInsertSchema(userFollows).omit({
   createdAt: true,
 });
 
+// ==================== SWEETS SYSTEM INSERT SCHEMAS ====================
+
+export const insertRankTierSchema = createInsertSchema(rankTiers).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  name: z.string().min(3).max(50),
+  minXp: z.number().int().min(0),
+  maxXp: z.number().int().min(0).optional(),
+});
+
+export const insertUserRankProgressSchema = createInsertSchema(userRankProgress).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  currentXp: z.number().int().min(0).default(0),
+  weeklyXp: z.number().int().min(0).default(0),
+});
+
+export const insertFeatureUnlockSchema = createInsertSchema(featureUnlocks).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  featureKey: z.string().min(3).max(100),
+  featureName: z.string().min(3).max(200),
+});
+
+export const insertWeeklyEarningsSchema = createInsertSchema(weeklyEarnings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  weekStartDate: z.date().or(z.string()),
+  weekEndDate: z.date().or(z.string()),
+  coinsEarned: z.number().int().min(0).default(0),
+  xpEarned: z.number().int().min(0).default(0),
+});
+
 export const insertConversationSchema = createInsertSchema(conversations).omit({
   id: true,
   createdAt: true,
@@ -2029,6 +2139,17 @@ export type BrokerReview = typeof brokerReviews.$inferSelect;
 export type InsertBrokerReview = z.infer<typeof insertBrokerReviewSchema>;
 export type UserFollow = typeof userFollows.$inferSelect;
 export type InsertUserFollow = z.infer<typeof insertUserFollowSchema>;
+
+// ==================== SWEETS SYSTEM TYPES ====================
+export type RankTier = typeof rankTiers.$inferSelect;
+export type InsertRankTier = z.infer<typeof insertRankTierSchema>;
+export type UserRankProgress = typeof userRankProgress.$inferSelect;
+export type InsertUserRankProgress = z.infer<typeof insertUserRankProgressSchema>;
+export type FeatureUnlock = typeof featureUnlocks.$inferSelect;
+export type InsertFeatureUnlock = z.infer<typeof insertFeatureUnlockSchema>;
+export type WeeklyEarnings = typeof weeklyEarnings.$inferSelect;
+export type InsertWeeklyEarnings = z.infer<typeof insertWeeklyEarningsSchema>;
+
 export type Conversation = typeof conversations.$inferSelect;
 export type InsertConversation = z.infer<typeof insertConversationSchema>;
 export type Message = typeof messages.$inferSelect;
