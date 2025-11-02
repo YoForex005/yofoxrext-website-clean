@@ -15808,6 +15808,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         xpNeededForNext: progress.xpToNextRank,
         featureUnlocks: progress.featureUnlocks,
         weekStartDate: progress.weekStartDate,
+        sweetsBalance: user.totalCoins,
       });
     } catch (error) {
       console.error('[Sweets XP] Error fetching user progress:', error);

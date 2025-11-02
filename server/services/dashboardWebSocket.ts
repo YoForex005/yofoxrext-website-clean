@@ -91,6 +91,45 @@ export function emitBadgeUnlock(userId: string, badge: any) {
   io.to(`user:${userId}`).emit('badge:unlock', { badge, timestamp: new Date() });
 }
 
+// ===== SWEETS SYSTEM WEBSOCKET EVENTS =====
+
+// Emit XP awarded notification
+export function emitSweetsXpAwarded(
+  userId: string,
+  data: {
+    xpAwarded: number;
+    newTotalXp: number;
+    rankChanged: boolean;
+    newRank?: any;
+    newlyUnlockedFeatures?: any[];
+  }
+) {
+  if (!io) return;
+  io.to(`user:${userId}`).emit('sweets:xp-awarded', {
+    userId,
+    ...data,
+    timestamp: new Date(),
+  });
+  console.log(`[Sweets WS] XP awarded to user ${userId}: +${data.xpAwarded} XP`);
+}
+
+// Emit balance update notification
+export function emitSweetsBalanceUpdated(
+  userId: string,
+  data: {
+    newBalance: number;
+    change: number;
+  }
+) {
+  if (!io) return;
+  io.to(`user:${userId}`).emit('sweets:balance-updated', {
+    userId,
+    ...data,
+    timestamp: new Date(),
+  });
+  console.log(`[Sweets WS] Balance updated for user ${userId}: ${data.change > 0 ? '+' : ''}${data.change} (new: ${data.newBalance})`);
+}
+
 // ===== MESSAGING WEBSOCKET EVENTS =====
 
 // Emit new message to all conversation participants

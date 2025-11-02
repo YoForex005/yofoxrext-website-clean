@@ -8,6 +8,7 @@ import type {
 import { db } from '../db';
 import { achievements, userAchievements } from '@shared/schema';
 import { eq, and, isNull } from 'drizzle-orm';
+import { emitSweetsXpAwarded } from './dashboardWebSocket';
 
 /**
  * Activity XP Configuration
@@ -292,6 +293,15 @@ export function createSweetsService(storage: IStorage): ISweetsService {
       
       // Sync achievements
       await this.syncAchievements(userId, newTotalXp, activity);
+      
+      // Emit WebSocket event for real-time UI updates
+      emitSweetsXpAwarded(userId, {
+        xpAwarded: cappedXpAmount,
+        newTotalXp: newTotalXp,
+        rankChanged,
+        newRank: rankChanged ? newRank : undefined,
+        newlyUnlockedFeatures: rankChanged ? newUnlocks : undefined,
+      });
       
       return {
         success: true,
