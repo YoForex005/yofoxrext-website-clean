@@ -276,6 +276,7 @@ import { randomUUID } from "crypto";
 import { applySEOAutomations, generateUniqueSlug, generateThreadSlug, generateReplySlug, generateMetaDescription, extractFocusKeyword } from "./seo-engine";
 import { db } from "./db";
 import { eq, and, or, desc, asc, sql, count, inArray, gt, gte, lte, ilike, lt, ne, isNotNull, isNull } from "drizzle-orm";
+import { coinTransactionService } from "./services/coinTransactionService";
 
 /**
  * Calculate user level based on total coins
@@ -7615,37 +7616,44 @@ export class DrizzleStorage implements IStorage {
   }
 
   async createCoinTransaction(insertTransaction: InsertCoinTransaction): Promise<CoinTransaction> {
-    const user = await this.getUser(insertTransaction.userId);
-    if (!user) throw new Error("User not found");
+    // PHASE 2: Use CoinTransactionService for atomic dual-write transactions
+    // Ensure trigger and channel are provided (required for Phase 2)
+    if (!insertTransaction.trigger || !insertTransaction.channel) {
+      throw new Error("Transaction must include trigger and channel for proper tracking");
+    }
 
     const balanceChange = insertTransaction.type === "spend" 
       ? -Math.abs(insertTransaction.amount) 
       : Math.abs(insertTransaction.amount);
 
-    if (user.totalCoins + balanceChange < 0) {
-      throw new Error("Insufficient coins");
+    // Execute transaction using the service (handles dual-write, fraud detection, idempotency, etc.)
+    const result = await coinTransactionService.executeTransaction({
+      userId: insertTransaction.userId,
+      amount: balanceChange,
+      trigger: insertTransaction.trigger,
+      channel: insertTransaction.channel,
+      description: insertTransaction.description,
+      metadata: insertTransaction.metadata,
+      idempotencyKey: insertTransaction.idempotencyKey,
+      type: insertTransaction.type as "earn" | "spend" | "recharge",
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || "Transaction failed");
     }
 
-    const [transaction] = await db.insert(coinTransactions).values({
-      userId: insertTransaction.userId,
-      type: insertTransaction.type as "earn" | "spend" | "recharge",
-      amount: Math.abs(insertTransaction.amount),
-      description: insertTransaction.description,
-      status: (insertTransaction.status || "completed") as "completed" | "pending" | "failed",
-    }).returning();
-
-    await db
-      .update(users)
-      .set({ 
-        totalCoins: sql`${users.totalCoins} + ${balanceChange}`,
-        level: sql`FLOOR((${users.totalCoins} + ${balanceChange}) / 1000)`,
-        weeklyEarned: insertTransaction.type === "earn" || insertTransaction.type === "recharge"
-          ? sql`${users.weeklyEarned} + ${Math.abs(insertTransaction.amount)}`
-          : users.weeklyEarned
-      })
-      .where(eq(users.id, insertTransaction.userId));
-
+    // Recalculate ranks (TODO: move this to a background job for better performance)
     await this.recalculateRanks();
+
+    // Fetch and return the created transaction
+    const [transaction] = await db.select()
+      .from(coinTransactions)
+      .where(eq(coinTransactions.id, result.transactionId!))
+      .limit(1);
+
+    if (!transaction) {
+      throw new Error("Transaction created but not found");
+    }
 
     return transaction;
   }

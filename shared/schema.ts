@@ -67,6 +67,12 @@ export const COIN_CHANNELS = {
 export type CoinTrigger = typeof COIN_TRIGGERS[keyof typeof COIN_TRIGGERS];
 export type CoinChannel = typeof COIN_CHANNELS[keyof typeof COIN_CHANNELS];
 
+// Aliases for Sweets Economy naming convention
+export const SWEETS_TRIGGERS = Object.values(COIN_TRIGGERS);
+export const SWEETS_CHANNELS = Object.values(COIN_CHANNELS);
+export type SweetsTrigger = CoinTrigger;
+export type SweetsChannel = CoinChannel;
+
 // Session storage table - REQUIRED for Replit Auth
 export const sessions = pgTable(
   "sessions",
@@ -224,6 +230,7 @@ export const coinTransactions = pgTable("coin_transactions", {
   expiresAt: timestamp("expires_at"), // When these coins expire (for earned coins)
   reconciledAt: timestamp("reconciled_at"), // When reconciled in balance check
   reversalOf: varchar("reversal_of"), // Reference to original transaction if this is a reversal
+  idempotencyKey: varchar("idempotency_key", { length: 255 }), // For duplicate prevention (nullable)
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
@@ -233,6 +240,7 @@ export const coinTransactions = pgTable("coin_transactions", {
   triggerIdx: index("idx_coin_transactions_trigger").on(table.trigger),
   expiresAtIdx: index("idx_coin_transactions_expires_at").on(table.expiresAt),
   reconciledAtIdx: index("idx_coin_transactions_reconciled_at").on(table.reconciledAt),
+  idempotencyKeyIdx: index("idx_coin_transactions_idempotency_key").on(table.idempotencyKey),
   // Composite indexes for analytics
   userCreatedIdx: index("idx_coin_tx_user_created").on(table.userId, table.createdAt),
   triggerChannelIdx: index("idx_coin_tx_trigger_channel").on(table.trigger, table.channel),
@@ -1961,6 +1969,14 @@ export type User = typeof users.$inferSelect;
 export const insertCoinTransactionSchema = createInsertSchema(coinTransactions).omit({
   id: true,
   createdAt: true,
+}).extend({
+  userId: z.string().uuid(),
+  amount: z.number().int().min(-10000).max(10000),
+  description: z.string().min(1).max(500),
+  trigger: z.enum(SWEETS_TRIGGERS as [string, ...string[]]),
+  channel: z.enum(SWEETS_CHANNELS as [string, ...string[]]),
+  metadata: z.any().optional(),
+  idempotencyKey: z.string().min(1).max(255).optional(),
 });
 
 export const insertRechargeOrderSchema = createInsertSchema(rechargeOrders).omit({
