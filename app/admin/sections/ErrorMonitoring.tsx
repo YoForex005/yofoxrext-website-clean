@@ -136,7 +136,7 @@ export default function ErrorMonitoring() {
   });
 
   // Fetch error groups
-  const { data: errorGroups, isLoading: loadingGroups, error: groupsError, refetch: refetchGroups } = useQuery({
+  const { data: errorGroups, isLoading: loadingGroups, error: groupsError, refetch: refetchGroups, isRefetching: isRefetchingGroups } = useQuery({
     queryKey: ['/api/admin/errors/groups', filters],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -154,7 +154,7 @@ export default function ErrorMonitoring() {
   });
 
   // Fetch error stats
-  const { data: stats, isLoading: loadingStats, error: statsError } = useQuery({
+  const { data: stats, isLoading: loadingStats, error: statsError, isRefetching: isRefetchingStats } = useQuery({
     queryKey: ['/api/admin/errors/stats', statsPeriod],
     queryFn: async () => {
       const response = await apiRequest('GET', `/api/admin/errors/stats?period=${statsPeriod}`);
@@ -183,8 +183,10 @@ export default function ErrorMonitoring() {
     },
     onSuccess: () => {
       toast({ title: 'Status updated successfully' });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      }, 500);
       setStatusModal(null);
       setNewStatus('');
       setStatusReason('');
@@ -209,8 +211,10 @@ export default function ErrorMonitoring() {
         title: 'Cleanup completed',
         description: `Deleted ${data.cleanup.deletedGroups} groups and ${data.cleanup.deletedEvents} events. Auto-resolved ${data.autoResolve.resolvedCount} inactive errors.`
       });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      }, 500);
     },
     onError: (error) => {
       toast({ 
@@ -223,21 +227,50 @@ export default function ErrorMonitoring() {
 
   // Resolve fixed errors mutation
   const resolveFixedMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (options?: { silent?: boolean }) => {
       const response = await apiRequest('POST', '/api/admin/errors/auto-resolve-fixed', { minutesInactive: 30 });
-      return response.json();
+      return { ...await response.json(), silent: options?.silent };
     },
     onSuccess: (data: any) => {
-      toast({ 
-        title: 'Fixed errors resolved',
-        description: `Successfully auto-resolved ${data.resolvedCount} inactive errors that haven't occurred in the last 30 minutes.`
-      });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      if (!data.silent && data.resolvedCount > 0) {
+        toast({ 
+          title: 'Fixed errors resolved',
+          description: `Successfully auto-resolved ${data.resolvedCount} inactive errors that haven't occurred in the last 30 minutes.`
+        });
+      }
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      }, 500);
     },
     onError: (error) => {
       toast({ 
         title: 'Auto-resolve failed', 
+        description: error.message,
+        variant: 'destructive'
+      });
+    },
+  });
+
+  // Merge duplicates mutation
+  const mergeDuplicatesMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/admin/errors/merge-duplicates');
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ 
+        title: 'Duplicates merged',
+        description: `Successfully merged ${data.mergedCount} duplicate error groups.`
+      });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/groups'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/admin/errors/stats'] });
+      }, 500);
+    },
+    onError: (error) => {
+      toast({ 
+        title: 'Merge failed', 
         description: error.message,
         variant: 'destructive'
       });
@@ -416,6 +449,34 @@ export default function ErrorMonitoring() {
     }
   }, [activeTab]);
 
+  // Automatic background auto-resolve every 2 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!resolveFixedMutation.isPending) {
+        resolveFixedMutation.mutate({ silent: true });
+      }
+    }, 120000); // 2 minutes
+
+    return () => clearInterval(interval);
+  }, [resolveFixedMutation]);
+
+  // Handle manual refresh with visual feedback
+  const handleRefresh = async () => {
+    try {
+      await refetchGroups();
+      toast({ 
+        title: 'Refreshed successfully',
+        description: 'Error data has been updated.'
+      });
+    } catch (error) {
+      toast({
+        title: 'Refresh failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive'
+      });
+    }
+  };
+
   // Show loading state
   if (loadingStats && loadingGroups) {
     return (
@@ -487,23 +548,34 @@ export default function ErrorMonitoring() {
         </div>
         <div className="flex gap-2">
           <Button
-            onClick={() => refetchGroups()}
+            onClick={handleRefresh}
             variant="outline"
             size="sm"
+            disabled={isRefetchingGroups}
             data-testid="button-refresh"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefetchingGroups ? 'animate-spin' : ''}`} />
+            {isRefetchingGroups ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button
-            onClick={() => resolveFixedMutation.mutate()}
+            onClick={() => mergeDuplicatesMutation.mutate()}
+            variant="outline"
+            size="sm"
+            disabled={mergeDuplicatesMutation.isPending}
+            data-testid="button-merge-duplicates"
+          >
+            <CheckCircle className={`h-4 w-4 mr-2 ${mergeDuplicatesMutation.isPending ? 'animate-spin' : ''}`} />
+            {mergeDuplicatesMutation.isPending ? 'Merging...' : 'Merge Duplicates'}
+          </Button>
+          <Button
+            onClick={() => resolveFixedMutation.mutate({ silent: false })}
             variant="outline"
             size="sm"
             disabled={resolveFixedMutation.isPending}
             data-testid="button-resolve-fixed"
           >
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Resolve Fixed Errors
+            <CheckCircle className={`h-4 w-4 mr-2 ${resolveFixedMutation.isPending ? 'animate-spin' : ''}`} />
+            {resolveFixedMutation.isPending ? 'Resolving...' : 'Resolve Fixed Errors'}
           </Button>
           <Button
             onClick={() => cleanupMutation.mutate()}
@@ -512,8 +584,8 @@ export default function ErrorMonitoring() {
             disabled={cleanupMutation.isPending}
             data-testid="button-cleanup"
           >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Cleanup
+            <Trash2 className={`h-4 w-4 mr-2 ${cleanupMutation.isPending ? 'animate-spin' : ''}`} />
+            {cleanupMutation.isPending ? 'Cleaning...' : 'Cleanup'}
           </Button>
           <Button
             onClick={handleExportCSV}
@@ -530,7 +602,7 @@ export default function ErrorMonitoring() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-        <Card>
+        <Card className={isRefetchingStats ? 'animate-pulse' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Errors</CardTitle>
             <Bug className="h-4 w-4 text-muted-foreground" />
@@ -545,7 +617,7 @@ export default function ErrorMonitoring() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={isRefetchingStats ? 'animate-pulse' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Unique Errors</CardTitle>
             <AlertCircle className="h-4 w-4 text-muted-foreground" />
@@ -560,7 +632,7 @@ export default function ErrorMonitoring() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={isRefetchingStats ? 'animate-pulse' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Critical</CardTitle>
             <AlertTriangle className="h-4 w-4 text-red-600" />
@@ -575,7 +647,7 @@ export default function ErrorMonitoring() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={isRefetchingStats ? 'animate-pulse' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
@@ -590,7 +662,7 @@ export default function ErrorMonitoring() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className={isRefetchingStats ? 'animate-pulse' : ''}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Resolved</CardTitle>
             <CheckCircle className="h-4 w-4 text-green-600" />

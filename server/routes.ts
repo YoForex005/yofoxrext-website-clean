@@ -14130,6 +14130,40 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // POST /api/admin/errors/merge-duplicates - Merge duplicate error groups
+  app.post("/api/admin/errors/merge-duplicates", isAuthenticated, adminOperationLimiter, async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.user) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const user = await storage.getUser((req.user as any).id);
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+
+      // Merge duplicate error groups using Levenshtein distance
+      const result = await storage.mergeDuplicateErrors(0.1); // 10% similarity threshold
+
+      // Log admin action
+      await storage.createAdminAction({
+        adminId: user.id,
+        actionType: 'error_merge_duplicates',
+        targetType: 'system',
+        targetId: 'error_tracking',
+        details: {
+          mergedCount: result.mergedCount,
+          groupsProcessed: result.groupsProcessed,
+        },
+      });
+
+      res.json(result);
+    } catch (error: any) {
+      console.error("[Error Admin] Error merging duplicate errors:", error);
+      res.status(500).json({ error: "Failed to merge duplicate errors" });
+    }
+  });
+
   // ============================================
   // TODO: EMAIL NOTIFICATIONS FOR MISSING FEATURES
   // ============================================

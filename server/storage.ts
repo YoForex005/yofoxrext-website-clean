@@ -2548,6 +2548,11 @@ export interface IStorage {
   autoResolveFixedErrors(minutesInactive: number): Promise<{ resolvedCount: number }>;
   
   /**
+   * Merge duplicate error groups based on message similarity
+   */
+  mergeDuplicateErrors(similarityThreshold: number): Promise<{ mergedCount: number; groupsProcessed: number }>;
+  
+  /**
    * Get error group details with all related data
    */
   getErrorGroupDetails(groupId: string): Promise<{
@@ -6957,6 +6962,10 @@ export class MemStorage implements IStorage {
 
   async autoResolveFixedErrors(minutesInactive: number): Promise<{ resolvedCount: number }> {
     return { resolvedCount: 0 };
+  }
+
+  async mergeDuplicateErrors(similarityThreshold: number): Promise<{ mergedCount: number; groupsProcessed: number }> {
+    return { mergedCount: 0, groupsProcessed: 0 };
   }
 
   async getErrorGroupDetails(groupId: string): Promise<{
@@ -18618,6 +18627,121 @@ export class DrizzleStorage implements IStorage {
       return { resolvedCount: resolved.length };
     } catch (error) {
       console.error('Error auto-resolving fixed errors:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Merge duplicate error groups based on message similarity using Levenshtein distance
+   */
+  async mergeDuplicateErrors(similarityThreshold: number = 0.1): Promise<{ mergedCount: number; groupsProcessed: number }> {
+    try {
+      // Get all active error groups
+      const groups = await db
+        .select()
+        .from(errorGroups)
+        .where(eq(errorGroups.status, 'active'))
+        .orderBy(asc(errorGroups.firstSeen)); // Keep oldest groups
+
+      if (groups.length === 0) {
+        return { mergedCount: 0, groupsProcessed: 0 };
+      }
+
+      let mergedCount = 0;
+      const processedIds = new Set<string>();
+
+      // Helper function to calculate Levenshtein distance
+      const levenshteinDistance = (str1: string, str2: string): number => {
+        const len1 = str1.length;
+        const len2 = str2.length;
+        const matrix: number[][] = Array(len1 + 1).fill(null).map(() => Array(len2 + 1).fill(0));
+
+        for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+        for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+        for (let i = 1; i <= len1; i++) {
+          for (let j = 1; j <= len2; j++) {
+            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+              matrix[i - 1][j] + 1,      // deletion
+              matrix[i][j - 1] + 1,      // insertion
+              matrix[i - 1][j - 1] + cost // substitution
+            );
+          }
+        }
+
+        return matrix[len1][len2];
+      };
+
+      // Calculate similarity percentage
+      const calculateSimilarity = (str1: string, str2: string): number => {
+        const distance = levenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
+        const maxLen = Math.max(str1.length, str2.length);
+        return maxLen === 0 ? 1 : 1 - (distance / maxLen);
+      };
+
+      // Find and merge similar error groups
+      for (let i = 0; i < groups.length; i++) {
+        const group1 = groups[i];
+        if (processedIds.has(group1.id)) continue;
+
+        const duplicates: typeof groups = [];
+
+        for (let j = i + 1; j < groups.length; j++) {
+          const group2 = groups[j];
+          if (processedIds.has(group2.id)) continue;
+
+          const similarity = calculateSimilarity(group1.message, group2.message);
+
+          // If messages are similar enough (within threshold), consider them duplicates
+          if (similarity >= (1 - similarityThreshold)) {
+            duplicates.push(group2);
+            processedIds.add(group2.id);
+          }
+        }
+
+        // If we found duplicates, merge them into group1 (oldest)
+        if (duplicates.length > 0) {
+          // Sum up occurrence counts
+          const totalOccurrences = duplicates.reduce((sum, dup) => sum + dup.occurrenceCount, group1.occurrenceCount);
+
+          // Update the main group with merged data
+          await db
+            .update(errorGroups)
+            .set({
+              occurrenceCount: totalOccurrences,
+              lastSeen: new Date(), // Update to current time
+              updatedAt: new Date(),
+              metadata: {
+                ...(group1.metadata as any || {}),
+                mergedFrom: duplicates.map(d => d.id),
+                mergedAt: new Date().toISOString(),
+                originalOccurrences: group1.occurrenceCount,
+              },
+            })
+            .where(eq(errorGroups.id, group1.id));
+
+          // Move all events from duplicate groups to the main group
+          for (const duplicate of duplicates) {
+            await db
+              .update(errorEvents)
+              .set({ groupId: group1.id, updatedAt: new Date() })
+              .where(eq(errorEvents.groupId, duplicate.id));
+
+            // Delete the duplicate group
+            await db
+              .delete(errorGroups)
+              .where(eq(errorGroups.id, duplicate.id));
+          }
+
+          mergedCount += duplicates.length;
+        }
+      }
+
+      console.log(`[MERGE-DUPLICATES] Merged ${mergedCount} duplicate error groups from ${groups.length} total groups`);
+      return { mergedCount, groupsProcessed: groups.length };
+    } catch (error) {
+      console.error('Error merging duplicate errors:', error);
       throw error;
     }
   }
