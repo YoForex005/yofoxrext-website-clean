@@ -4168,7 +4168,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
           .from(content)
           .leftJoin(users, eq(content.authorId, users.id))
           .where(and(
-            eq(content.status, 'published'),
+            eq(content.status, 'approved'),
             gte(content.createdAt, sevenDaysAgo)
           ))
           .orderBy(desc(content.salesScore))
