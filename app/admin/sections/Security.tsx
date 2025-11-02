@@ -8,135 +8,108 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { formatDistanceToNow } from "date-fns";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { Shield, Activity, Clock, AlertTriangle } from "lucide-react";
 
 interface SecurityEvent {
   id: number;
-  type: string;
-  severity: string;
-  description: string;
-  resolved: boolean;
+  type: 'login_failed' | 'api_rate_limit' | 'suspicious_ip' | 'login_bruteforce' | 'api_abuse';
+  severity: 'low' | 'medium' | 'high';
+  description: string | null;
+  ipAddress: string | null;
+  userId: string | null;
+  status: 'open' | 'resolved';
   createdAt: string;
 }
 
 interface IPBan {
   id: number;
   ipAddress: string;
-  reason: string;
-  bannedBy: string;
+  reason: string | null;
+  bannedBy: string | null;
+  expiresAt: string | null;
   createdAt: string;
-  active: boolean;
 }
 
-interface ResponseTimeDataPoint {
-  time: string;
-  responseTime: number;
-}
-
-interface ErrorRateDataPoint {
-  time: string;
-  errors: number;
-}
-
-interface Alert {
-  id: number;
-  message: string;
-  severity: string;
-  time: string;
-}
-
-interface PerformanceMetrics {
-  cpu: number;
-  memory: number;
-  disk: number;
-  network: number;
-  responseTimeData: ResponseTimeDataPoint[];
-  errorRateData: ErrorRateDataPoint[];
-  dbQueryTime: {
-    avg: number;
-    min: number;
-    max: number;
-  };
-  alerts: Alert[];
+interface SecurityMetrics {
+  totalEvents: number;
+  eventsToday: number;
+  blockedIps: number;
+  uptime: number;
 }
 
 export default function Security() {
   const [activeTab, setActiveTab] = useState("security-events");
   const [typeFilter, setTypeFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
-  const [resolvedFilter, setResolvedFilter] = useState("all");
-  const [banFilter, setBanFilter] = useState("active");
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [newBanIp, setNewBanIp] = useState("");
+  const [newBanReason, setNewBanReason] = useState("");
+  const [newBanHours, setNewBanHours] = useState("");
   const { toast } = useToast();
 
-  const { data: securityEventsRaw, isLoading: eventsLoading } = useQuery<SecurityEvent[]>({
-    queryKey: ["/api/admin/security/events", { type: typeFilter, severity: severityFilter, resolved: resolvedFilter }]
+  const { data: securityEventsRaw, isLoading: eventsLoading, isError: eventsError, error: eventsErrorData } = useQuery<SecurityEvent[]>({
+    queryKey: ["/api/admin/security/events", { type: typeFilter !== "all" ? typeFilter : undefined, severity: severityFilter !== "all" ? severityFilter : undefined, status: statusFilter !== "all" ? statusFilter : undefined }],
+    refetchInterval: 10000,
   });
 
   const securityEvents: SecurityEvent[] = Array.isArray(securityEventsRaw) ? securityEventsRaw : [];
 
-  const { data: ipBansRaw, isLoading: bansLoading } = useQuery<IPBan[]>({
-    queryKey: ["/api/admin/security/ip-bans", { status: banFilter }]
+  const { data: ipBansRaw, isLoading: bansLoading, isError: bansError, error: bansErrorData } = useQuery<IPBan[]>({
+    queryKey: ["/api/admin/security/ip-bans"],
+    refetchInterval: 10000,
   });
 
   const ipBans: IPBan[] = Array.isArray(ipBansRaw) ? ipBansRaw : [];
 
-  const { data: performanceMetricsRaw, isLoading: metricsLoading } = useQuery<PerformanceMetrics>({
-    queryKey: ["/api/admin/security/performance-metrics"]
+  const { data: metricsRaw, isLoading: metricsLoading, isError: metricsError, error: metricsErrorData } = useQuery<SecurityMetrics>({
+    queryKey: ["/api/admin/security/metrics"],
+    refetchInterval: 10000,
   });
 
-  const performanceMetrics: PerformanceMetrics = performanceMetricsRaw || {
-    cpu: 0,
-    memory: 0,
-    disk: 0,
-    network: 0,
-    responseTimeData: [],
-    errorRateData: [],
-    dbQueryTime: { avg: 0, min: 0, max: 0 },
-    alerts: []
+  const securityMetrics: SecurityMetrics = metricsRaw || {
+    totalEvents: 0,
+    eventsToday: 0,
+    blockedIps: 0,
+    uptime: 0
   };
 
-  const resolveEventMutation = useMutation({
-    mutationFn: async ({ eventId, notes }: { eventId: number; notes: string }) => {
-      return apiRequest("POST", `/api/admin/security/events/${eventId}/resolve`, { notes });
+  const addIPBanMutation = useMutation({
+    mutationFn: async (data: { ipAddress: string; reason: string; hours?: number }) => {
+      return apiRequest("POST", "/api/admin/security/ban", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/security/events"] });
-      toast({ title: "Event resolved successfully" });
-      setSelectedEvent(null);
-    },
-    onError: () => {
-      toast({ title: "Failed to resolve event", variant: "destructive" });
-    }
-  });
-
-  const addIPBanMutation = useMutation({
-    mutationFn: async (data: { ipAddress: string; reason: string; duration: number }) => {
-      return apiRequest("POST", "/api/admin/security/ip-bans", data);
-    },
-    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/security/ip-bans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/security/metrics"] });
       toast({ title: "IP banned successfully" });
+      setNewBanIp("");
+      setNewBanReason("");
+      setNewBanHours("");
     },
-    onError: () => {
-      toast({ title: "Failed to ban IP", variant: "destructive" });
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to ban IP", 
+        description: error?.message || "An error occurred",
+        variant: "destructive" 
+      });
     }
   });
 
   const unbanIPMutation = useMutation({
-    mutationFn: async (banId: number) => {
-      return apiRequest("DELETE", `/api/admin/security/ip-bans/${banId}`);
+    mutationFn: async (ipAddress: string) => {
+      return apiRequest("DELETE", `/api/admin/security/unban/${ipAddress}`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/security/events"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/security/ip-bans"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/security/metrics"] });
       toast({ title: "IP unbanned successfully" });
     },
     onError: () => {
@@ -146,8 +119,6 @@ export default function Security() {
 
   const getSeverityVariant = (severity: string) => {
     switch (severity) {
-      case 'critical':
-        return 'destructive';
       case 'high':
         return 'destructive';
       case 'medium':
@@ -159,6 +130,66 @@ export default function Security() {
     }
   };
 
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    
+    const parts = [];
+    if (days > 0) parts.push(`${days} day${days !== 1 ? 's' : ''}`);
+    if (hours > 0) parts.push(`${hours} hour${hours !== 1 ? 's' : ''}`);
+    if (minutes > 0 || parts.length === 0) parts.push(`${minutes} minute${minutes !== 1 ? 's' : ''}`);
+    
+    return parts.join(', ');
+  };
+
+  const validateIpAddress = (ip: string): boolean => {
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^([\da-f]{1,4}:){7}[\da-f]{1,4}$/i;
+    return ipv4Regex.test(ip) || ipv6Regex.test(ip);
+  };
+
+  const handleAddBan = () => {
+    if (!newBanIp.trim()) {
+      toast({ title: "IP address is required", variant: "destructive" });
+      return;
+    }
+
+    if (!validateIpAddress(newBanIp)) {
+      toast({ title: "Invalid IP address format", variant: "destructive" });
+      return;
+    }
+
+    if (!newBanReason.trim()) {
+      toast({ title: "Reason is required", variant: "destructive" });
+      return;
+    }
+
+    if (newBanReason.length > 500) {
+      toast({ title: "Reason must be 500 characters or less", variant: "destructive" });
+      return;
+    }
+
+    const hours = newBanHours ? parseInt(newBanHours) : undefined;
+    if (hours !== undefined && (isNaN(hours) || hours < 1 || hours > 8760)) {
+      toast({ title: "Hours must be between 1 and 8760", variant: "destructive" });
+      return;
+    }
+
+    addIPBanMutation.mutate({
+      ipAddress: newBanIp,
+      reason: newBanReason,
+      hours
+    });
+  };
+
+  const isActiveBan = (ban: IPBan): boolean => {
+    if (!ban.expiresAt) return true;
+    return new Date(ban.expiresAt) > new Date();
+  };
+
+  const activeBans = ipBans.filter(isActiveBan);
+
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Security & Safety</h1>
@@ -167,7 +198,7 @@ export default function Security() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="security-events" data-testid="tab-security-events">Security Events</TabsTrigger>
           <TabsTrigger value="ip-bans" data-testid="tab-ip-bans">IP Bans</TabsTrigger>
-          <TabsTrigger value="performance" data-testid="tab-performance">Performance Metrics</TabsTrigger>
+          <TabsTrigger value="metrics" data-testid="tab-performance">Security Metrics</TabsTrigger>
         </TabsList>
 
         {/* Security Events Tab */}
@@ -184,9 +215,11 @@ export default function Security() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="login_attempt">Login Attempt</SelectItem>
-                    <SelectItem value="suspicious_activity">Suspicious Activity</SelectItem>
-                    <SelectItem value="data_breach">Data Breach</SelectItem>
+                    <SelectItem value="login_failed">Login Failed</SelectItem>
+                    <SelectItem value="login_bruteforce">Login Bruteforce</SelectItem>
+                    <SelectItem value="api_rate_limit">API Rate Limit</SelectItem>
+                    <SelectItem value="api_abuse">API Abuse</SelectItem>
+                    <SelectItem value="suspicious_ip">Suspicious IP</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -196,21 +229,20 @@ export default function Security() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Severities</SelectItem>
-                    <SelectItem value="critical">Critical</SelectItem>
                     <SelectItem value="high">High</SelectItem>
                     <SelectItem value="medium">Medium</SelectItem>
                     <SelectItem value="low">Low</SelectItem>
                   </SelectContent>
                 </Select>
 
-                <Select value={resolvedFilter} onValueChange={setResolvedFilter}>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full md:w-48" data-testid="select-resolved-filter">
                     <SelectValue placeholder="Status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="open">Open</SelectItem>
                     <SelectItem value="resolved">Resolved</SelectItem>
-                    <SelectItem value="unresolved">Unresolved</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -219,6 +251,14 @@ export default function Security() {
 
           {eventsLoading ? (
             <Skeleton className="h-96" />
+          ) : eventsError ? (
+            <Alert variant="destructive" data-testid="alert-events-error">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error loading security events</AlertTitle>
+              <AlertDescription>
+                {(eventsErrorData as any)?.message || "Failed to load security events. Please try again."}
+              </AlertDescription>
+            </Alert>
           ) : (
             <Card data-testid="card-security-events">
               <CardHeader>
@@ -233,8 +273,9 @@ export default function Security() {
                         <TableHead>Type</TableHead>
                         <TableHead>Severity</TableHead>
                         <TableHead>Description</TableHead>
+                        <TableHead>IP Address</TableHead>
+                        <TableHead>User ID</TableHead>
                         <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -244,33 +285,31 @@ export default function Security() {
                             <TableCell>
                               {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
                             </TableCell>
-                            <TableCell>{event.type}</TableCell>
+                            <TableCell>{event.type.replace(/_/g, ' ')}</TableCell>
                             <TableCell>
                               <Badge variant={getSeverityVariant(event.severity)}>
                                 {event.severity}
                               </Badge>
                             </TableCell>
-                            <TableCell>{event.description}</TableCell>
-                            <TableCell>
-                              <Badge variant={event.resolved ? 'secondary' : 'default'}>
-                                {event.resolved ? 'Resolved' : 'Unresolved'}
-                              </Badge>
+                            <TableCell className="max-w-xs truncate">
+                              {event.description || '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {event.ipAddress || '-'}
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {event.userId || 'System'}
                             </TableCell>
                             <TableCell>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setSelectedEvent(event)}
-                                data-testid={`button-view-event-${event.id}`}
-                              >
-                                {event.resolved ? 'View' : 'Resolve'}
-                              </Button>
+                              <Badge variant={event.status === 'resolved' ? 'secondary' : 'default'}>
+                                {event.status}
+                              </Badge>
                             </TableCell>
                           </TableRow>
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                          <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                             No security events found
                           </TableCell>
                         </TableRow>
@@ -281,119 +320,80 @@ export default function Security() {
               </CardContent>
             </Card>
           )}
-
-          {/* Event Detail Dialog */}
-          <Dialog open={!!selectedEvent} onOpenChange={() => setSelectedEvent(null)}>
-            <DialogContent data-testid="dialog-event-detail">
-              <DialogHeader>
-                <DialogTitle>Security Event Details</DialogTitle>
-                <DialogDescription>
-                  Event ID: {selectedEvent?.id}
-                </DialogDescription>
-              </DialogHeader>
-              {selectedEvent && (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Type</p>
-                    <p className="font-medium">{selectedEvent.type}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Severity</p>
-                    <Badge variant={getSeverityVariant(selectedEvent.severity)}>
-                      {selectedEvent.severity}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Description</p>
-                    <p>{selectedEvent.description}</p>
-                  </div>
-                  {!selectedEvent.resolved && (
-                    <div className="space-y-2">
-                      <Label htmlFor="resolution-notes">Resolution Notes</Label>
-                      <Textarea
-                        id="resolution-notes"
-                        placeholder="Enter resolution notes..."
-                        data-testid="textarea-resolution-notes"
-                      />
-                      <Button
-                        onClick={() => {
-                          const notes = (document.getElementById('resolution-notes') as HTMLTextAreaElement)?.value;
-                          resolveEventMutation.mutate({ eventId: selectedEvent.id, notes });
-                        }}
-                        disabled={resolveEventMutation.isPending}
-                        data-testid="button-resolve-event"
-                      >
-                        Resolve Event
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
         {/* IP Bans Tab */}
         <TabsContent value="ip-bans" className="space-y-4">
-          <Card>
+          <Card data-testid="card-add-ip-ban">
             <CardHeader>
               <CardTitle>Add IP Ban</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col md:flex-row gap-4">
-                <Input
-                  placeholder="IP Address"
-                  id="ban-ip-address"
-                  data-testid="input-ban-ip-address"
-                />
-                <Input
-                  placeholder="Reason"
-                  id="ban-reason"
-                  data-testid="input-ban-reason"
-                />
-                <Select defaultValue="permanent">
-                  <SelectTrigger className="w-full md:w-48" data-testid="select-ban-duration">
-                    <SelectValue placeholder="Duration" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="permanent">Permanent</SelectItem>
-                    <SelectItem value="7">7 Days</SelectItem>
-                    <SelectItem value="30">30 Days</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="ban-ip-address">IP Address *</Label>
+                  <Input
+                    id="ban-ip-address"
+                    placeholder="e.g., 192.168.1.1 or 2001:db8::1"
+                    value={newBanIp}
+                    onChange={(e) => setNewBanIp(e.target.value)}
+                    data-testid="input-ban-ip-address"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="ban-reason">Reason *</Label>
+                  <Input
+                    id="ban-reason"
+                    placeholder="Enter reason for ban (max 500 characters)"
+                    value={newBanReason}
+                    onChange={(e) => setNewBanReason(e.target.value)}
+                    maxLength={500}
+                    data-testid="input-ban-reason"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="ban-hours">Duration (hours, optional)</Label>
+                  <Input
+                    id="ban-hours"
+                    type="number"
+                    placeholder="Leave empty for permanent ban"
+                    value={newBanHours}
+                    onChange={(e) => setNewBanHours(e.target.value)}
+                    min="1"
+                    max="8760"
+                    data-testid="input-ban-hours"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter 1-8760 hours for temporary ban, or leave empty for permanent
+                  </p>
+                </div>
                 <Button
-                  onClick={() => {
-                    const ipAddress = (document.getElementById('ban-ip-address') as HTMLInputElement)?.value;
-                    const reason = (document.getElementById('ban-reason') as HTMLInputElement)?.value;
-                    addIPBanMutation.mutate({ ipAddress, reason, duration: 0 });
-                  }}
+                  onClick={handleAddBan}
                   disabled={addIPBanMutation.isPending}
                   data-testid="button-add-ban"
                 >
-                  Add Ban
+                  {addIPBanMutation.isPending ? "Banning..." : "Add Ban"}
                 </Button>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0">
-              <CardTitle>IP Bans</CardTitle>
-              <Select value={banFilter} onValueChange={setBanFilter}>
-                <SelectTrigger className="w-48" data-testid="select-ban-status-filter">
-                  <SelectValue placeholder="Filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                </SelectContent>
-              </Select>
-            </CardHeader>
-            <CardContent>
-              {bansLoading ? (
-                <Skeleton className="h-64" />
-              ) : (
+          {bansLoading ? (
+            <Skeleton className="h-64" />
+          ) : bansError ? (
+            <Alert variant="destructive" data-testid="alert-bans-error">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error loading IP bans</AlertTitle>
+              <AlertDescription>
+                {(bansErrorData as any)?.message || "Failed to load IP bans. Please try again."}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <Card data-testid="card-ip-bans-list">
+              <CardHeader>
+                <CardTitle>IP Bans ({activeBans.length} active)</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -402,40 +402,47 @@ export default function Security() {
                         <TableHead>Reason</TableHead>
                         <TableHead>Banned By</TableHead>
                         <TableHead>Banned At</TableHead>
-                        <TableHead>Status</TableHead>
+                        <TableHead>Expires At</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {ipBans.length > 0 ? (
-                        ipBans.map((ban) => (
-                          <TableRow key={ban.id} data-testid={`ban-${ban.id}`}>
-                            <TableCell>{ban.ipAddress}</TableCell>
-                            <TableCell>{ban.reason}</TableCell>
-                            <TableCell>{ban.bannedBy}</TableCell>
-                            <TableCell>
-                              {formatDistanceToNow(new Date(ban.createdAt), { addSuffix: true })}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={ban.active ? 'destructive' : 'secondary'}>
-                                {ban.active ? 'Active' : 'Expired'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              {ban.active && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => unbanIPMutation.mutate(ban.id)}
-                                  disabled={unbanIPMutation.isPending}
-                                  data-testid={`button-unban-${ban.id}`}
-                                >
-                                  Unban
-                                </Button>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        ))
+                        ipBans.map((ban) => {
+                          const active = isActiveBan(ban);
+                          return (
+                            <TableRow key={ban.id} data-testid={`ban-${ban.id}`} className={!active ? 'opacity-50' : ''}>
+                              <TableCell className="font-mono text-sm">{ban.ipAddress}</TableCell>
+                              <TableCell className="max-w-xs truncate">{ban.reason || '-'}</TableCell>
+                              <TableCell className="font-mono text-sm">{ban.bannedBy || 'System'}</TableCell>
+                              <TableCell>
+                                {formatDistanceToNow(new Date(ban.createdAt), { addSuffix: true })}
+                              </TableCell>
+                              <TableCell>
+                                {ban.expiresAt ? (
+                                  <span className="text-sm">
+                                    {formatDistanceToNow(new Date(ban.expiresAt), { addSuffix: true })}
+                                  </span>
+                                ) : (
+                                  <Badge variant="secondary">Permanent</Badge>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                {active && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => unbanIPMutation.mutate(ban.ipAddress)}
+                                    disabled={unbanIPMutation.isPending}
+                                    data-testid={`button-unban-${ban.id}`}
+                                  >
+                                    Unban
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
                       ) : (
                         <TableRow>
                           <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
@@ -446,13 +453,13 @@ export default function Security() {
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
-        {/* Performance Metrics Tab */}
-        <TabsContent value="performance" className="space-y-4">
+        {/* Security Metrics Tab */}
+        <TabsContent value="metrics" className="space-y-4">
           {metricsLoading ? (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -461,159 +468,77 @@ export default function Security() {
                 ))}
               </div>
             </div>
+          ) : metricsError ? (
+            <Alert variant="destructive" data-testid="alert-metrics-error">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error loading security metrics</AlertTitle>
+              <AlertDescription>
+                {(metricsErrorData as any)?.message || "Failed to load security metrics. Please try again."}
+              </AlertDescription>
+            </Alert>
           ) : (
             <>
-              {/* System Health Cards */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card data-testid="card-cpu">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">CPU Usage</CardTitle>
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      Total Events
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-cpu">
-                      {performanceMetrics.cpu}%
+                      {securityMetrics.totalEvents.toLocaleString()}
                     </div>
-                    <p className="text-xs text-muted-foreground">Current usage</p>
+                    <p className="text-xs text-muted-foreground">All time</p>
                   </CardContent>
                 </Card>
 
                 <Card data-testid="card-memory">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Memory</CardTitle>
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Events Today
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-memory">
-                      {performanceMetrics.memory}%
+                      {securityMetrics.eventsToday.toLocaleString()}
                     </div>
-                    <p className="text-xs text-muted-foreground">Used</p>
+                    <p className="text-xs text-muted-foreground">Last 24 hours</p>
                   </CardContent>
                 </Card>
 
                 <Card data-testid="card-disk">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Disk</CardTitle>
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      Blocked IPs
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-disk">
-                      {performanceMetrics.disk}%
+                      {securityMetrics.blockedIps.toLocaleString()}
                     </div>
-                    <p className="text-xs text-muted-foreground">Used</p>
+                    <p className="text-xs text-muted-foreground">Currently active</p>
                   </CardContent>
                 </Card>
 
                 <Card data-testid="card-network">
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Network</CardTitle>
+                    <CardTitle className="text-sm font-medium flex items-center gap-2">
+                      <Clock className="h-4 w-4" />
+                      Uptime
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold" data-testid="text-network">
-                      {performanceMetrics.network} MB/s
+                    <div className="text-lg font-bold" data-testid="text-network">
+                      {formatUptime(securityMetrics.uptime)}
                     </div>
-                    <p className="text-xs text-muted-foreground">Throughput</p>
+                    <p className="text-xs text-muted-foreground">Server uptime</p>
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Charts */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card data-testid="card-response-time">
-                  <CardHeader>
-                    <CardTitle>Response Time (Last 24 Hours)</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={performanceMetrics.responseTimeData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="responseTime" stroke="hsl(var(--primary))" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                <Card data-testid="card-error-rate">
-                  <CardHeader>
-                    <CardTitle>Error Rate</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={250}>
-                      <LineChart data={performanceMetrics.errorRateData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="errors" stroke="hsl(var(--destructive))" strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card data-testid="card-db-metrics">
-                <CardHeader>
-                  <CardTitle>Database Query Time Metrics</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Average</p>
-                      <p className="text-2xl font-bold">{performanceMetrics.dbQueryTime.avg}ms</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Min</p>
-                      <p className="text-2xl font-bold">{performanceMetrics.dbQueryTime.min}ms</p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Max</p>
-                      <p className="text-2xl font-bold">{performanceMetrics.dbQueryTime.max}ms</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card data-testid="card-performance-alerts">
-                <CardHeader>
-                  <CardTitle>Performance Alerts</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Alert</TableHead>
-                          <TableHead>Severity</TableHead>
-                          <TableHead>Time</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {performanceMetrics.alerts.length > 0 ? (
-                          performanceMetrics.alerts.map((alert) => (
-                            <TableRow key={alert.id}>
-                              <TableCell>{alert.message}</TableCell>
-                              <TableCell>
-                                <Badge variant={getSeverityVariant(alert.severity)}>
-                                  {alert.severity}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                {formatDistanceToNow(new Date(alert.time), { addSuffix: true })}
-                              </TableCell>
-                            </TableRow>
-                          ))
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">
-                              No performance alerts
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
             </>
           )}
         </TabsContent>
