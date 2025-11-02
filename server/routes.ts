@@ -79,6 +79,10 @@ import {
   runValidators,
   userManagementQuerySchema,
   banUserSchema,
+  marketplaceStatsSchema,
+  revenueTrendSchema,
+  marketplaceItemsSchema,
+  rejectItemSchema,
 } from "./validation.js";
 import { 
   ObjectStorageService, 
@@ -94,6 +98,7 @@ import {
   messagingLimiter,
   newsletterSubscriptionLimiter,
   errorTrackingLimiter,
+  marketplaceActionLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
 import { generateSlug, generateFocusKeyword, generateMetaDescription as generateMetaDescriptionOld, generateImageAltTexts } from './seo.js';
@@ -14128,6 +14133,524 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       console.error('[Newsletter Subscribe] Error:', error);
       res.status(500).json({ error: 'Failed to subscribe to newsletter' });
+    }
+  });
+
+  // ============================================================================
+  // MARKETPLACE MANAGEMENT - ADMIN API ROUTES
+  // ============================================================================
+
+  // In-memory cache for marketplace stats (60 second TTL)
+  const marketplaceStatsCache = new Map<string, {data: any, expiresAt: number}>();
+
+  // 1. GET /api/admin/marketplace/stats - Get marketplace overview statistics
+  app.get("/api/admin/marketplace/stats", isAdminMiddleware, async (req, res) => {
+    try {
+      const validatedQuery = marketplaceStatsSchema.parse(req.query);
+      const { cache: useCache } = validatedQuery;
+
+      // Check cache if enabled
+      if (useCache) {
+        const cached = marketplaceStatsCache.get('stats');
+        if (cached && Date.now() < cached.expiresAt) {
+          return res.json(cached.data);
+        }
+      }
+
+      // Calculate statistics
+      const [
+        totalItemsResult,
+        pendingApprovalResult,
+        totalSalesResult,
+        totalRevenueResult,
+      ] = await Promise.all([
+        // Total items (exclude bot-created content)
+        db.select({ count: count() })
+          .from(content)
+          .where(
+            and(
+              isNull(content.deletedAt),
+              or(
+                isNull(content.authorId),
+                sql`${content.authorId} NOT IN (SELECT id FROM ${users} WHERE is_bot = true)`
+              )
+            )
+          ),
+        
+        // Pending approval count
+        db.select({ count: count() })
+          .from(content)
+          .where(
+            and(
+              eq(content.status, 'pending'),
+              isNull(content.deletedAt)
+            )
+          ),
+        
+        // Total sales count
+        db.select({ totalSales: sql<number>`COALESCE(SUM(${content.salesCount}), 0)` })
+          .from(content)
+          .where(isNull(content.deletedAt)),
+        
+        // Total revenue
+        db.select({ totalRevenue: sql<string>`COALESCE(SUM(${content.revenue}), 0)` })
+          .from(content)
+          .where(isNull(content.deletedAt)),
+      ]);
+
+      // Calculate weekly stats (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const [weeklySalesResult, weeklyRevenueResult] = await Promise.all([
+        db.select({ count: count() })
+          .from(content)
+          .where(
+            and(
+              gte(content.createdAt, sevenDaysAgo),
+              isNull(content.deletedAt)
+            )
+          ),
+        
+        db.select({ revenue: sql<string>`COALESCE(SUM(${content.revenue}), 0)` })
+          .from(content)
+          .where(
+            and(
+              gte(content.createdAt, sevenDaysAgo),
+              isNull(content.deletedAt)
+            )
+          ),
+      ]);
+
+      const stats = {
+        totalItems: Number(totalItemsResult[0]?.count || 0),
+        pendingApproval: Number(pendingApprovalResult[0]?.count || 0),
+        totalSales: Number(totalSalesResult[0]?.totalSales || 0),
+        weeklySales: Number(weeklySalesResult[0]?.count || 0),
+        totalRevenue: parseFloat(totalRevenueResult[0]?.totalRevenue || '0'),
+        weeklyRevenue: parseFloat(weeklyRevenueResult[0]?.revenue || '0'),
+        updatedAt: new Date().toISOString(),
+      };
+
+      // Cache result for 60 seconds
+      marketplaceStatsCache.set('stats', {
+        data: stats,
+        expiresAt: Date.now() + 60000,
+      });
+
+      res.json(stats);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid query parameters", details: error.errors });
+      }
+      console.error('[Marketplace Stats] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch marketplace statistics' });
+    }
+  });
+
+  // 2. GET /api/admin/marketplace/revenue-trend - Get daily revenue trend
+  app.get("/api/admin/marketplace/revenue-trend", isAdminMiddleware, async (req, res) => {
+    try {
+      const validatedQuery = revenueTrendSchema.parse(req.query);
+      const { days } = validatedQuery;
+
+      // Generate date range
+      const trendData = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const date = new Date();
+        date.setDate(date.getDate() - i);
+        date.setHours(0, 0, 0, 0);
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+
+        // Query revenue and sales for this day
+        const result = await db
+          .select({
+            revenue: sql<string>`COALESCE(SUM(${content.revenue}), 0)`,
+            sales: sql<number>`COALESCE(SUM(${content.salesCount}), 0)`,
+          })
+          .from(content)
+          .where(
+            and(
+              gte(content.createdAt, date),
+              lt(content.createdAt, nextDay),
+              isNull(content.deletedAt)
+            )
+          );
+
+        trendData.push({
+          date: date.toISOString().split('T')[0],
+          revenue: parseFloat(result[0]?.revenue || '0'),
+          sales: Number(result[0]?.sales || 0),
+        });
+      }
+
+      res.json(trendData);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid query parameters", details: error.errors });
+      }
+      console.error('[Revenue Trend] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue trend' });
+    }
+  });
+
+  // 3. GET /api/admin/marketplace/items - Get marketplace items with filters
+  app.get("/api/admin/marketplace/items", isAdminMiddleware, async (req, res) => {
+    try {
+      const validatedQuery = marketplaceItemsSchema.parse(req.query);
+      const { page, limit, search, category, status, price, sortBy, sortOrder } = validatedQuery;
+
+      // Build filter conditions
+      const conditions: any[] = [isNull(content.deletedAt)];
+
+      // Search filter (title OR seller username)
+      if (search && search.trim()) {
+        const searchConditions = [
+          ilike(content.title, `%${search}%`)
+        ];
+        conditions.push(or(...searchConditions));
+      }
+
+      // Category filter
+      if (category !== 'all') {
+        conditions.push(eq(content.type, category));
+      }
+
+      // Status filter
+      if (status !== 'all') {
+        conditions.push(eq(content.status, status));
+      }
+
+      // Price filter
+      if (price !== 'all') {
+        if (price === 'free') {
+          conditions.push(eq(content.priceCoins, 0));
+        } else if (price === 'under50') {
+          conditions.push(and(gt(content.priceCoins, 0), lt(content.priceCoins, 50)));
+        } else if (price === '50-100') {
+          conditions.push(and(gte(content.priceCoins, 50), lte(content.priceCoins, 100)));
+        } else if (price === '100-200') {
+          conditions.push(and(gte(content.priceCoins, 100), lte(content.priceCoins, 200)));
+        } else if (price === 'over200') {
+          conditions.push(gt(content.priceCoins, 200));
+        }
+      }
+
+      // Combine all conditions
+      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Calculate pagination
+      const offset = (page - 1) * limit;
+
+      // Determine sort column
+      const sortColumn = sortBy === 'priceCoins' ? content.priceCoins
+        : sortBy === 'salesCount' ? content.salesCount
+        : sortBy === 'revenue' ? content.revenue
+        : sortBy === 'title' ? content.title
+        : content.createdAt;
+
+      const orderFn = sortOrder === 'asc' ? asc : desc;
+
+      // Fetch items with seller info
+      const itemsQuery = db
+        .select({
+          id: content.id,
+          title: content.title,
+          description: content.description,
+          type: content.type,
+          category: content.category,
+          priceCoins: content.priceCoins,
+          isPaid: content.isPaid,
+          salesCount: content.salesCount,
+          revenue: content.revenue,
+          status: content.status,
+          createdAt: content.createdAt,
+          approvedAt: content.approvedAt,
+          approvedBy: content.approvedBy,
+          rejectedAt: content.rejectedAt,
+          rejectedBy: content.rejectedBy,
+          rejectionReason: content.rejectionReason,
+          sellerUsername: users.username,
+          sellerEmail: users.email,
+          authorId: content.authorId,
+        })
+        .from(content)
+        .leftJoin(users, eq(content.authorId, users.id))
+        .where(whereClause)
+        .orderBy(orderFn(sortColumn))
+        .limit(limit)
+        .offset(offset);
+
+      // Get total count
+      const totalCountQuery = db
+        .select({ count: count() })
+        .from(content)
+        .where(whereClause);
+
+      const [items, totalResult] = await Promise.all([itemsQuery, totalCountQuery]);
+
+      const total = Number(totalResult[0]?.count || 0);
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({
+        items,
+        total,
+        page,
+        totalPages,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid query parameters", details: error.errors });
+      }
+      console.error('[Marketplace Items] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch marketplace items' });
+    }
+  });
+
+  // 4. POST /api/admin/marketplace/approve/:itemId - Approve marketplace item
+  app.post("/api/admin/marketplace/approve/:itemId", isAdminMiddleware, marketplaceActionLimiter, async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const adminUser = req.user as User;
+
+      // Fetch item
+      const [item] = await db
+        .select()
+        .from(content)
+        .where(
+          and(
+            eq(content.id, itemId),
+            isNull(content.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (!item) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+
+      // Check if already approved
+      if (item.status === 'approved') {
+        return res.status(400).json({ error: 'Item is already approved' });
+      }
+
+      // Update item status
+      const [updatedItem] = await db
+        .update(content)
+        .set({
+          status: 'approved',
+          approvedAt: new Date(),
+          approvedBy: adminUser.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(content.id, itemId))
+        .returning();
+
+      // Create audit log
+      await db.insert(adminActions).values({
+        adminId: adminUser.id,
+        action: 'marketplace_approve',
+        targetType: 'content',
+        targetId: itemId,
+        details: { title: item.title, status: 'approved' },
+        createdAt: new Date(),
+      });
+
+      // Send approval email to seller
+      if (item.authorId) {
+        const [seller] = await db
+          .select({ email: users.email, username: users.username })
+          .from(users)
+          .where(eq(users.id, item.authorId))
+          .limit(1);
+
+        if (seller?.email) {
+          try {
+            await emailService.sendEmail({
+              to: seller.email,
+              subject: '✅ Your item has been approved on YoForex!',
+              templateKey: 'marketplace_approval',
+              userId: item.authorId,
+              payload: {
+                username: seller.username,
+                itemTitle: item.title,
+                itemUrl: `${process.env.BASE_URL}/content/${item.slug}`,
+              },
+            });
+          } catch (emailError) {
+            console.error('[Email] Failed to send approval email:', emailError);
+            // Don't fail the approval if email fails
+          }
+        }
+      }
+
+      // Invalidate marketplace stats cache
+      marketplaceStatsCache.delete('stats');
+
+      res.json({ success: true, item: updatedItem });
+    } catch (error) {
+      console.error('[Marketplace Approve] Error:', error);
+      res.status(500).json({ error: 'Failed to approve item' });
+    }
+  });
+
+  // 5. POST /api/admin/marketplace/reject/:itemId - Reject marketplace item
+  app.post("/api/admin/marketplace/reject/:itemId", isAdminMiddleware, marketplaceActionLimiter, async (req, res) => {
+    try {
+      const { itemId } = req.params;
+      const adminUser = req.user as User;
+      
+      // Validate request body
+      const validatedBody = rejectItemSchema.parse(req.body);
+      const { reason } = validatedBody;
+
+      // Fetch item
+      const [item] = await db
+        .select()
+        .from(content)
+        .where(
+          and(
+            eq(content.id, itemId),
+            isNull(content.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (!item) {
+        return res.status(404).json({ error: 'Item not found' });
+      }
+
+      // Update item status
+      const [updatedItem] = await db
+        .update(content)
+        .set({
+          status: 'rejected',
+          rejectedAt: new Date(),
+          rejectedBy: adminUser.id,
+          rejectionReason: reason,
+          updatedAt: new Date(),
+        })
+        .where(eq(content.id, itemId))
+        .returning();
+
+      // Create audit log
+      await db.insert(adminActions).values({
+        adminId: adminUser.id,
+        action: 'marketplace_reject',
+        targetType: 'content',
+        targetId: itemId,
+        details: { title: item.title, status: 'rejected', reason },
+        createdAt: new Date(),
+      });
+
+      // Send rejection email to seller
+      if (item.authorId) {
+        const [seller] = await db
+          .select({ email: users.email, username: users.username })
+          .from(users)
+          .where(eq(users.id, item.authorId))
+          .limit(1);
+
+        if (seller?.email) {
+          try {
+            await emailService.sendEmail({
+              to: seller.email,
+              subject: '❌ Your item submission needs attention',
+              templateKey: 'marketplace_rejection',
+              userId: item.authorId,
+              payload: {
+                username: seller.username,
+                itemTitle: item.title,
+                rejectionReason: reason,
+                resubmitUrl: `${process.env.BASE_URL}/publish`,
+              },
+            });
+          } catch (emailError) {
+            console.error('[Email] Failed to send rejection email:', emailError);
+            // Don't fail the rejection if email fails
+          }
+        }
+      }
+
+      // Invalidate marketplace stats cache
+      marketplaceStatsCache.delete('stats');
+
+      res.json({ success: true, item: updatedItem, reason });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid request body", details: error.errors });
+      }
+      console.error('[Marketplace Reject] Error:', error);
+      res.status(500).json({ error: 'Failed to reject item' });
+    }
+  });
+
+  // 6. GET /api/admin/marketplace/top-sellers - Get top selling items
+  app.get("/api/admin/marketplace/top-sellers", isAdminMiddleware, async (req, res) => {
+    try {
+      const topSellers = await db
+        .select({
+          id: content.id,
+          title: content.title,
+          type: content.type,
+          seller: users.username,
+          sales: content.salesCount,
+          revenue: content.revenue,
+        })
+        .from(content)
+        .leftJoin(users, eq(content.authorId, users.id))
+        .where(
+          and(
+            isNull(content.deletedAt),
+            eq(content.status, 'approved')
+          )
+        )
+        .orderBy(desc(content.salesCount))
+        .limit(5);
+
+      res.json(topSellers);
+    } catch (error) {
+      console.error('[Top Sellers] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch top sellers' });
+    }
+  });
+
+  // 7. GET /api/admin/marketplace/top-vendors - Get top vendors by revenue
+  app.get("/api/admin/marketplace/top-vendors", isAdminMiddleware, async (req, res) => {
+    try {
+      const topVendors = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          items: count(content.id),
+          sales: sql<number>`COALESCE(SUM(${content.salesCount}), 0)`,
+          revenue: sql<string>`COALESCE(SUM(${content.revenue}), 0)`,
+        })
+        .from(users)
+        .leftJoin(content, eq(users.id, content.authorId))
+        .where(
+          and(
+            isNull(content.deletedAt),
+            eq(content.status, 'approved')
+          )
+        )
+        .groupBy(users.id, users.username)
+        .orderBy(desc(sql`COALESCE(SUM(${content.revenue}), 0)`))
+        .limit(5);
+
+      const formattedVendors = topVendors.map(vendor => ({
+        userId: vendor.userId,
+        username: vendor.username,
+        items: Number(vendor.items),
+        sales: Number(vendor.sales),
+        revenue: parseFloat(vendor.revenue || '0'),
+      }));
+
+      res.json(formattedVendors);
+    } catch (error) {
+      console.error('[Top Vendors] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch top vendors' });
     }
   });
 

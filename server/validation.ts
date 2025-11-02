@@ -259,3 +259,42 @@ export const banUserSchema = z.object({
   reason: z.string().min(1, "Ban reason is required").max(500, "Ban reason must be less than 500 characters"),
   duration: z.number().positive().optional(), // hours for temporary ban (future feature)
 });
+
+// ============================================================================
+// Marketplace Management Validation Schemas
+// ============================================================================
+
+/**
+ * Marketplace stats query schema for GET /api/admin/marketplace/stats
+ */
+export const marketplaceStatsSchema = z.object({
+  cache: z.boolean().optional().default(true),
+});
+
+/**
+ * Revenue trend query schema for GET /api/admin/marketplace/revenue-trend
+ */
+export const revenueTrendSchema = z.object({
+  days: z.coerce.number().min(1).max(365).default(30),
+});
+
+/**
+ * Marketplace items query schema for GET /api/admin/marketplace/items
+ */
+export const marketplaceItemsSchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+  search: z.string().optional(),
+  category: z.enum(['all', 'ea', 'indicator', 'article', 'source_code']).default('all'),
+  status: z.enum(['all', 'pending', 'approved', 'rejected', 'suspended']).default('all'),
+  price: z.enum(['all', 'free', 'under50', '50-100', '100-200', 'over200']).default('all'),
+  sortBy: z.enum(['createdAt', 'priceCoins', 'salesCount', 'revenue', 'title']).default('createdAt'),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+});
+
+/**
+ * Reject item schema for POST /api/admin/marketplace/reject/:itemId
+ */
+export const rejectItemSchema = z.object({
+  reason: z.string().min(1, "Rejection reason is required").max(1000, "Rejection reason must be less than 1000 characters"),
+});

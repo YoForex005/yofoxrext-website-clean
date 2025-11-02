@@ -296,7 +296,7 @@ export const content = pgTable("content", {
   isFeatured: boolean("is_featured").notNull().default(false),
   averageRating: integer("average_rating"),
   reviewCount: integer("review_count").notNull().default(0),
-  status: text("status").notNull().$type<"pending" | "approved" | "rejected">().default("pending"),
+  status: text("status").notNull().$type<"pending" | "approved" | "rejected" | "suspended">().default("pending"),
   slug: text("slug").notNull().unique(),
   focusKeyword: text("focus_keyword"),
   autoMetaDescription: text("auto_meta_description"),
@@ -318,6 +318,11 @@ export const content = pgTable("content", {
   featuredUntil: timestamp("featured_until"),
   deletedAt: timestamp("deleted_at"),
   
+  // Marketplace analytics fields
+  isPaid: boolean("is_paid").notNull().default(false),
+  salesCount: integer("sales_count").notNull().default(0),
+  revenue: decimal("revenue", { precision: 10, scale: 2 }).default('0'),
+  
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
@@ -328,6 +333,9 @@ export const content = pgTable("content", {
   salesScoreIdx: index("idx_content_sales_score").on(table.salesScore),
   featuredIdx: index("idx_content_featured").on(table.featured),
   deletedAtIdx: index("idx_content_deleted_at").on(table.deletedAt),
+  salesCountIdx: index("idx_content_sales_count").on(table.salesCount),
+  revenueIdx: index("idx_content_revenue").on(table.revenue),
+  isPaidIdx: index("idx_content_is_paid").on(table.isPaid),
 }));
 
 export const contentPurchases = pgTable("content_purchases", {

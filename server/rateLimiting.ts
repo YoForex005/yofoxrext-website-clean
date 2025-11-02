@@ -246,3 +246,24 @@ export const errorTrackingLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Marketplace action rate limiter
+ * 20 requests per minute for approve/reject actions
+ */
+export const marketplaceActionLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 requests per window
+  message: {
+    error: "Too many marketplace actions, please try again later",
+    retryAfter: "1 minute",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "Too many marketplace actions from this IP. Please try again later.",
+      retryAfter: "1 minute",
+    });
+  },
+});
