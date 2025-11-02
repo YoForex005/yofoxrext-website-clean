@@ -5736,20 +5736,8 @@ export class MemStorage implements IStorage {
   // ADMIN OPERATIONS - GROUP 5: Security & Logs (Stubs)
   // ============================================================================
 
-  async getSecurityEvents(filters: any): Promise<{events: any[]; total: number}> {
-    return { events: [], total: 0 };
-  }
-
-  async createSecurityEvent(event: any): Promise<any> {
-    return { id: 1, ...event, createdAt: new Date() };
-  }
-
   async resolveSecurityEvent(eventId: number, resolvedBy: string, notes: string): Promise<void> {
     throw new Error("Not implemented in MemStorage");
-  }
-
-  async getIpBans(filters?: { isActive?: boolean }): Promise<any[]> {
-    return [];
   }
 
   async banIp(ipAddress: string, reason: string, bannedBy: string, duration?: number): Promise<any> {
@@ -10267,82 +10255,6 @@ export class DrizzleStorage implements IStorage {
     return results;
   }
 
-  async getModerationStats(): Promise<{
-    totalReports: number;
-    pendingReports: number;
-    resolvedReports: number;
-    spamDetectedToday: number;
-    actionsTakenToday: number;
-    topReportedUsers: Array<{ userId: string; username: string; reportCount: number }>;
-    commonReportReasons: Array<{ reason: string; count: number }>;
-  }> {
-    // Get total reports
-    const [totalReportsResult] = await db
-      .select({ count: count() })
-      .from(messageReports);
-
-    // Get pending reports
-    const [pendingReportsResult] = await db
-      .select({ count: count() })
-      .from(messageReports)
-      .where(eq(messageReports.status, 'pending'));
-
-    // Get resolved reports
-    const [resolvedReportsResult] = await db
-      .select({ count: count() })
-      .from(messageReports)
-      .where(eq(messageReports.status, 'resolved'));
-
-    // Get spam detected today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const [spamTodayResult] = await db
-      .select({ count: count() })
-      .from(spamDetectionLogs)
-      .where(gte(spamDetectionLogs.createdAt, today));
-
-    // Get actions taken today
-    const [actionsTodayResult] = await db
-      .select({ count: count() })
-      .from(moderationActions)
-      .where(gte(moderationActions.createdAt, today));
-
-    // Get top reported users (users whose messages are most reported)
-    const topReportedUsers = await db
-      .select({
-        userId: messages.senderId,
-        username: users.username,
-        reportCount: count(),
-      })
-      .from(messageReports)
-      .innerJoin(messages, eq(messageReports.messageId, messages.id))
-      .innerJoin(users, eq(messages.senderId, users.id))
-      .groupBy(messages.senderId, users.username)
-      .orderBy(desc(count()))
-      .limit(10);
-
-    // Get common report reasons
-    const commonReasons = await db
-      .select({
-        reason: messageReports.reason,
-        count: count(),
-      })
-      .from(messageReports)
-      .groupBy(messageReports.reason)
-      .orderBy(desc(count()))
-      .limit(10);
-
-    return {
-      totalReports: totalReportsResult?.count || 0,
-      pendingReports: pendingReportsResult?.count || 0,
-      resolvedReports: resolvedReportsResult?.count || 0,
-      spamDetectedToday: spamTodayResult?.count || 0,
-      actionsTakenToday: actionsTodayResult?.count || 0,
-      topReportedUsers: topReportedUsers as any,
-      commonReportReasons: commonReasons as any,
-    };
-  }
-
   async getDashboardPreferences(userId: string): Promise<DashboardPreferences | null> {
     const result = await db
       .select()
@@ -13102,52 +13014,6 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
-  async createSupportTicket(ticket: {
-    userId: string;
-    subject: string;
-    description: string;
-    priority: string;
-    category: string;
-  }): Promise<any> {
-    try {
-      const ticketNumber = `TKT-${Date.now()}`;
-      const [newTicket] = await db.insert(supportTickets).values({
-        ...ticket,
-        ticketNumber,
-        status: 'open',
-      }).returning();
-      
-      return newTicket;
-    } catch (error) {
-      console.error("Error creating support ticket:", error);
-      throw error;
-    }
-  }
-
-  async updateSupportTicket(ticketId: number, updates: any, updatedBy: string): Promise<void> {
-    try {
-      await db.transaction(async (tx) => {
-        await tx
-          .update(supportTickets)
-          .set({ ...updates, updatedAt: new Date() })
-          .where(eq(supportTickets.id, ticketId));
-        
-        await tx.insert(adminActions).values({
-          adminId: updatedBy,
-          actionType: 'ticket_update',
-          targetType: 'ticket',
-          targetId: String(ticketId),
-          details: { updates },
-          ipAddress: '0.0.0.0',
-          userAgent: 'admin-dashboard',
-        });
-      });
-    } catch (error) {
-      console.error("Error updating support ticket:", error);
-      throw error;
-    }
-  }
-
   async assignTicket(ticketId: number, assignedTo: string, assignedBy: string): Promise<void> {
     try {
       await db.transaction(async (tx) => {
@@ -13243,76 +13109,6 @@ export class DrizzleStorage implements IStorage {
         .orderBy(desc(announcements.createdAt));
     } catch (error) {
       console.error("Error fetching announcements:", error);
-      throw error;
-    }
-  }
-
-  async createAnnouncement(announcement: {
-    title: string;
-    content: string;
-    type: string;
-    targetAudience: string;
-    displayType: string;
-    startDate: Date;
-    endDate?: Date;
-    createdBy: string;
-  }): Promise<any> {
-    try {
-      const [newAnnouncement] = await db.insert(announcements).values({
-        ...announcement,
-        isActive: true,
-        views: 0,
-        clicks: 0,
-      }).returning();
-      
-      return newAnnouncement;
-    } catch (error) {
-      console.error("Error creating announcement:", error);
-      throw error;
-    }
-  }
-
-  async updateAnnouncement(announcementId: number, updates: any): Promise<void> {
-    try {
-      await db
-        .update(announcements)
-        .set(updates)
-        .where(eq(announcements.id, announcementId));
-    } catch (error) {
-      console.error("Error updating announcement:", error);
-      throw error;
-    }
-  }
-
-  async deleteAnnouncement(announcementId: number): Promise<void> {
-    try {
-      await db.delete(announcements).where(eq(announcements.id, announcementId));
-    } catch (error) {
-      console.error("Error deleting announcement:", error);
-      throw error;
-    }
-  }
-
-  async trackAnnouncementView(announcementId: number): Promise<void> {
-    try {
-      await db
-        .update(announcements)
-        .set({ views: sql`${announcements.views} + 1` })
-        .where(eq(announcements.id, announcementId));
-    } catch (error) {
-      console.error("Error tracking announcement view:", error);
-      throw error;
-    }
-  }
-
-  async trackAnnouncementClick(announcementId: number): Promise<void> {
-    try {
-      await db
-        .update(announcements)
-        .set({ clicks: sql`${announcements.clicks} + 1` })
-        .where(eq(announcements.id, announcementId));
-    } catch (error) {
-      console.error("Error tracking announcement click:", error);
       throw error;
     }
   }
@@ -13457,75 +13253,6 @@ export class DrizzleStorage implements IStorage {
   // ============================================================================
   // ADMIN OPERATIONS - GROUP 5: Security & Logs (20 methods)
   // ============================================================================
-
-  async getSecurityEvents(filters: {
-    eventType?: string;
-    severity?: string;
-    isResolved?: boolean;
-    limit?: number;
-    offset?: number;
-  }): Promise<{events: any[]; total: number}> {
-    try {
-      const { eventType, severity, isResolved, limit = 50, offset = 0 } = filters;
-      
-      const conditions = [];
-      
-      if (eventType) {
-        conditions.push(eq(securityEvents.eventType, eventType));
-      }
-      
-      if (severity) {
-        conditions.push(eq(securityEvents.severity, severity));
-      }
-      
-      if (isResolved !== undefined) {
-        conditions.push(eq(securityEvents.isResolved, isResolved));
-      }
-      
-      const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-      
-      const events = await db
-        .select()
-        .from(securityEvents)
-        .where(whereClause)
-        .limit(limit)
-        .offset(offset)
-        .orderBy(desc(securityEvents.createdAt));
-      
-      const [{ count }] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(securityEvents)
-        .where(whereClause);
-      
-      return {
-        events,
-        total: Number(count)
-      };
-    } catch (error) {
-      console.error("Error fetching security events:", error);
-      throw error;
-    }
-  }
-
-  async createSecurityEvent(event: {
-    eventType: string;
-    severity: string;
-    userId?: string;
-    ipAddress: string;
-    details: any;
-  }): Promise<any> {
-    try {
-      const [newEvent] = await db.insert(securityEvents).values({
-        ...event,
-        isResolved: false,
-      }).returning();
-      
-      return newEvent;
-    } catch (error) {
-      console.error("Error creating security event:", error);
-      throw error;
-    }
-  }
 
   async resolveSecurityEvent(eventId: number, resolvedBy: string, notes: string): Promise<void> {
     try {
@@ -13819,20 +13546,6 @@ export class DrizzleStorage implements IStorage {
       return ban;
     } catch (error) {
       console.error("Error creating IP ban:", error);
-      throw error;
-    }
-  }
-
-  async getIpBans(): Promise<IpBan[]> {
-    try {
-      const bans = await db
-        .select()
-        .from(ipBans)
-        .orderBy(desc(ipBans.createdAt));
-      
-      return bans;
-    } catch (error) {
-      console.error("Error fetching IP bans:", error);
       throw error;
     }
   }
@@ -19354,22 +19067,6 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('Error recording bot wallet event:', error);
       throw error;
-    }
-  }
-
-  async getBotWalletEvents(botId: string, limit: number = 50): Promise<BotWalletEvent[]> {
-    try {
-      const events = await db
-        .select()
-        .from(botWalletEvents)
-        .where(eq(botWalletEvents.botId, botId))
-        .orderBy(desc(botWalletEvents.createdAt))
-        .limit(limit);
-      
-      return events;
-    } catch (error) {
-      console.error('Error getting bot wallet events:', error);
-      return [];
     }
   }
 
