@@ -267,3 +267,24 @@ export const marketplaceActionLimiter = rateLimit({
     });
   },
 });
+
+/**
+ * Finance action rate limiter
+ * 60 requests per minute for finance operations
+ */
+export const financeActionLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per window
+  message: {
+    error: "Too many finance actions, please try again later",
+    retryAfter: "1 minute",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req: Request, res: Response) => {
+    res.status(429).json({
+      error: "Too many finance actions from this IP. Please try again later.",
+      retryAfter: "1 minute",
+    });
+  },
+});

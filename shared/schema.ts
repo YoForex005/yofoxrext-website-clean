@@ -235,6 +235,48 @@ export const withdrawalRequests = pgTable("withdrawal_requests", {
   amountCheck: check("chk_withdrawal_amount_min", sql`${table.amount} >= 1000`),
 }));
 
+// Financial Transactions - comprehensive transaction tracking for finance management
+export const financialTransactions = pgTable("financial_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  transactionType: text("transaction_type").notNull().$type<"marketplace_sale" | "coin_recharge" | "premium_purchase" | "withdrawal" | "refund" | "adjustment">(),
+  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("USD"),
+  platformFee: numeric("platform_fee", { precision: 10, scale: 2 }).default("0"),
+  netAmount: numeric("net_amount", { precision: 10, scale: 2 }).notNull(),
+  status: text("status").notNull().$type<"pending" | "completed" | "failed" | "refunded">().default("completed"),
+  sourceType: varchar("source_type", { length: 50 }), // 'content', 'recharge', 'subscription', etc.
+  sourceId: varchar("source_id"), // ID of the source record
+  description: text("description"),
+  metadata: jsonb("metadata"),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_financial_transactions_user_id").on(table.userId),
+  transactionTypeIdx: index("idx_financial_transactions_type").on(table.transactionType),
+  statusIdx: index("idx_financial_transactions_status").on(table.status),
+  occurredAtIdx: index("idx_financial_transactions_occurred_at").on(table.occurredAt),
+  sourceIdx: index("idx_financial_transactions_source").on(table.sourceType, table.sourceId),
+}));
+
+// Payout Audit Logs - tracks all withdrawal/payout approval actions
+export const payoutAuditLogs = pgTable("payout_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  withdrawalId: varchar("withdrawal_id").notNull().references(() => withdrawalRequests.id),
+  action: text("action").notNull().$type<"review_started" | "approved" | "rejected" | "payout_initiated" | "payout_completed" | "payout_failed">(),
+  actorId: varchar("actor_id").notNull().references(() => users.id),
+  actorRole: varchar("actor_role", { length: 50 }).notNull(),
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+  notes: text("notes"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  withdrawalIdIdx: index("idx_payout_audit_logs_withdrawal_id").on(table.withdrawalId),
+  actorIdIdx: index("idx_payout_audit_logs_actor_id").on(table.actorId),
+  createdAtIdx: index("idx_payout_audit_logs_created_at").on(table.createdAt),
+}));
+
 export const feedback = pgTable("feedback", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id),
@@ -1770,6 +1812,17 @@ export const insertWithdrawalRequestSchema = createInsertSchema(withdrawalReques
   walletAddress: z.string().min(26, "Invalid wallet address").max(100, "Invalid wallet address"),
 });
 
+export const insertFinancialTransactionSchema = createInsertSchema(financialTransactions).omit({
+  id: true,
+  createdAt: true,
+  occurredAt: true,
+});
+
+export const insertPayoutAuditLogSchema = createInsertSchema(payoutAuditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertFeedbackSchema = createInsertSchema(feedback).omit({
   id: true,
   createdAt: true,
@@ -1956,6 +2009,10 @@ export type InsertSubscription = z.infer<typeof insertSubscriptionSchema>;
 export type WithdrawalRequest = typeof withdrawalRequests.$inferSelect;
 export type SelectWithdrawalRequest = typeof withdrawalRequests.$inferSelect; // Alias for consistency
 export type InsertWithdrawalRequest = z.infer<typeof insertWithdrawalRequestSchema>;
+export type FinancialTransaction = typeof financialTransactions.$inferSelect;
+export type InsertFinancialTransaction = z.infer<typeof insertFinancialTransactionSchema>;
+export type PayoutAuditLog = typeof payoutAuditLogs.$inferSelect;
+export type InsertPayoutAuditLog = z.infer<typeof insertPayoutAuditLogSchema>;
 export type Content = typeof content.$inferSelect;
 export type InsertContent = z.infer<typeof insertContentSchema>;
 export type ContentPurchase = typeof contentPurchases.$inferSelect;

@@ -88,6 +88,13 @@ import {
   moderationQueueSchema,
   approveContentSchema,
   rejectContentSchema,
+  financeStatsSchema,
+  financeRevenueTrendSchema,
+  revenueSourcesSchema,
+  pendingWithdrawalsSchema,
+  approveWithdrawalSchema,
+  rejectWithdrawalSchema,
+  financeExportSchema,
 } from "./validation.js";
 import { 
   ObjectStorageService, 
@@ -104,6 +111,7 @@ import {
   newsletterSubscriptionLimiter,
   errorTrackingLimiter,
   marketplaceActionLimiter,
+  financeActionLimiter,
 } from "./rateLimiting.js";
 import rateLimit from 'express-rate-limit';
 import DOMPurify from 'isomorphic-dompurify';
@@ -14861,6 +14869,389 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('[Top Vendors] Error:', error);
       res.status(500).json({ error: 'Failed to fetch top vendors' });
+    }
+  });
+
+  // ============================================================================
+  // FINANCE MANAGEMENT - API ROUTES
+  // ============================================================================
+
+  // 1. GET /api/admin/finance/stats - Finance statistics
+  app.get("/api/admin/finance/stats", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const validation = financeStatsSchema.safeParse(req.query);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { days } = validation.data;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      // Calculate total revenue and platform fees
+      const revenueData = await db
+        .select({
+          totalAmount: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
+          totalPlatformFee: sql<string>`COALESCE(SUM(${financialTransactions.platformFee}), 0)`,
+        })
+        .from(financialTransactions)
+        .where(
+          and(
+            gte(financialTransactions.occurredAt, startDate),
+            eq(financialTransactions.status, 'completed')
+          )
+        );
+
+      // Calculate pending withdrawals
+      const pendingWithdrawals = await db
+        .select({
+          count: count(),
+          total: sql<string>`COALESCE(SUM(${withdrawalRequests.amount}), 0)`,
+        })
+        .from(withdrawalRequests)
+        .where(eq(withdrawalRequests.status, 'pending'));
+
+      // Calculate total transactions
+      const totalTransactions = await db
+        .select({ count: count() })
+        .from(financialTransactions)
+        .where(gte(financialTransactions.occurredAt, startDate));
+
+      // Calculate today's transactions
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayTransactions = await db
+        .select({ count: count() })
+        .from(financialTransactions)
+        .where(gte(financialTransactions.occurredAt, todayStart));
+
+      // Find top earner
+      const topEarner = await db
+        .select({
+          username: users.username,
+          amount: sql<string>`COALESCE(SUM(${financialTransactions.netAmount}), 0)`,
+        })
+        .from(financialTransactions)
+        .innerJoin(users, eq(financialTransactions.userId, users.id))
+        .where(
+          and(
+            gte(financialTransactions.occurredAt, startDate),
+            eq(financialTransactions.transactionType, 'marketplace_sale')
+          )
+        )
+        .groupBy(users.id, users.username)
+        .orderBy(desc(sql`COALESCE(SUM(${financialTransactions.netAmount}), 0)`))
+        .limit(1);
+
+      res.json({
+        totalRevenue: {
+          amount: parseFloat(revenueData[0]?.totalAmount || '0'),
+          platformFee: parseFloat(revenueData[0]?.totalPlatformFee || '0'),
+          percentChange: 0, // Stub - would need previous period data
+        },
+        pendingWithdrawals: {
+          count: pendingWithdrawals[0]?.count || 0,
+          total: parseInt(pendingWithdrawals[0]?.total || '0'),
+        },
+        transactions: {
+          total: totalTransactions[0]?.count || 0,
+          today: todayTransactions[0]?.count || 0,
+        },
+        topEarner: topEarner.length > 0 ? {
+          username: topEarner[0].username,
+          amount: parseFloat(topEarner[0].amount),
+        } : null,
+      });
+    } catch (error) {
+      console.error('[Finance Stats] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch finance statistics' });
+    }
+  });
+
+  // 2. GET /api/admin/finance/revenue-trend - Revenue trend over time
+  app.get("/api/admin/finance/revenue-trend", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const validation = financeRevenueTrendSchema.safeParse(req.query);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { days } = validation.data;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const trendData = await db
+        .select({
+          date: sql<string>`DATE(${financialTransactions.occurredAt})`,
+          totalRevenue: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
+          platformFee: sql<string>`COALESCE(SUM(${financialTransactions.platformFee}), 0)`,
+          netPayout: sql<string>`COALESCE(SUM(${financialTransactions.netAmount}), 0)`,
+          count: count(),
+        })
+        .from(financialTransactions)
+        .where(
+          and(
+            gte(financialTransactions.occurredAt, startDate),
+            eq(financialTransactions.status, 'completed')
+          )
+        )
+        .groupBy(sql`DATE(${financialTransactions.occurredAt})`)
+        .orderBy(asc(sql`DATE(${financialTransactions.occurredAt})`));
+
+      res.json(trendData.map(row => ({
+        date: row.date,
+        totalRevenue: parseFloat(row.totalRevenue),
+        platformFee: parseFloat(row.platformFee),
+        netPayout: parseFloat(row.netPayout),
+        count: row.count,
+      })));
+    } catch (error) {
+      console.error('[Revenue Trend] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue trend' });
+    }
+  });
+
+  // 3. GET /api/admin/finance/revenue-sources - Revenue by source type
+  app.get("/api/admin/finance/revenue-sources", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const validation = revenueSourcesSchema.safeParse(req.query);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { days } = validation.data;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const sourcesData = await db
+        .select({
+          source: financialTransactions.transactionType,
+          amount: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
+          count: count(),
+        })
+        .from(financialTransactions)
+        .where(
+          and(
+            gte(financialTransactions.occurredAt, startDate),
+            eq(financialTransactions.status, 'completed')
+          )
+        )
+        .groupBy(financialTransactions.transactionType)
+        .orderBy(desc(sql`COALESCE(SUM(${financialTransactions.amount}), 0)`));
+
+      res.json(sourcesData.map(row => ({
+        source: row.source,
+        amount: parseFloat(row.amount),
+        count: row.count,
+      })));
+    } catch (error) {
+      console.error('[Revenue Sources] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch revenue sources' });
+    }
+  });
+
+  // 4. GET /api/admin/finance/withdrawals/pending - Get pending withdrawals
+  app.get("/api/admin/finance/withdrawals/pending", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const validation = pendingWithdrawalsSchema.safeParse(req.query);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { page, limit } = validation.data;
+      const offset = (page - 1) * limit;
+
+      const [withdrawals, totalCount] = await Promise.all([
+        db
+          .select({
+            id: withdrawalRequests.id,
+            userId: withdrawalRequests.userId,
+            username: users.username,
+            amount: withdrawalRequests.amount,
+            method: withdrawalRequests.method,
+            walletAddress: withdrawalRequests.walletAddress,
+            status: withdrawalRequests.status,
+            requestedAt: withdrawalRequests.requestedAt,
+          })
+          .from(withdrawalRequests)
+          .innerJoin(users, eq(withdrawalRequests.userId, users.id))
+          .where(eq(withdrawalRequests.status, 'pending'))
+          .orderBy(desc(withdrawalRequests.requestedAt))
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ count: count() })
+          .from(withdrawalRequests)
+          .where(eq(withdrawalRequests.status, 'pending'))
+      ]);
+
+      res.json({
+        withdrawals,
+        page,
+        limit,
+        total: totalCount[0]?.count || 0,
+        totalPages: Math.ceil((totalCount[0]?.count || 0) / limit),
+      });
+    } catch (error) {
+      console.error('[Pending Withdrawals] Error:', error);
+      res.status(500).json({ error: 'Failed to fetch pending withdrawals' });
+    }
+  });
+
+  // 5. POST /api/admin/finance/withdrawals/approve/:id - Approve withdrawal
+  app.post("/api/admin/finance/withdrawals/approve/:id", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validation = approveWithdrawalSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { notes } = validation.data;
+      const adminUser = req.user as User;
+
+      const [withdrawal] = await db
+        .select()
+        .from(withdrawalRequests)
+        .where(eq(withdrawalRequests.id, id))
+        .limit(1);
+
+      if (!withdrawal) {
+        return res.status(404).json({ error: 'Withdrawal request not found' });
+      }
+
+      if (withdrawal.status !== 'pending') {
+        return res.status(400).json({ error: 'Withdrawal is not in pending status' });
+      }
+
+      await db
+        .update(withdrawalRequests)
+        .set({
+          status: 'approved',
+          approvedBy: adminUser.id,
+          approvedAt: new Date(),
+          adminNotes: notes,
+          updatedAt: new Date(),
+        })
+        .where(eq(withdrawalRequests.id, id));
+
+      await db.insert(payoutAuditLogs).values({
+        withdrawalId: id,
+        action: 'approved',
+        actorId: adminUser.id,
+        actorRole: adminUser.role,
+        previousStatus: 'pending',
+        newStatus: 'approved',
+        notes: notes,
+      });
+
+      res.json({ message: 'Withdrawal approved successfully' });
+    } catch (error) {
+      console.error('[Approve Withdrawal] Error:', error);
+      res.status(500).json({ error: 'Failed to approve withdrawal' });
+    }
+  });
+
+  // 6. POST /api/admin/finance/withdrawals/reject/:id - Reject withdrawal
+  app.post("/api/admin/finance/withdrawals/reject/:id", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const validation = rejectWithdrawalSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { reason } = validation.data;
+      const adminUser = req.user as User;
+
+      const [withdrawal] = await db
+        .select()
+        .from(withdrawalRequests)
+        .where(eq(withdrawalRequests.id, id))
+        .limit(1);
+
+      if (!withdrawal) {
+        return res.status(404).json({ error: 'Withdrawal request not found' });
+      }
+
+      if (withdrawal.status !== 'pending') {
+        return res.status(400).json({ error: 'Withdrawal is not in pending status' });
+      }
+
+      await db
+        .update(withdrawalRequests)
+        .set({
+          status: 'rejected',
+          rejectedBy: adminUser.id,
+          rejectedAt: new Date(),
+          rejectionReason: reason,
+          updatedAt: new Date(),
+        })
+        .where(eq(withdrawalRequests.id, id));
+
+      await db.insert(payoutAuditLogs).values({
+        withdrawalId: id,
+        action: 'rejected',
+        actorId: adminUser.id,
+        actorRole: adminUser.role,
+        previousStatus: 'pending',
+        newStatus: 'rejected',
+        notes: reason,
+      });
+
+      // TODO: Refund coins to user (stub - would need treasury service integration)
+
+      res.json({ message: 'Withdrawal rejected successfully' });
+    } catch (error) {
+      console.error('[Reject Withdrawal] Error:', error);
+      res.status(500).json({ error: 'Failed to reject withdrawal' });
+    }
+  });
+
+  // 7. GET /api/admin/finance/export - Export finance data as CSV
+  app.get("/api/admin/finance/export", isAdminMiddleware, financeActionLimiter, async (req, res) => {
+    try {
+      const validation = financeExportSchema.safeParse(req.query);
+      if (!validation.success) {
+        return res.status(400).json({ error: validation.error.errors[0].message });
+      }
+      const { from, to, type } = validation.data;
+
+      let query = db
+        .select({
+          occurredAt: financialTransactions.occurredAt,
+          username: users.username,
+          transactionType: financialTransactions.transactionType,
+          amount: financialTransactions.amount,
+          currency: financialTransactions.currency,
+          platformFee: financialTransactions.platformFee,
+          netAmount: financialTransactions.netAmount,
+          status: financialTransactions.status,
+          description: financialTransactions.description,
+        })
+        .from(financialTransactions)
+        .innerJoin(users, eq(financialTransactions.userId, users.id));
+
+      const conditions = [];
+      if (from) conditions.push(gte(financialTransactions.occurredAt, new Date(from)));
+      if (to) conditions.push(lte(financialTransactions.occurredAt, new Date(to)));
+      if (type !== 'all') conditions.push(eq(financialTransactions.transactionType, type as any));
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+
+      const transactions = await query.orderBy(desc(financialTransactions.occurredAt));
+
+      // Generate CSV
+      const csvHeaders = 'Date,User,Type,Amount,Currency,Platform Fee,Net Amount,Status,Description\n';
+      const csvRows = transactions.map(t => {
+        const date = new Date(t.occurredAt).toISOString().split('T')[0];
+        return `${date},${t.username},${t.transactionType},${t.amount},${t.currency},${t.platformFee || 0},${t.netAmount},${t.status},"${(t.description || '').replace(/"/g, '""')}"`;
+      }).join('\n');
+
+      const csv = csvHeaders + csvRows;
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="finance-export-${new Date().toISOString().split('T')[0]}.csv"`);
+      res.send(csv);
+    } catch (error) {
+      console.error('[Finance Export] Error:', error);
+      res.status(500).json({ error: 'Failed to export finance data' });
     }
   });
 

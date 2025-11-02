@@ -329,3 +329,60 @@ export const rejectContentSchema = z.object({
   contentId: z.string().uuid(),
   reason: z.string().min(10, "Rejection reason must be at least 10 characters").max(1000, "Rejection reason must be less than 1000 characters"),
 });
+
+// ============================================================================
+// Finance Management Validation Schemas
+// ============================================================================
+
+/**
+ * Finance stats query schema for GET /api/admin/finance/stats
+ */
+export const financeStatsSchema = z.object({
+  days: z.coerce.number().min(1).max(365).default(30),
+});
+
+/**
+ * Finance revenue trend query schema for GET /api/admin/finance/revenue-trend
+ */
+export const financeRevenueTrendSchema = z.object({
+  days: z.coerce.number().min(1).max(365).default(30),
+});
+
+/**
+ * Revenue sources query schema for GET /api/admin/finance/revenue-sources
+ */
+export const revenueSourcesSchema = z.object({
+  days: z.coerce.number().min(1).max(365).default(30),
+});
+
+/**
+ * Pending withdrawals query schema for GET /api/admin/finance/withdrawals/pending
+ */
+export const pendingWithdrawalsSchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+});
+
+/**
+ * Approve withdrawal schema for POST /api/admin/finance/withdrawals/approve/:id
+ */
+export const approveWithdrawalSchema = z.object({
+  notes: z.string().max(500).optional(),
+  twoFactorToken: z.string().optional(),
+});
+
+/**
+ * Reject withdrawal schema for POST /api/admin/finance/withdrawals/reject/:id
+ */
+export const rejectWithdrawalSchema = z.object({
+  reason: z.string().min(10, "Rejection reason must be at least 10 characters").max(500, "Rejection reason must be less than 500 characters"),
+});
+
+/**
+ * Finance export query schema for GET /api/admin/finance/export
+ */
+export const financeExportSchema = z.object({
+  from: z.string().optional(),
+  to: z.string().optional(),
+  type: z.enum(['all', 'marketplace_sale', 'coin_recharge', 'premium_purchase', 'withdrawal', 'refund', 'adjustment']).default('all'),
+});
