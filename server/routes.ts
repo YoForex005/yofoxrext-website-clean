@@ -59,7 +59,13 @@ import {
   earningsSources,
   activityHeatmap,
   referrals,
-  aiNudges
+  aiNudges,
+  brokers,
+  messageAttachments,
+  messages,
+  conversations,
+  messageReactions,
+  seoScanHistory
 } from "../shared/schema.js";
 import { z } from "zod";
 import { db } from "./db.js";
