@@ -1,7 +1,7 @@
 # YoForex - Expert Advisor Forum & Marketplace
 
 ## Overview
-YoForex is a comprehensive trading community platform for forex traders, featuring forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources. Its business vision is to become a leading hub for forex traders, fostering engagement and providing essential trading resources and tools.
+YoForex is a comprehensive trading community platform for forex traders. It features forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). The platform aims to cultivate a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources, ultimately becoming a leading hub for forex traders.
 
 ## User Preferences
 ### Communication Style
@@ -67,93 +67,33 @@ YoForex is a comprehensive trading community platform for forex traders, featuri
 - **Be Specific:** Include file paths, dates, and reasons for changes
 - **Section Organization:** Recent Changes should list newest first with dates
 
-## Recent Changes
-
-### November 2, 2025: Enhanced SEO Panel with Interactive Features & Persistent Hashtag Editing
-
-**UX Enhancement - Interactive SEO Optimization:**
-- **Issue**: Users couldn't interact with keyword suggestions, fix density issues, or customize hashtags in auto-optimize mode without switching to manual mode
-- **Solution**: Added multiple interactive features to improve SEO optimization workflow
-  - **Clickable Keyword Suggestions**: Click any suggested keyword to auto-insert it as the primary keyword, automatically switches to manual mode for confirmation
-  - **Auto-Fix Density Button**: One-click fix for keyword density issues (too high/too low), shows "Auto-fix" button with smart suggestions
-  - **Editable Hashtags in Auto Mode**: Edit/Done toggle button allows hashtag customization while keeping other fields auto-optimized
-  - **Persistent Hashtag State**: Custom hashtags preserved across mode switches (auto → manual, manual → auto)
-  - **Visual Indicators**: "Customized" badge shows when hashtags are manually edited, "Reset" button to revert to auto-generated
-- **State Management**:
-  - `persistedHashtags` state stores user-edited hashtags permanently (null = use auto-generated)
-  - Mode initialization preserves persisted hashtags when switching from auto to manual
-  - Parent component receives correct hashtags across all mode switches
-  - Priority hierarchy: editing > persisted > auto-generated
-- **User Flows**:
-  - Edit hashtags in auto mode → Click "Done" → Hashtags persist even when content changes
-  - Switch between auto/manual modes → Hashtags remain intact
-  - Click "Reset" → Return to auto-generated hashtags
-- **Impact**: Significantly improved SEO workflow, users can customize specific fields without losing auto-optimization benefits
-- **Files Modified**:
-  - `app/components/AutoSEOPanel.tsx` - Added clickable suggestions, auto-fix density, editable hashtags with persistence
-- **Architect Feedback**: Approved - all user flows tested and working correctly, complete state management across mode switches
-
-### November 2, 2025: Added Complete Layout to Thread Creation Wizard Page
-
-**UX Enhancement - Consistent Layout Across All States:**
-- **Issue**: Thread creation wizard at `/threads/create` was missing header, footer, and engagement sidebars, creating inconsistent user experience
-- **Solution**: Added full 3-column grid layout with sidebars to ALL render states
-  - **Loading State**: Shows header, footer, and sidebars with skeleton loading card
-  - **Error/Authentication State**: Shows header, footer, and sidebars with auth error message
-  - **Main Content State**: Shows header, footer, and sidebars with ThreadCreationWizard
-  - **Suspense Fallback**: Shows header, footer, and sidebars with skeleton loading
-- **Layout Structure**:
-  - Left sidebar (280px): LeftEngagementSidebar with posting tips and guidelines
-  - Main content area: ThreadCreationWizard or loading/error states
-  - Right sidebar (320px): RightEngagementSidebar with trending threads and community stats
-  - All sidebars sticky positioned at `top-[88px]`, hidden below `lg` breakpoint
-- **Impact**: No more jarring layout flashes between states, improved user experience
-- **Files Modified**:
-  - `app/threads/create/page.tsx` - Added complete layout wrapper to all render branches
-- **Architect Feedback**: Approved - all render states have consistent layout, no functional blockers
-
-### November 2, 2025: Fixed Image Upload Failure in Thread Creation Wizard
-
-**Critical Bug Fix - Multiple Image Uploads:**
-- **Issue**: Users couldn't upload images when creating threads - uploads failed with "Upload failed - Failed to upload images. Please try again." error
-- **Root Cause**: Multer configuration had `files: 1` limit but `/api/upload` endpoint expected up to 10 files using `upload.array('files', 10)`
-- **Solution**: Split multer into two instances for different use cases
-  - `uploadSingle`: For single file uploads (files: 1, fileSize: 20MB) - used by profile photos and message attachments
-  - `uploadMultiple`: For batch uploads (files: 10, fileSize: 10MB per image) - used by thread creation and EA publishing
-- **Memory Safety**: Maintained with worst-case 100MB limit (10 files × 10MB)
-- **Impact**: Thread creation wizard can now accept multiple images as designed
-- **Files Modified**:
-  - `server/routes.ts` - Split multer configuration and updated `/api/upload` and `/api/upload/images` endpoints
-- **Testing Recommended**: End-to-end thread creation with multiple images
-- **Architect Feedback**: Approved - solution correctly resolves limit mismatch while preserving memory safety
-
 ## System Architecture
 
 YoForex employs a hybrid frontend and a robust backend for scalability and performance.
 
 ### Hybrid Frontend Architecture
-- **Next.js:** Primary user-facing application using App Router, Server Components, and Incremental Static Regeneration (ISR) for SEO and dynamic routing.
+- **Next.js:** Primary user-facing application using App Router, Server Components, and Incremental Static Regeneration (ISR).
 - **Express API:** Backend API server providing RESTful endpoints, Replit OIDC authentication, rate limiting, and input validation. React Query manages client-side state and caching.
 
 ### Database Design
-- **PostgreSQL with Drizzle ORM:** Features 25+ tables, critical indexes, connection pooling, SSL/TLS, and automatic retry logic. Admin database schema with 5 new tables for API usage, webhooks, email queue, SEO pages, and schema validations.
+- **PostgreSQL with Drizzle ORM:** Features 25+ tables, critical indexes, connection pooling, SSL/TLS, and automatic retry logic. Includes admin tables for API usage, webhooks, email queue, SEO, and schema validations.
 
 ### System Design Choices
 - **SEO-Optimized URL Structure:** Hierarchical URLs with unlimited category nesting and dynamic catch-all routes.
 - **State Management:** React Query (TanStack Query v5) for server state and SSR support.
 - **Authentication System:** Email/Password + Google OAuth with PostgreSQL session storage, email verification, welcome bonuses, referral tracking, and account linking.
-- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning/spending mechanisms, XP and Rank system, and comprehensive admin controls. Automated bot system for natural engagement.
+- **Coin Economy ("Sweets"):** Virtual currency with transaction history, expiration management, multi-layer fraud prevention, and a redemption marketplace. Includes earning/spending, XP/Rank system, and comprehensive admin controls.
 - **Retention Dashboard System:** Loyalty tiers, badges, AI nudges, and abandonment emails.
-- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an admin dashboard for resolution.
-- **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized meta descriptions, alt text, and H1 tags (admin-only, human approval, async processing).
-- **Comprehensive Messaging System:** Private messaging (1-on-1 and group chats) with file attachments, reactions, read receipts, typing indicators, full-text search, privacy, spam prevention, and admin moderation. Real-time updates via WebSocket and Replit Object Storage.
-- **Feature Flag System:** Enterprise-grade feature flag infrastructure for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls, with a robust Page Control System.
-- **Admin Dashboards:** Real-time analytics, user management, marketplace management, content moderation, security & safety, communications, support & tickets, and audit logging dashboards.
+- **Error Tracking & Monitoring System:** Comprehensive capture of frontend and backend errors with an admin dashboard.
+- **AI-Powered SEO Content Suggestions:** Gemini AI integration for generating SEO-optimized content (admin-only, human approval, async processing).
+- **Comprehensive Messaging System:** Private messaging (1-on-1 and group) with attachments, reactions, read receipts, typing indicators, full-text search, and moderation. Real-time updates via WebSocket and Replit Object Storage.
+- **Feature Flag System:** Enterprise-grade feature flags for controlled rollouts, including tri-state status, in-memory caching, "Coming Soon" pages, and admin dashboard controls with a Page Control System.
+- **Admin Dashboards:** Real-time analytics, user management, marketplace management, content moderation, security, communications, support, and audit logging.
 - **Operational Automation:** Critical cron jobs for coin expiration, fraud detection, treasury snapshots, and balance reconciliation.
-- **Rich Text Editor:** Enhanced TipTap editor with inline image insertion via toolbar, drag & drop, and paste from clipboard, including upload progress and responsive styling.
-- **Engagement Sidebars:** Responsive 3-column layout for thread creation page with static posting tips/guidelines and dynamic community stats, trending threads, and popular categories.
-- **Wallet System Integrity:** 100% wallet coverage, 99.99% balance accuracy, and comprehensive audit trail with dual-write requirement for `users.total_coins` and `user_wallet.balance`.
-- **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation for triggers, and admin analytics dashboard for fraud detection.
+- **Rich Text Editor:** Enhanced TipTap editor with inline image insertion via toolbar, drag & drop, and paste from clipboard.
+- **Engagement Sidebars:** Responsive 3-column layout for thread creation page with static posting tips/guidelines and dynamic community stats.
+- **Wallet System Integrity:** 100% wallet coverage, 99.99% balance accuracy, and comprehensive audit trail with dual-write requirement.
+- **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation, and admin analytics dashboard for fraud detection.
 
 ## External Dependencies
 

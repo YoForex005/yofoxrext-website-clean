@@ -755,7 +755,7 @@ export default function ThreadCreationWizard({ categorySlug = "general" }: Threa
                   </CardHeader>
                   <CardContent>
                     <article className="space-y-4">
-                      <h1 className="text-2xl font-bold">{watchedFields.title}</h1>
+                      <h1 className="text-2xl font-bold break-words">{watchedFields.title}</h1>
                       
                       <div className="flex flex-wrap gap-2">
                         <Badge>{THREAD_TYPE_LABELS[watchedFields.threadType].label}</Badge>
@@ -788,21 +788,27 @@ export default function ThreadCreationWizard({ categorySlug = "general" }: Threa
                         />
                       )}
                       
-                      <div className="prose prose-sm max-w-none">
+                      <div className="prose prose-sm max-w-none break-words">
                         <ReactMarkdown>{watchedFields.body || ''}</ReactMarkdown>
                       </div>
                       
                       {watchedFields.riskNote && (
                         <Alert>
                           <AlertCircle className="h-4 w-4" />
-                          <AlertDescription>{watchedFields.riskNote}</AlertDescription>
+                          <AlertDescription className="break-words">{watchedFields.riskNote}</AlertDescription>
                         </Alert>
                       )}
                       
                       {watchedFields.hashtags.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {watchedFields.hashtags.map((tag, index) => (
-                            <Badge key={index} variant="secondary">{tag}</Badge>
+                            <Badge 
+                              key={index} 
+                              variant="secondary" 
+                              className="!inline-block !whitespace-normal break-all max-w-full"
+                            >
+                              {tag}
+                            </Badge>
                           ))}
                         </div>
                       )}
