@@ -47,7 +47,13 @@ async function seed() {
     // If not found, try getting by username
     demoUser = await storage.getUserByUsername("demo") || await storage.getUserByUsername("demo-user");
     if (!demoUser) {
-      throw new Error(`Demo user not found. Please create a user with ID '${DEMO_USER_ID}' first.`);
+      // Create demo user if it doesn't exist
+      console.log("📝 Creating demo user...");
+      demoUser = await storage.createUser({
+        username: "demo",
+        password: "password123",
+      });
+      console.log(`✅ Demo user created with ID: ${demoUser.id}`);
     }
   }
 
