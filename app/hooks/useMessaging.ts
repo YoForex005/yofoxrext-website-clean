@@ -229,7 +229,8 @@ export function useCreateGroupConversation() {
       groupName: string;
       groupDescription?: string;
     }) => {
-      return await apiRequest('POST', '/api/conversations/group', data);
+      const response = await apiRequest('POST', '/api/conversations/group', data);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });

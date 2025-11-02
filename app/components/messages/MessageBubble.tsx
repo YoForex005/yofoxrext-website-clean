@@ -94,12 +94,9 @@ export function MessageBubble({
 
     setIsSubmittingReport(true);
     try {
-      await apiRequest(`/api/messages/${message.id}/report`, {
-        method: 'POST',
-        body: JSON.stringify({
-          reason: reportReason,
-          description: reportDescription,
-        }),
+      await apiRequest('POST', `/api/messages/${message.id}/report`, {
+        reason: reportReason,
+        description: reportDescription,
       });
 
       toast({
