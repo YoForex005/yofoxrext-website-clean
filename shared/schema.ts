@@ -1277,6 +1277,8 @@ export const supportTickets = pgTable("support_tickets", {
   satisfactionComment: text("satisfaction_comment"),
   satisfactionSubmittedAt: timestamp("satisfaction_submitted_at"),
   lastAdminResponderId: varchar("last_admin_responder_id").references(() => users.id),
+  tags: text("tags").array(),
+  attachments: text("attachments").array(),
   lastMessageAt: timestamp("last_message_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

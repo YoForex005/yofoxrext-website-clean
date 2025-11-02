@@ -8172,6 +8172,35 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  app.post('/api/admin/security/ip-bans', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const validated = banIpSchema.parse(req.body);
+      const ban = await storage.createIpBan({
+        ipAddress: validated.ipAddress,
+        reason: validated.reason,
+        bannedBy: getAuthenticatedUserId(req),
+        expiresAt: validated.hours ? new Date(Date.now() + validated.hours * 60 * 60 * 1000) : undefined,
+        isActive: true
+      });
+      res.json(ban);
+    } catch (error: any) {
+      console.error('Error banning IP:', error);
+      res.status(400).json({ message: error.message || 'Failed to ban IP' });
+    }
+  });
+
+  app.delete('/api/admin/security/ip-bans/:id', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      await storage.removeIpBan(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing IP ban:', error);
+      res.status(500).json({ message: 'Failed to remove IP ban' });
+    }
+  });
+
   // Admin Action Logs
   app.get('/api/admin/logs/actions', isAuthenticated, adminOperationLimiter, async (req, res) => {
     if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
@@ -8294,6 +8323,125 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  app.post('/api/admin/performance/record', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const { name, value, type } = req.body;
+      const metric = await storage.recordPerformanceMetric({
+        metricName: name,
+        value,
+        metricType: type || 'gauge',
+        timestamp: new Date()
+      });
+      res.json({ success: true, metric });
+    } catch (error) {
+      console.error('Error recording performance metric:', error);
+      res.status(500).json({ message: 'Failed to record metric' });
+    }
+  });
+
+  // Admin AI & Automation
+  // AI Moderation endpoints
+  app.get('/api/admin/ai/moderation-stats', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real AI moderation stats
+      res.json({
+        accuracyRate: 94.2,
+        falsePositives: 12,
+        falseNegatives: 8,
+        timeSavedHours: 246
+      });
+    } catch (error) {
+      console.error('Error fetching moderation stats:', error);
+      res.status(500).json({ message: 'Failed to fetch moderation stats' });
+    }
+  });
+
+  app.get('/api/admin/ai/moderation-decisions', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real moderation decisions
+      res.json([
+        {
+          id: '1',
+          contentPreview: 'Check out this trading strategy...',
+          decision: 'approved',
+          confidence: 95
+        }
+      ]);
+    } catch (error) {
+      console.error('Error fetching moderation decisions:', error);
+      res.status(500).json({ message: 'Failed to fetch moderation decisions' });
+    }
+  });
+
+  app.get('/api/admin/ai/sentiment-distribution', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real sentiment analysis
+      res.json([
+        { name: 'Positive', value: 65 },
+        { name: 'Neutral', value: 25 },
+        { name: 'Negative', value: 10 }
+      ]);
+    } catch (error) {
+      console.error('Error fetching sentiment distribution:', error);
+      res.status(500).json({ message: 'Failed to fetch sentiment distribution' });
+    }
+  });
+
+  app.get('/api/admin/ai/spam-metrics', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real spam metrics
+      res.json({
+        accuracy: 92.5,
+        blocked: 342,
+        flagged: 28
+      });
+    } catch (error) {
+      console.error('Error fetching spam metrics:', error);
+      res.status(500).json({ message: 'Failed to fetch spam metrics' });
+    }
+  });
+
+  app.get('/api/admin/ai/flagged-content', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real flagged content
+      res.json([
+        {
+          id: '1',
+          contentPreview: 'CLICK HERE FOR FREE MONEY!!!',
+          spamScore: 98.2,
+          authorUsername: 'spammer123',
+          flaggedAt: new Date().toISOString()
+        }
+      ]);
+    } catch (error) {
+      console.error('Error fetching flagged content:', error);
+      res.status(500).json({ message: 'Failed to fetch flagged content' });
+    }
+  });
+
+  app.post('/api/admin/ai/spam-detection', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const { text } = req.body;
+      // Use actual spam detection service
+      const score = await spamDetection.detectSpam(text || '');
+      res.json({
+        isSpam: score > 0.7,
+        score,
+        confidence: score * 100
+      });
+    } catch (error) {
+      console.error('Error detecting spam:', error);
+      res.status(500).json({ message: 'Failed to detect spam' });
+    }
+  });
+
   // Admin Automation
   app.get('/api/admin/automation/rules', isAuthenticated, adminOperationLimiter, async (req, res) => {
     if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
@@ -8326,6 +8474,84 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('Error updating automation rule:', error);
       res.status(500).json({ message: 'Failed to update automation rule' });
+    }
+  });
+
+  // Admin Schema Validation
+  app.get('/api/admin/schema/stats', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real schema validation stats
+      res.json({
+        totalPages: 150,
+        validPages: 142,
+        invalidPages: 3,
+        warningPages: 5,
+        lastValidationRun: new Date().toISOString(),
+        schemaTypes: [
+          { type: 'Article', count: 45, validCount: 42 },
+          { type: 'Product', count: 38, validCount: 37 },
+          { type: 'Person', count: 32, validCount: 32 },
+          { type: 'Organization', count: 15, validCount: 14 }
+        ]
+      });
+    } catch (error) {
+      console.error('Error fetching schema stats:', error);
+      res.status(500).json({ message: 'Failed to fetch schema stats' });
+    }
+  });
+
+  app.get('/api/admin/schema/logs', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock data - replace with real validation logs
+      res.json([
+        {
+          id: '1',
+          url: '/',
+          pageType: 'Homepage',
+          status: 'valid',
+          errorCount: 0,
+          warningCount: 0,
+          timestamp: new Date().toISOString()
+        }
+      ]);
+    } catch (error) {
+      console.error('Error fetching schema logs:', error);
+      res.status(500).json({ message: 'Failed to fetch schema logs' });
+    }
+  });
+
+  app.post('/api/admin/schema/validate-all', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      // Mock response - replace with real validation
+      res.json({
+        success: true,
+        message: 'Validation started',
+        jobId: 'validation-' + Date.now()
+      });
+    } catch (error) {
+      console.error('Error validating schemas:', error);
+      res.status(500).json({ message: 'Failed to validate schemas' });
+    }
+  });
+
+  app.post('/api/admin/schema/validate', isAuthenticated, adminOperationLimiter, async (req, res) => {
+    if (!isAdmin(req.user)) return res.status(403).json({ message: 'Admin access required' });
+    try {
+      const { url } = req.body;
+      // Mock response - replace with real validation
+      res.json({
+        url,
+        isValid: true,
+        schemaTypes: ['Organization', 'WebSite'],
+        errors: [],
+        warnings: []
+      });
+    } catch (error) {
+      console.error('Error validating schema:', error);
+      res.status(500).json({ message: 'Failed to validate schema' });
     }
   });
 
@@ -11954,6 +12180,135 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // ============================================================================
+  // EMAIL DASHBOARD API ROUTES (SINGULAR /email/ ALIASES FOR FRONTEND COMPATIBILITY)
+  // Bug Fix: Frontend calls /api/admin/email/* (singular) but routes were /emails/ (plural)
+  // ============================================================================
+
+  // GET /api/admin/email/queue - Get email queue (alias for /emails/queue)
+  app.get("/api/admin/email/queue", isAdminMiddleware, async (req, res) => {
+    try {
+      const queue = await storage.getEmailQueue();
+      res.json(queue);
+    } catch (error: any) {
+      console.error("[Email Admin] Error fetching email queue:", error);
+      res.status(500).json({ error: "Failed to fetch email queue" });
+    }
+  });
+
+  // GET /api/admin/email/sent - Get sent emails (alias, uses logs with sent filter)
+  app.get("/api/admin/email/sent", isAdminMiddleware, async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const logs = await storage.getEmailLogs({
+        status: 'sent',
+        limit: limit ? parseInt(limit as string) : 100,
+      });
+      res.json(logs);
+    } catch (error: any) {
+      console.error("[Email Admin] Error fetching sent emails:", error);
+      res.status(500).json({ error: "Failed to fetch sent emails" });
+    }
+  });
+
+  // GET /api/admin/email/stats - Get email statistics (alias for /emails/stats/:dateRange)
+  app.get("/api/admin/email/stats", isAdminMiddleware, async (req, res) => {
+    try {
+      const dateRange = req.query.dateRange ? parseInt(req.query.dateRange as string) : 7;
+      const stats = await storage.getEmailStats(dateRange);
+      res.json(stats);
+    } catch (error: any) {
+      console.error("[Email Admin] Error fetching email stats:", error);
+      res.status(500).json({ error: "Failed to fetch email stats" });
+    }
+  });
+
+  // POST /api/admin/email/send - Send test email (alias)
+  app.post("/api/admin/email/send", isAdminMiddleware, async (req, res) => {
+    try {
+      const adminId = getAuthenticatedUserId(req);
+      const { recipientEmail, subject, content } = req.body;
+
+      if (!recipientEmail || !subject || !content) {
+        return res.status(400).json({ 
+          error: "recipientEmail, subject, and content are required" 
+        });
+      }
+
+      await emailQueueService.queueEmail({
+        userId: adminId,
+        templateKey: 'test',
+        recipientEmail,
+        subject,
+        payload: { content },
+        priority: EmailPriority.HIGH,
+      });
+
+      await storage.createAdminAction({
+        adminId,
+        actionType: 'send_test_email',
+        targetType: 'email',
+        targetId: null,
+        details: { recipientEmail, subject },
+      });
+
+      res.json({ success: true, message: 'Test email queued successfully' });
+    } catch (error: any) {
+      console.error("[Email Admin] Error sending test email:", error);
+      res.status(500).json({ error: "Failed to send test email" });
+    }
+  });
+
+  // POST /api/admin/email/queue/pause - Pause/Resume email queue (alias)
+  app.post("/api/admin/email/queue/pause", isAdminMiddleware, async (req, res) => {
+    try {
+      const adminId = getAuthenticatedUserId(req);
+      const { paused } = req.body;
+
+      if (typeof paused !== 'boolean') {
+        return res.status(400).json({ error: "paused must be a boolean" });
+      }
+
+      await storage.toggleEmailQueue(paused);
+
+      await storage.createAdminAction({
+        adminId,
+        actionType: paused ? 'pause_email_queue' : 'resume_email_queue',
+        targetType: 'system',
+        targetId: null,
+        details: {},
+      });
+
+      res.json({ success: true, paused });
+    } catch (error: any) {
+      console.error("[Email Admin] Error toggling email queue:", error);
+      res.status(500).json({ error: "Failed to toggle email queue" });
+    }
+  });
+
+  // POST /api/admin/email/queue/clear - Clear email queue (alias)
+  app.post("/api/admin/email/queue/clear", isAdminMiddleware, async (req, res) => {
+    try {
+      const adminId = getAuthenticatedUserId(req);
+      const { status } = req.body;
+
+      const cleared = await storage.clearEmailQueue(status);
+
+      await storage.createAdminAction({
+        adminId,
+        actionType: 'clear_email_queue',
+        targetType: 'system',
+        targetId: null,
+        details: { status, count: cleared },
+      });
+
+      res.json({ success: true, cleared });
+    } catch (error: any) {
+      console.error("[Email Admin] Error clearing email queue:", error);
+      res.status(500).json({ error: "Failed to clear email queue" });
+    }
+  });
+
   // ============================================
   // BOT MANAGEMENT & ECONOMY CONTROL ENDPOINTS
   // ============================================
@@ -15332,14 +15687,14 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Calculate total revenue and platform fees
       const revenueData = await db
         .select({
-          totalAmount: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
-          totalPlatformFee: sql<string>`COALESCE(SUM(${financialTransactions.platformFee}), 0)`,
+          totalAmount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
+          totalPlatformFee: sql<string>`0`,
         })
-        .from(financialTransactions)
+        .from(coinTransactions)
         .where(
           and(
-            gte(financialTransactions.occurredAt, startDate),
-            eq(financialTransactions.status, 'completed')
+            gte(coinTransactions.createdAt, startDate),
+            eq(coinTransactions.status, 'completed')
           )
         );
 
@@ -15355,33 +15710,33 @@ export async function registerRoutes(app: Express): Promise<Express> {
       // Calculate total transactions
       const totalTransactions = await db
         .select({ count: count() })
-        .from(financialTransactions)
-        .where(gte(financialTransactions.occurredAt, startDate));
+        .from(coinTransactions)
+        .where(gte(coinTransactions.createdAt, startDate));
 
       // Calculate today's transactions
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
       const todayTransactions = await db
         .select({ count: count() })
-        .from(financialTransactions)
-        .where(gte(financialTransactions.occurredAt, todayStart));
+        .from(coinTransactions)
+        .where(gte(coinTransactions.createdAt, todayStart));
 
       // Find top earner
       const topEarner = await db
         .select({
           username: users.username,
-          amount: sql<string>`COALESCE(SUM(${financialTransactions.netAmount}), 0)`,
+          amount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
         })
-        .from(financialTransactions)
-        .innerJoin(users, eq(financialTransactions.userId, users.id))
+        .from(coinTransactions)
+        .innerJoin(users, eq(coinTransactions.userId, users.id))
         .where(
           and(
-            gte(financialTransactions.occurredAt, startDate),
-            eq(financialTransactions.transactionType, 'marketplace_sale')
+            gte(coinTransactions.createdAt, startDate),
+            eq(coinTransactions.type, 'earn')
           )
         )
         .groupBy(users.id, users.username)
-        .orderBy(desc(sql`COALESCE(SUM(${financialTransactions.netAmount}), 0)`))
+        .orderBy(desc(sql`COALESCE(SUM(${coinTransactions.amount}), 0)`))
         .limit(1);
 
       res.json({
@@ -15422,21 +15777,21 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       const trendData = await db
         .select({
-          date: sql<string>`DATE(${financialTransactions.occurredAt})`,
-          totalRevenue: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
-          platformFee: sql<string>`COALESCE(SUM(${financialTransactions.platformFee}), 0)`,
-          netPayout: sql<string>`COALESCE(SUM(${financialTransactions.netAmount}), 0)`,
+          date: sql<string>`DATE(${coinTransactions.createdAt})`,
+          totalRevenue: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
+          platformFee: sql<string>`0`,
+          netPayout: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
           count: count(),
         })
-        .from(financialTransactions)
+        .from(coinTransactions)
         .where(
           and(
-            gte(financialTransactions.occurredAt, startDate),
-            eq(financialTransactions.status, 'completed')
+            gte(coinTransactions.createdAt, startDate),
+            eq(coinTransactions.status, 'completed')
           )
         )
-        .groupBy(sql`DATE(${financialTransactions.occurredAt})`)
-        .orderBy(asc(sql`DATE(${financialTransactions.occurredAt})`));
+        .groupBy(sql`DATE(${coinTransactions.createdAt})`)
+        .orderBy(asc(sql`DATE(${coinTransactions.createdAt})`));
 
       res.json(trendData.map(row => ({
         date: row.date,
@@ -15464,19 +15819,19 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       const sourcesData = await db
         .select({
-          source: financialTransactions.transactionType,
-          amount: sql<string>`COALESCE(SUM(${financialTransactions.amount}), 0)`,
+          source: coinTransactions.type,
+          amount: sql<string>`COALESCE(SUM(${coinTransactions.amount}), 0)`,
           count: count(),
         })
-        .from(financialTransactions)
+        .from(coinTransactions)
         .where(
           and(
-            gte(financialTransactions.occurredAt, startDate),
-            eq(financialTransactions.status, 'completed')
+            gte(coinTransactions.createdAt, startDate),
+            eq(coinTransactions.status, 'completed')
           )
         )
-        .groupBy(financialTransactions.transactionType)
-        .orderBy(desc(sql`COALESCE(SUM(${financialTransactions.amount}), 0)`));
+        .groupBy(coinTransactions.type)
+        .orderBy(desc(sql`COALESCE(SUM(${coinTransactions.amount}), 0)`));
 
       res.json(sourcesData.map(row => ({
         source: row.source,
@@ -15655,29 +16010,29 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
       let query = db
         .select({
-          occurredAt: financialTransactions.occurredAt,
+          occurredAt: coinTransactions.createdAt,
           username: users.username,
-          transactionType: financialTransactions.transactionType,
-          amount: financialTransactions.amount,
-          currency: financialTransactions.currency,
-          platformFee: financialTransactions.platformFee,
-          netAmount: financialTransactions.netAmount,
-          status: financialTransactions.status,
-          description: financialTransactions.description,
+          transactionType: coinTransactions.type,
+          amount: coinTransactions.amount,
+          currency: sql<string>`'COINS'`,
+          platformFee: sql<number>`0`,
+          netAmount: coinTransactions.amount,
+          status: coinTransactions.status,
+          description: coinTransactions.description,
         })
-        .from(financialTransactions)
-        .innerJoin(users, eq(financialTransactions.userId, users.id));
+        .from(coinTransactions)
+        .innerJoin(users, eq(coinTransactions.userId, users.id));
 
       const conditions = [];
-      if (from) conditions.push(gte(financialTransactions.occurredAt, new Date(from)));
-      if (to) conditions.push(lte(financialTransactions.occurredAt, new Date(to)));
-      if (type !== 'all') conditions.push(eq(financialTransactions.transactionType, type as any));
+      if (from) conditions.push(gte(coinTransactions.createdAt, new Date(from)));
+      if (to) conditions.push(lte(coinTransactions.createdAt, new Date(to)));
+      if (type !== 'all') conditions.push(eq(coinTransactions.type, type as any));
 
       if (conditions.length > 0) {
         query = query.where(and(...conditions)) as any;
       }
 
-      const transactions = await query.orderBy(desc(financialTransactions.occurredAt));
+      const transactions = await query.orderBy(desc(coinTransactions.createdAt));
 
       // Generate CSV
       const csvHeaders = 'Date,User,Type,Amount,Currency,Platform Fee,Net Amount,Status,Description\n';
@@ -16683,6 +17038,18 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('Error getting campaign stats:', error);
       res.status(500).json({ error: 'Failed to get campaign stats' });
+    }
+  });
+
+  // GET /api/admin/communications/campaigns/:id/metrics - Alias for /stats (Bug Fix)
+  app.get("/api/admin/communications/campaigns/:id/metrics", isAdminMiddleware, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      const stats = await storage.getCampaignDeliveryStats(id);
+      res.json(stats);
+    } catch (error) {
+      console.error('Error getting campaign metrics:', error);
+      res.status(500).json({ error: 'Failed to get campaign metrics' });
     }
   });
 

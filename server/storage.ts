@@ -306,6 +306,7 @@ export interface IStorage {
   
   createCoinTransaction(transaction: InsertCoinTransaction): Promise<CoinTransaction>;
   getUserTransactions(userId: string, limit?: number): Promise<CoinTransaction[]>;
+  getUserCoinBalance(userId: string): Promise<number>;
   
   createRechargeOrder(order: InsertRechargeOrder): Promise<RechargeOrder>;
   getRechargeOrder(id: string): Promise<RechargeOrder | undefined>;
@@ -3633,6 +3634,12 @@ export class MemStorage implements IStorage {
       .filter((t) => t.userId === userId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
+  }
+
+  async getUserCoinBalance(userId: string): Promise<number> {
+    const user = this.users.get(userId);
+    if (!user) return 0;
+    return user.totalCoins || 0;
   }
 
   async createRechargeOrder(insertOrder: InsertRechargeOrder): Promise<RechargeOrder> {
@@ -7652,6 +7659,12 @@ export class DrizzleStorage implements IStorage {
       .limit(limit);
   }
 
+  async getUserCoinBalance(userId: string): Promise<number> {
+    const user = await this.getUser(userId);
+    if (!user) return 0;
+    return user.totalCoins || 0;
+  }
+
   async createRechargeOrder(insertOrder: InsertRechargeOrder): Promise<RechargeOrder> {
     const [order] = await db.insert(rechargeOrders).values({
       userId: insertOrder.userId,
@@ -10859,6 +10872,18 @@ export class DrizzleStorage implements IStorage {
   async banUser(userId: string, reason: string, bannedBy: string, duration?: number): Promise<void> {
     try {
       await db.transaction(async (tx) => {
+        // Update user status to banned with all required fields
+        await tx.update(users)
+          .set({
+            status: 'banned',
+            bannedAt: new Date(),
+            banReason: reason,
+            bannedBy: bannedBy,
+            suspendedUntil: duration ? new Date(Date.now() + duration * 3600000) : null
+          })
+          .where(eq(users.id, userId));
+        
+        // Create admin action audit log
         await tx.insert(adminActions).values({
           adminId: bannedBy,
           actionType: 'user_ban',
@@ -10867,6 +10892,14 @@ export class DrizzleStorage implements IStorage {
           details: { reason, duration },
           ipAddress: '0.0.0.0',
           userAgent: 'admin-dashboard',
+        });
+        
+        // Create audit log entry
+        await tx.insert(auditLogs).values({
+          userId: bannedBy,
+          action: 'ban_user',
+          targetId: userId,
+          details: { reason, hours: duration }
         });
       });
     } catch (error) {
