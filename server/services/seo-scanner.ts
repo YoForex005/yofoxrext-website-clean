@@ -266,7 +266,7 @@ class SeoScanner {
     try {
       const existing = await db.select()
         .from(seoScanHistory)
-        .where(eq(seoScanHistory.url, url))
+        .where(eq(seoScanHistory.pageUrl, url))
         .limit(1);
 
       const now = new Date();
@@ -275,27 +275,15 @@ class SeoScanner {
         await db.update(seoScanHistory)
           .set({
             lastScanAt: now,
-            lastScannedBy: triggeredBy,
-            scanId,
-            issuesFound,
-            metadata: {
-              scanDuration,
-              scanStatus: 'completed',
-            },
+            scanId: parseInt(scanId),
             updatedAt: now,
           })
-          .where(eq(seoScanHistory.url, url));
+          .where(eq(seoScanHistory.pageUrl, url));
       } else {
         await db.insert(seoScanHistory).values({
-          url,
+          pageUrl: url,
           lastScanAt: now,
-          lastScannedBy: triggeredBy,
-          scanId,
-          issuesFound,
-          metadata: {
-            scanDuration,
-            scanStatus: 'completed',
-          },
+          scanId: parseInt(scanId),
         });
       }
     } catch (error) {
@@ -331,7 +319,7 @@ class SeoScanner {
           .from(seoScanHistory)
           .where(
             and(
-              eq(seoScanHistory.url, url),
+              eq(seoScanHistory.pageUrl, url),
               gte(seoScanHistory.lastScanAt, oneHourAgo)
             )
           )
