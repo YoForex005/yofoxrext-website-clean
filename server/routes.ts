@@ -68,11 +68,31 @@ import {
   messageReactions,
   seoScanHistory,
   moderationEvents,
-  contentReports
+  contentReports,
+  userRankProgress,
+  rankTiers,
+  weeklyEarnings
 } from "../shared/schema.js";
 import { z } from "zod";
 import { db } from "./db.js";
 import { eq, and, gt, asc, desc, count, sql, gte, lte, lt, or, ne, ilike, isNotNull, isNull } from "drizzle-orm";
+
+// Validation schemas for Sweets endpoints
+const awardXpSchema = z.object({
+  userId: z.string().min(1, "userId is required"),
+  activity: z.string().min(1, "activity is required"),
+  xpAmount: z.number().int().positive("xpAmount must be a positive integer"),
+  metadata: z.record(z.any()).optional(),
+});
+
+const sweetsHistoryQuerySchema = z.object({
+  page: z.string().regex(/^\d+$/).optional().default("1"),
+  limit: z.string().regex(/^\d+$/).optional().default("20"),
+});
+
+const sweetsLeaderboardQuerySchema = z.object({
+  limit: z.string().regex(/^\d+$/).optional().default("10"),
+});
 import {
   sanitizeRequestBody,
   validateCoinAmount,
@@ -159,6 +179,7 @@ import {
 } from './services/botBehaviorEngine.js';
 import { seoFixOrchestrator } from './services/seo-fixer.js';
 import { featureFlagService } from './services/featureFlagService.js';
+import { getSweetsService } from './services/sweetsService.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -15766,6 +15787,191 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error) {
       console.error('[Sweets Admin] Error updating fraud signal:', error);
       res.status(500).json({ error: 'Failed to update fraud signal' });
+    }
+  });
+
+  // ===== SWEETS RANK & XP SYSTEM API ROUTES =====
+  
+  // GET /api/sweets/progress - Get authenticated user's XP progress
+  app.get("/api/sweets/progress", sweetsAuthMiddleware, async (req, res) => {
+    try {
+      const user = req.user as User;
+      const sweetsService = getSweetsService(storage);
+      
+      const progress = await sweetsService.getUserProgress(user.id);
+      
+      res.json({
+        currentXp: progress.currentXp,
+        weeklyXp: progress.weeklyXp,
+        currentRank: progress.currentRank,
+        nextRank: progress.nextRank,
+        xpNeededForNext: progress.xpToNextRank,
+        featureUnlocks: progress.featureUnlocks,
+        weekStartDate: progress.weekStartDate,
+      });
+    } catch (error) {
+      console.error('[Sweets XP] Error fetching user progress:', error);
+      res.status(500).json({ error: 'Failed to fetch XP progress' });
+    }
+  });
+
+  // POST /api/sweets/award - Award XP to a user (admin or superadmin only)
+  app.post("/api/sweets/award", sweetsAuthMiddleware, async (req, res) => {
+    try {
+      const user = req.user as User;
+      
+      // Verify admin or superadmin access only (NOT moderators)
+      if (user.role !== "admin" && user.role !== "superadmin") {
+        return res.status(403).json({ error: "Only admins can award XP" });
+      }
+      
+      // Validate request body
+      const validatedData = awardXpSchema.parse(req.body);
+      const { userId, activity, xpAmount, metadata } = validatedData;
+      
+      const sweetsService = getSweetsService(storage);
+      const result = await sweetsService.awardXp(userId, activity, xpAmount, metadata);
+      
+      if (!result.success) {
+        return res.status(400).json({ 
+          error: 'Failed to award XP', 
+          reason: result.capReached ? 'Weekly XP cap reached' : 'Invalid XP amount' 
+        });
+      }
+      
+      res.status(201).json({
+        success: result.success,
+        xpAwarded: result.xpAwarded,
+        totalXp: result.totalXp,
+        weeklyXp: result.weeklyXp,
+        rankChanged: result.rankChanged,
+        newRank: result.newRank,
+        newlyUnlockedFeatures: result.newUnlocks,
+        capReached: result.capReached,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid request data",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets XP] Error awarding XP:', error);
+      res.status(500).json({ error: 'Failed to award XP' });
+    }
+  });
+
+  // GET /api/sweets/ranks - Get all rank tiers (public)
+  app.get("/api/sweets/ranks", async (req, res) => {
+    try {
+      const ranks = await storage.getAllRankTiers();
+      res.json(ranks);
+    } catch (error) {
+      console.error('[Sweets XP] Error fetching rank tiers:', error);
+      res.status(500).json({ error: 'Failed to fetch rank tiers' });
+    }
+  });
+
+  // GET /api/sweets/feature-unlocks/:rankId - Get feature unlocks for a rank (public)
+  app.get("/api/sweets/feature-unlocks/:rankId", async (req, res) => {
+    try {
+      const rankId = parseInt(req.params.rankId, 10);
+      
+      if (isNaN(rankId)) {
+        return res.status(400).json({ error: 'Invalid rankId - must be an integer' });
+      }
+      
+      const unlocks = await storage.getFeatureUnlocksByRank(rankId);
+      res.json(unlocks);
+    } catch (error) {
+      console.error('[Sweets XP] Error fetching feature unlocks:', error);
+      res.status(500).json({ error: 'Failed to fetch feature unlocks' });
+    }
+  });
+
+  // GET /api/sweets/history - Get user's XP transaction history (authenticated)
+  app.get("/api/sweets/history", sweetsAuthMiddleware, async (req, res) => {
+    try {
+      const user = req.user as User;
+      
+      // Validate query parameters
+      const validatedQuery = sweetsHistoryQuerySchema.parse(req.query);
+      const page = parseInt(validatedQuery.page, 10);
+      const limit = Math.min(parseInt(validatedQuery.limit, 10), 100); // Max 100 per page
+      const offset = (page - 1) * limit;
+      
+      // Query weekly_earnings table for XP history
+      const [transactions, countResult] = await Promise.all([
+        db
+          .select()
+          .from(weeklyEarnings)
+          .where(eq(weeklyEarnings.userId, user.id))
+          .orderBy(desc(weeklyEarnings.weekStartDate))
+          .limit(limit)
+          .offset(offset),
+        db
+          .select({ count: count() })
+          .from(weeklyEarnings)
+          .where(eq(weeklyEarnings.userId, user.id)),
+      ]);
+      
+      const total = countResult[0]?.count || 0;
+      
+      res.json({
+        transactions,
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid query parameters",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets XP] Error fetching XP history:', error);
+      res.status(500).json({ error: 'Failed to fetch XP history' });
+    }
+  });
+
+  // GET /api/sweets/leaderboard - Get top users by XP (public)
+  app.get("/api/sweets/leaderboard", async (req, res) => {
+    try {
+      // Validate query parameters
+      const validatedQuery = sweetsLeaderboardQuerySchema.parse(req.query);
+      const limit = Math.min(parseInt(validatedQuery.limit, 10), 100); // Max 100 users
+      
+      // Query user_rank_progress joined with users and rankTiers
+      const leaderboard = await db
+        .select({
+          userId: userRankProgress.userId,
+          username: users.username,
+          totalXp: userRankProgress.currentXp,
+          weeklyXp: userRankProgress.weeklyXp,
+          currentRankId: userRankProgress.currentRankId,
+          rankName: rankTiers.name,
+          rankColor: rankTiers.color,
+          rankIcon: rankTiers.icon,
+        })
+        .from(userRankProgress)
+        .innerJoin(users, eq(userRankProgress.userId, users.id))
+        .innerJoin(rankTiers, eq(userRankProgress.currentRankId, rankTiers.id))
+        .where(eq(users.status, 'active')) // Only active users
+        .orderBy(desc(userRankProgress.currentXp))
+        .limit(limit);
+      
+      res.json(leaderboard);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Invalid query parameters",
+          details: error.errors 
+        });
+      }
+      console.error('[Sweets XP] Error fetching leaderboard:', error);
+      res.status(500).json({ error: 'Failed to fetch leaderboard' });
     }
   });
 
