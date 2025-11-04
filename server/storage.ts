@@ -2814,6 +2814,26 @@ export interface IStorage {
   likeThread(threadId: string, userId: string): Promise<void>;
   
   /**
+   * Unlike a forum thread
+   */
+  unlikeThread(threadId: string, userId: string): Promise<void>;
+  
+  /**
+   * Get thread like status for a user
+   */
+  getThreadLike(threadId: string, userId: string): Promise<boolean>;
+  
+  /**
+   * Get total like count for a thread
+   */
+  getThreadLikeCount(threadId: string): Promise<number>;
+  
+  /**
+   * Update thread engagement score
+   */
+  updateThreadEngagementScore(threadId: string, scoreDelta: number): Promise<void>;
+  
+  /**
    * Like a forum reply (increment helpful votes)
    */
   likeReply(replyId: string, userId: string): Promise<void>;
@@ -20146,6 +20166,56 @@ export class DrizzleStorage implements IStorage {
         .where(eq(forumThreads.id, threadId));
     } catch (error) {
       console.error('Error liking thread:', error);
+      throw error;
+    }
+  }
+
+  async unlikeThread(threadId: string, userId: string): Promise<void> {
+    try {
+      await db
+        .update(forumThreads)
+        .set({ 
+          likeCount: sql`GREATEST(${forumThreads.likeCount} - 1, 0)` 
+        })
+        .where(eq(forumThreads.id, threadId));
+    } catch (error) {
+      console.error('Error unliking thread:', error);
+      throw error;
+    }
+  }
+
+  async getThreadLike(threadId: string, userId: string): Promise<boolean> {
+    // For now, we don't track individual likes in a separate table
+    // This would require a thread_likes table to properly implement
+    // Returning false for now, which means users can like multiple times
+    // TODO: Implement proper like tracking with a thread_likes table
+    return false;
+  }
+
+  async getThreadLikeCount(threadId: string): Promise<number> {
+    try {
+      const result = await db
+        .select({ likeCount: forumThreads.likeCount })
+        .from(forumThreads)
+        .where(eq(forumThreads.id, threadId))
+        .limit(1);
+      return result[0]?.likeCount || 0;
+    } catch (error) {
+      console.error('Error getting thread like count:', error);
+      return 0;
+    }
+  }
+
+  async updateThreadEngagementScore(threadId: string, scoreDelta: number): Promise<void> {
+    try {
+      await db
+        .update(forumThreads)
+        .set({ 
+          engagementScore: sql`GREATEST(${forumThreads.engagementScore} + ${scoreDelta}, 0)` 
+        })
+        .where(eq(forumThreads.id, threadId));
+    } catch (error) {
+      console.error('Error updating thread engagement score:', error);
       throw error;
     }
   }

@@ -5626,6 +5626,117 @@ export async function registerRoutes(app: Express): Promise<Express> {
     res.json(replies);
   });
 
+  // Like/unlike a thread
+  app.post("/api/threads/:threadId/like", isAuthenticated, async (req, res) => {
+    try {
+      const { threadId } = req.params;
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      
+      // Get the thread
+      const thread = await storage.getForumThreadById(threadId);
+      if (!thread) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+      
+      // Check if user has already liked
+      const existingLike = await storage.getThreadLike(threadId, authenticatedUserId);
+      
+      if (existingLike) {
+        // Unlike the thread
+        await storage.unlikeThread(threadId, authenticatedUserId);
+        
+        // Update engagement score
+        await storage.updateThreadEngagementScore(threadId, -10);
+        
+        return res.json({ 
+          liked: false, 
+          likeCount: await storage.getThreadLikeCount(threadId),
+          message: "Thread unliked" 
+        });
+      } else {
+        // Like the thread
+        await storage.likeThread(threadId, authenticatedUserId);
+        
+        // Update engagement score
+        await storage.updateThreadEngagementScore(threadId, 10);
+        
+        // Award coins to the thread author if it's not the same user
+        if (thread.authorId !== authenticatedUserId) {
+          try {
+            const coinResult = await coinTransactionService.executeTransaction({
+              userId: thread.authorId,
+              amount: 1, // 1 coin for receiving a like
+              trigger: COIN_TRIGGERS.FORUM_LIKE_RECEIVED,
+              channel: COIN_CHANNELS.FORUM,
+              description: `Thread liked: ${thread.title}`,
+              metadata: {
+                threadId: thread.id,
+                threadSlug: thread.slug,
+                likedByUserId: authenticatedUserId,
+                threadTitle: thread.title
+              },
+              idempotencyKey: `thread-like-${threadId}-${authenticatedUserId}`
+            });
+            
+            if (!coinResult.success) {
+              console.error('Failed to award coins for thread like:', coinResult.error);
+            }
+            
+            // Send like notification email
+            try {
+              await sendLikeNotificationEmail(thread.authorId, {
+                contentType: 'thread',
+                contentTitle: thread.title,
+                contentUrl: `/thread/${thread.categorySlug}/${thread.slug}`,
+                likedByUsername: (await storage.getUserById(authenticatedUserId))?.username || 'Someone'
+              });
+            } catch (emailError) {
+              console.error('Failed to send like notification email:', emailError);
+            }
+          } catch (error) {
+            console.error('Failed to award coins for thread like:', error);
+          }
+        }
+        
+        // Create activity feed entry
+        await storage.createActivity({
+          userId: authenticatedUserId,
+          activityType: "thread_liked",
+          entityType: "thread",
+          entityId: thread.id,
+          title: `Liked thread: ${thread.title}`,
+          description: thread.title,
+        });
+        
+        return res.json({ 
+          liked: true, 
+          likeCount: await storage.getThreadLikeCount(threadId),
+          message: "Thread liked",
+          coinsAwarded: thread.authorId !== authenticatedUserId ? 1 : 0
+        });
+      }
+    } catch (error) {
+      console.error('Thread like error:', error);
+      res.status(500).json({ error: "Failed to like/unlike thread" });
+    }
+  });
+
+  // Get thread like status for current user
+  app.get("/api/threads/:threadId/like", isAuthenticated, async (req, res) => {
+    try {
+      const { threadId } = req.params;
+      const authenticatedUserId = getAuthenticatedUserId(req);
+      
+      const liked = await storage.getThreadLike(threadId, authenticatedUserId);
+      const likeCount = await storage.getThreadLikeCount(threadId);
+      
+      res.json({ liked: !!liked, likeCount });
+    } catch (error) {
+      console.error('Get thread like status error:', error);
+      res.status(500).json({ error: "Failed to get like status" });
+    }
+  });
+
   // Download thread attachment with Sweets payment
   app.post("/api/threads/:threadId/attachments/:attachmentId/download", isAuthenticated, coinOperationLimiter, async (req, res) => {
     try {
