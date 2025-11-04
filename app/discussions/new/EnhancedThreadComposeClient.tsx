@@ -1080,8 +1080,16 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     mutationFn: async (data: ThreadFormData) => {
       await requireAuth();
       
+      // Extract plain text from contentHtml for the body field
+      const plainTextBody = data.contentHtml
+        .replace(/<[^>]*>/g, '') // Remove HTML tags
+        .replace(/&nbsp;/g, ' ') // Replace HTML spaces
+        .replace(/&[^;]+;/g, '') // Remove other HTML entities
+        .trim();
+
       const threadData = {
         ...data,
+        body: plainTextBody || data.contentHtml, // Use plain text or fallback to HTML
         attachments: attachments.map(a => ({
           id: a.id,
           filename: a.file.name,
