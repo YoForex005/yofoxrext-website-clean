@@ -188,7 +188,7 @@ const threadFormSchema = z.object({
       },
       { message: "Avoid ALL CAPS - it's easier to read in normal case" }
     ),
-  contentHtml: z.string().min(150, "Add a bit more detail (min 150 characters)"),
+  contentHtml: z.string().min(100, "Content must be at least 100 characters"),
   categorySlug: z.string().min(1, "Please select a category"),
   hashtags: z.array(z.string()).max(10).default([]),
   attachments: z.array(z.object({
