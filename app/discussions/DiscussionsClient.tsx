@@ -173,10 +173,10 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
     
     // Update the URL without causing a page refresh
     const queryString = newSearchParams.toString();
-    const newPath = queryString ? `?${queryString}` : '';
+    const newUrl = queryString ? `/discussions?${queryString}` : '/discussions';
     
-    // Use router.replace to update URL without adding to history
-    window.history.replaceState(null, '', `/discussions${newPath}`);
+    // Use Next.js App Router to update URL without full navigation
+    router.push(newUrl, { scroll: false });
   };
   
   // Handle filter changes with URL updates
