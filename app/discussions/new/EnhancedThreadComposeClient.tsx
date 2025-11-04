@@ -546,8 +546,15 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
         const data = await res.json();
         const imageUrl = data.urls?.[0];
         if (imageUrl && editor) {
-          // Add the image to the editor
-          editor.chain().focus().setImage({ src: imageUrl }).run();
+          // Add the image to the editor with initial dimensions
+          editor.chain()
+            .focus()
+            .setImage({ 
+              src: imageUrl,
+              alt: file.name,
+              title: file.name,
+            })
+            .run();
           toast({
             title: "Image uploaded!",
             description: "Image inserted at cursor position",
@@ -570,6 +577,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
       setIsUploadingImage(false);
     }
   };
+  
 
   // Trigger file picker for image upload
   const triggerImageUpload = () => {
@@ -609,12 +617,42 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           class: 'underline',
         },
       }),
-      Image.configure({
+      Image.extend({
+        addAttributes() {
+          return {
+            ...this.parent?.(),
+            width: {
+              default: null,
+              renderHTML: attributes => {
+                if (attributes.width) {
+                  return {
+                    width: attributes.width,
+                  };
+                }
+                return {};
+              },
+            },
+            height: {
+              default: null,
+              renderHTML: attributes => {
+                if (attributes.height) {
+                  return {
+                    height: attributes.height,
+                  };
+                }
+                return {};
+              },
+            },
+          };
+        },
+      }).configure({
         inline: true,
-        allowBase64: false,
+        allowBase64: true, // Allow base64 for drag & drop
         HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg my-2 cursor-pointer hover:shadow-lg transition-shadow',
+          class: 'tiptap-image max-w-full h-auto rounded-lg my-4 mx-auto block cursor-move hover:shadow-lg transition-shadow',
           style: 'max-height: 500px; object-fit: contain;',
+          loading: 'lazy',
+          draggable: 'true',
         },
       }),
       Placeholder.configure({
@@ -749,10 +787,12 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
 
   const createThreadMutation = useMutation({
     mutationFn: async (data: ThreadFormData) => {
-      // Sanitize HTML content before sending
+      // Sanitize HTML content before sending - ensure images are preserved
       const sanitizedContent = DOMPurify.sanitize(data.contentHtml, {
-        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img'],
-        ALLOWED_ATTR: ['href', 'src', 'alt', 'class'],
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'a', 'img', 'span', 'div'],
+        ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'title', 'width', 'height', 'style', 'loading', 'draggable'],
+        ALLOW_DATA_ATTR: true,
+        KEEP_CONTENT: true,
       });
 
       const payload = {

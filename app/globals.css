@@ -454,12 +454,72 @@
   text-decoration: underline;
 }
 
-.ProseMirror img {
+/* Enhanced TipTap Image Styles */
+.ProseMirror img,
+.ProseMirror .tiptap-image {
   max-width: 100%;
   height: auto;
-  border-radius: 0.375rem;
-  margin: 0.5rem 0;
+  border-radius: 0.5rem;
+  margin: 1rem auto;
   display: block;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.ProseMirror img:hover,
+.ProseMirror .tiptap-image:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: scale(1.01);
+}
+
+/* Selected image in editor */
+.ProseMirror img.ProseMirror-selectednode,
+.ProseMirror .tiptap-image.ProseMirror-selectednode {
+  outline: 3px solid hsl(var(--primary));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+}
+
+/* Inline images */
+.ProseMirror img[data-inline="true"] {
+  display: inline-block;
+  margin: 0 0.25rem;
+  vertical-align: middle;
+}
+
+/* Handle resize cursor */
+.ProseMirror img.resize-cursor-nw {
+  cursor: nw-resize;
+}
+
+.ProseMirror img.resize-cursor-ne {
+  cursor: ne-resize;
+}
+
+.ProseMirror img.resize-cursor-sw {
+  cursor: sw-resize;
+}
+
+.ProseMirror img.resize-cursor-se {
+  cursor: se-resize;
+}
+
+/* Image loading state */
+.ProseMirror img[data-loading="true"] {
+  opacity: 0.5;
+  filter: blur(2px);
+}
+
+/* Dragging state for images */
+.ProseMirror img.dragging {
+  opacity: 0.5;
+}
+
+/* Ensure prose styles don't override image styles */
+.prose img.tiptap-image {
+  margin-top: 1rem !important;
+  margin-bottom: 1rem !important;
 }
 
 .ProseMirror:focus {
