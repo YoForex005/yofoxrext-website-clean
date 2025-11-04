@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -46,6 +46,8 @@ export function ReplySection({
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const [likedReplies, setLikedReplies] = useState<Set<string>>(new Set());
+  const [likingInProgress, setLikingInProgress] = useState<Set<string>>(new Set());
   const { requireAuth, AuthPrompt } = useAuthPrompt("participate in discussions");
 
   // Main reply form
@@ -64,13 +66,26 @@ export function ReplySection({
     },
   });
 
-  // Fetch current user on mount
-  useState(() => {
+  // Fetch current user on mount and initialize liked replies
+  useEffect(() => {
     fetch('/api/me', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setUser(data))
+      .then((data) => {
+        setUser(data);
+        // Initialize liked replies from the server data
+        if (data && initialReplies) {
+          const liked = new Set<string>();
+          initialReplies.forEach((reply: any) => {
+            // Check if user has liked this reply (this info should come from backend)
+            if (reply.hasLiked || reply.userHasLiked) {
+              liked.add(reply.id);
+            }
+          });
+          setLikedReplies(liked);
+        }
+      })
       .catch(() => setUser(null));
-  });
+  }, [initialReplies]);
 
   const handleSubmitReply = async (data: ReplyFormValues, isNested = false) => {
     if (!user) {
@@ -117,17 +132,109 @@ export function ReplySection({
       return;
     }
 
+    // Prevent duplicate requests
+    if (likingInProgress.has(replyId)) return;
+    
+    // Check if already liked
+    const isLiked = likedReplies.has(replyId);
+    
+    // Update UI immediately for optimistic feedback
+    setLikingInProgress(prev => new Set(prev).add(replyId));
+    
+    // Update liked state immediately
+    if (!isLiked) {
+      setLikedReplies(prev => new Set(prev).add(replyId));
+      // Update the helpful count in the replies state
+      setReplies(prevReplies => 
+        prevReplies.map(reply => 
+          reply.id === replyId 
+            ? { ...reply, helpful: (reply.helpful || 0) + 1 }
+            : reply
+        )
+      );
+    } else {
+      // Unlike functionality (if backend supports it)
+      setLikedReplies(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(replyId);
+        return newSet;
+      });
+      // Update the helpful count in the replies state
+      setReplies(prevReplies => 
+        prevReplies.map(reply => 
+          reply.id === replyId 
+            ? { ...reply, helpful: Math.max(0, (reply.helpful || 0) - 1) }
+            : reply
+        )
+      );
+    }
+
     try {
       const response = await fetch(`/api/replies/${replyId}/helpful`, {
         method: 'POST',
         credentials: 'include',
       });
 
-      if (response.ok) {
-        window.location.reload();
+      if (!response.ok) {
+        // Revert the optimistic update if the request failed
+        if (!isLiked) {
+          setLikedReplies(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(replyId);
+            return newSet;
+          });
+          setReplies(prevReplies => 
+            prevReplies.map(reply => 
+              reply.id === replyId 
+                ? { ...reply, helpful: Math.max(0, (reply.helpful || 0) - 1) }
+                : reply
+            )
+          );
+        } else {
+          setLikedReplies(prev => new Set(prev).add(replyId));
+          setReplies(prevReplies => 
+            prevReplies.map(reply => 
+              reply.id === replyId 
+                ? { ...reply, helpful: (reply.helpful || 0) + 1 }
+                : reply
+            )
+          );
+        }
+        console.error('Failed to mark as helpful');
       }
     } catch (error) {
       console.error('Failed to mark as helpful:', error);
+      // Revert the optimistic update on error
+      if (!isLiked) {
+        setLikedReplies(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(replyId);
+          return newSet;
+        });
+        setReplies(prevReplies => 
+          prevReplies.map(reply => 
+            reply.id === replyId 
+              ? { ...reply, helpful: Math.max(0, (reply.helpful || 0) - 1) }
+              : reply
+          )
+        );
+      } else {
+        setLikedReplies(prev => new Set(prev).add(replyId));
+        setReplies(prevReplies => 
+          prevReplies.map(reply => 
+            reply.id === replyId 
+              ? { ...reply, helpful: (reply.helpful || 0) + 1 }
+              : reply
+          )
+        );
+      }
+    } finally {
+      // Remove from loading state
+      setLikingInProgress(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(replyId);
+        return newSet;
+      });
     }
   };
 
@@ -209,10 +316,13 @@ export function ReplySection({
                 variant="ghost"
                 size="sm"
                 onClick={() => handleMarkHelpful(reply.id)}
-                className="text-xs"
+                className={`text-xs ${likedReplies.has(reply.id) ? 'text-primary' : ''}`}
+                disabled={likingInProgress.has(reply.id)}
               >
-                <ThumbsUp className="h-3 w-3 mr-1" />
-                Helpful ({reply.helpfulCount || 0})
+                <ThumbsUp 
+                  className={`h-3 w-3 mr-1 ${likedReplies.has(reply.id) ? 'fill-current' : ''}`} 
+                />
+                Helpful ({reply.helpful || 0})
               </Button>
 
               {user && user.id === threadAuthorId && !reply.isAcceptedAnswer && (

@@ -97,6 +97,14 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Fixed Like Button Not Showing on Thread Replies
+- **Fixed Field Name Mismatch:** Changed from `helpfulCount` to `helpful` to match backend field name
+- **Implemented Optimistic Updates:** Likes now show immediately without page reload
+- **Added Like Tracking:** Added state management to track which replies user has liked
+- **Visual Feedback:** Added filled thumbs up icon and color highlighting for liked replies
+- **Files Changed:** `app/thread/[...slug]/ReplySection.tsx`
+- **Result:** Like button now provides instant feedback and properly tracks like status
+
 ### November 4, 2025 - Fixed All Navigation Issues from Recent Discussions Page
 - **Fixed Thread Navigation Links:** Updated all thread links to use `/thread/[categorySlug]/[threadSlug]` format
   - Main discussion grid cards now navigate correctly
