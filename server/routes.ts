@@ -14707,6 +14707,329 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // TODO: Queue warning notifications with EmailPriority.MEDIUM
 
   // ============================================================================
+  // EA MARKETPLACE FILE UPLOAD ENDPOINTS
+  // ============================================================================
+  
+  // Endpoint to upload EA files to Object Storage
+  app.post("/api/marketplace/upload-ea", isAuthenticated, marketplaceActionLimiter, async (req, res) => {
+    const authenticatedUserId = (req as any).session?.userID;
+    
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      // Configure multer for EA file upload
+      const uploadEA = multer({
+        limits: { 
+          fileSize: 50 * 1024 * 1024, // 50MB limit
+        },
+        fileFilter: (req, file, cb) => {
+          // Accept only EA file types
+          const allowedExt = ['.ex4', '.ex5', '.mq4', '.mq5'];
+          const ext = path.extname(file.originalname).toLowerCase();
+          
+          if (!allowedExt.includes(ext)) {
+            return cb(new Error('Only .ex4, .ex5, .mq4, and .mq5 files are allowed'));
+          }
+          cb(null, true);
+        }
+      }).single('eaFile');
+
+      // Handle file upload
+      await new Promise<void>((resolve, reject) => {
+        uploadEA(req, res, (err: any) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      const file = (req as any).file;
+      if (!file) {
+        return res.status(400).json({ error: "No EA file uploaded" });
+      }
+
+      // Initialize object storage service
+      const objectStorage = new ObjectStorageService();
+      
+      // Generate unique EA file path
+      const eaId = crypto.randomUUID();
+      const ext = path.extname(file.originalname);
+      const objectPath = `marketplace/ea/${eaId}/${eaId}${ext}`;
+      
+      // Upload EA file to Object Storage
+      const publicUrl = await objectStorage.uploadObject(
+        objectPath,
+        file.buffer,
+        file.mimetype || 'application/octet-stream',
+        {
+          originalName: file.originalname,
+          uploaderId: authenticatedUserId,
+          uploadedAt: new Date().toISOString(),
+        }
+      );
+      
+      // Return the file URL and metadata
+      return res.json({
+        success: true,
+        fileUrl: `/objects/${objectPath}`,
+        fileName: file.originalname,
+        fileSize: file.size,
+        contentId: eaId,
+      });
+      
+    } catch (error: any) {
+      console.error("[EA Upload] Error:", error);
+      
+      if (error.message?.includes('file size')) {
+        return res.status(413).json({ error: "File too large. Maximum size is 50MB" });
+      }
+      if (error.message?.includes('allowed')) {
+        return res.status(415).json({ error: error.message });
+      }
+      
+      return res.status(500).json({ error: "Failed to upload EA file" });
+    }
+  });
+
+  // Endpoint to upload screenshots for EA
+  app.post("/api/marketplace/upload-screenshot", isAuthenticated, marketplaceActionLimiter, async (req, res) => {
+    const authenticatedUserId = (req as any).session?.userID;
+    
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      // Configure multer for screenshot upload
+      const uploadScreenshot = multer({
+        limits: { 
+          fileSize: 5 * 1024 * 1024, // 5MB limit per screenshot
+        },
+        fileFilter: (req, file, cb) => {
+          // Accept only image files
+          const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+          
+          if (!allowedTypes.includes(file.mimetype)) {
+            return cb(new Error('Only JPEG, PNG, and WebP images are allowed'));
+          }
+          cb(null, true);
+        }
+      }).single('screenshot');
+
+      // Handle file upload
+      await new Promise<void>((resolve, reject) => {
+        uploadScreenshot(req, res, (err: any) => {
+          if (err) {
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      const file = (req as any).file;
+      if (!file) {
+        return res.status(400).json({ error: "No screenshot uploaded" });
+      }
+
+      // Initialize object storage service
+      const objectStorage = new ObjectStorageService();
+      
+      // Generate unique screenshot path
+      const screenshotId = crypto.randomUUID();
+      const ext = path.extname(file.originalname);
+      const objectPath = `marketplace/screenshots/${screenshotId}${ext}`;
+      
+      // Upload screenshot to Object Storage
+      const publicUrl = await objectStorage.uploadObject(
+        objectPath,
+        file.buffer,
+        file.mimetype,
+        {
+          uploaderId: authenticatedUserId,
+          uploadedAt: new Date().toISOString(),
+        }
+      );
+      
+      // Return the screenshot URL
+      return res.json({
+        success: true,
+        imageUrl: `/objects/${objectPath}`,
+        fileName: file.originalname,
+      });
+      
+    } catch (error: any) {
+      console.error("[Screenshot Upload] Error:", error);
+      
+      if (error.message?.includes('file size')) {
+        return res.status(413).json({ error: "File too large. Maximum size is 5MB" });
+      }
+      if (error.message?.includes('allowed')) {
+        return res.status(415).json({ error: error.message });
+      }
+      
+      return res.status(500).json({ error: "Failed to upload screenshot" });
+    }
+  });
+
+  // Endpoint to publish a complete EA listing
+  app.post("/api/marketplace/publish-ea", isAuthenticated, contentCreationLimiter, async (req, res) => {
+    const authenticatedUserId = (req as any).session?.userID;
+    
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      const {
+        title,
+        description,
+        tags,
+        priceCoins,
+        eaFileUrl,
+        imageUrls,
+        slug,
+        primaryKeyword,
+        seoExcerpt,
+        hashtags,
+        platform = 'MT4',
+        version = '1.0',
+        tradingPairs = [],
+        timeframes = [],
+      } = req.body;
+
+      // Validate required fields
+      if (!title || !description || !eaFileUrl || !slug || priceCoins === undefined) {
+        return res.status(400).json({ 
+          error: "Missing required fields: title, description, eaFileUrl, slug, and priceCoins are required" 
+        });
+      }
+
+      // Validate price
+      if (priceCoins < 20 || priceCoins > 1000) {
+        return res.status(400).json({ 
+          error: "Price must be between 20 and 1000 coins" 
+        });
+      }
+
+      // Create content entry for the EA
+      const contentData = {
+        authorId: authenticatedUserId,
+        title: DOMPurify.sanitize(title, { ALLOWED_TAGS: [] }),
+        description: sanitizeRichTextHTML(description),
+        type: 'ea' as const,
+        category: tags[0] || 'Expert Advisor type',
+        tags: tags || [],
+        priceCoins: priceCoins,
+        isFree: priceCoins === 0,
+        slug: slug,
+        status: 'approved' as const, // Auto-approve for now
+        publishedAt: new Date(),
+        seoTitle: title.substring(0, 60),
+        seoDescription: seoExcerpt || description.substring(0, 160),
+        seoKeywords: [...(hashtags || []), ...(tags || [])].join(', '),
+        imageUrl: imageUrls?.[0] || null,
+        imageUrls: imageUrls || [],
+        fileUrl: eaFileUrl,
+        metadata: {
+          platform,
+          version,
+          tradingPairs,
+          timeframes,
+          primaryKeyword: primaryKeyword || '',
+        },
+      };
+
+      const publishedContent = await storage.publishContent(contentData);
+
+      // Award coins for publishing EA (onboarding reward)
+      if (publishedContent) {
+        try {
+          await coinTransactionService.awardCoins({
+            userId: authenticatedUserId,
+            amount: 30,
+            trigger: COIN_TRIGGERS.MARKETPLACE_EA_PUBLISHED,
+            channel: COIN_CHANNELS.MARKETPLACE,
+            metadata: {
+              contentId: publishedContent.id,
+              title: publishedContent.title,
+            },
+          });
+        } catch (coinError) {
+          console.error("[EA Publish] Failed to award coins:", coinError);
+        }
+      }
+
+      return res.json({
+        success: true,
+        content: publishedContent,
+        message: "EA published successfully!",
+      });
+
+    } catch (error) {
+      console.error("[EA Publish] Error:", error);
+      return res.status(500).json({ error: "Failed to publish EA" });
+    }
+  });
+
+  // Endpoint to get download URL for purchased EA
+  app.get("/api/marketplace/download-ea/:contentId", isAuthenticated, async (req, res) => {
+    const authenticatedUserId = (req as any).session?.userID;
+    const { contentId } = req.params;
+    
+    if (!authenticatedUserId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    try {
+      // Check if user has purchased this EA or if it's free
+      const content = await storage.getContent(contentId);
+      
+      if (!content) {
+        return res.status(404).json({ error: "EA not found" });
+      }
+
+      // Check if it's the author
+      const isAuthor = content.authorId === authenticatedUserId;
+      
+      // Check if it's free or purchased
+      const isFree = content.isFree;
+      const hasPurchased = await storage.hasUserPurchasedContent(authenticatedUserId, contentId);
+      
+      if (!isAuthor && !isFree && !hasPurchased) {
+        return res.status(403).json({ error: "You must purchase this EA to download it" });
+      }
+
+      // Generate a secure download URL
+      const objectStorage = new ObjectStorageService();
+      const fileUrl = content.fileUrl;
+      
+      if (!fileUrl) {
+        return res.status(404).json({ error: "EA file not found" });
+      }
+
+      // Get the file from object storage
+      try {
+        const file = await objectStorage.getObjectEntityFile(fileUrl);
+        
+        // Stream the file to the user
+        await objectStorage.downloadObject(file, res, 3600);
+      } catch (err) {
+        console.error("[EA Download] Error getting file:", err);
+        return res.status(404).json({ error: "EA file not available" });
+      }
+      
+    } catch (error) {
+      console.error("[EA Download] Error:", error);
+      return res.status(500).json({ error: "Failed to download EA" });
+    }
+  });
+
+  // ============================================================================
   // SEO MONITORING API ENDPOINTS
   // ============================================================================
 

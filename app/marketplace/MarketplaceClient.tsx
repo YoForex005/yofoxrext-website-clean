@@ -23,7 +23,8 @@ import {
   Download,
   Eye,
   Coins,
-  AlertCircle
+  AlertCircle,
+  Plus
 } from "lucide-react";
 import Link from "next/link";
 
@@ -185,10 +186,20 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
       
       <main className="container max-w-7xl mx-auto px-4 py-8">
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">Marketplace</h1>
-          <p className="text-lg text-muted-foreground">
-            Discover and purchase Expert Advisors, Indicators, and Trading Resources
-          </p>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h1 className="text-4xl font-bold mb-2">Marketplace</h1>
+              <p className="text-lg text-muted-foreground">
+                Discover and purchase Expert Advisors, Indicators, and Trading Resources
+              </p>
+            </div>
+            <Link href="/publish-ea">
+              <Button size="lg" className="bg-primary hover:bg-primary/90" data-testid="button-publish-ea">
+                <Plus className="h-5 w-5 mr-2" />
+                Publish New EA
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="flex flex-col md:flex-row gap-4 mb-8">
