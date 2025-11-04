@@ -108,11 +108,90 @@ export default async function ContentDetailPage({ params }: { params: Promise<{ 
     );
   }
 
-  // Generate hierarchical URL and perform permanent redirect (308 for SEO)
-  // Note: Next.js uses 308 (not 301) for permanent redirects to preserve HTTP method
-  // Both 301 and 308 transfer SEO equity equally; 308 is the modern standard
-  const hierarchicalUrl = await getContentUrl(content);
-  permanentRedirect(hierarchicalUrl);
+  // Fetch all necessary data for the content detail page
+  let author: UserType | undefined = undefined;
+  let reviews: Array<ContentReview & { user: UserType }> = [];
+  let similarContent: Content[] = [];
+  let authorReleases: Content[] = [];
+
+  // Fetch author info
+  if (content.authorId) {
+    try {
+      const authorRes = await fetch(`${EXPRESS_URL}/api/users/${content.authorId}`, {
+        cache: 'no-store',
+      });
+      if (authorRes.ok) {
+        author = await authorRes.json();
+      }
+    } catch (error) {
+      console.error('Failed to fetch author:', error);
+      // Continue with undefined author
+    }
+  }
+
+  // Fetch reviews for the content
+  if (content.id) {
+    try {
+      const reviewsRes = await fetch(`${EXPRESS_URL}/api/content/${content.id}/reviews`, {
+        cache: 'no-store',
+      });
+      if (reviewsRes.ok) {
+        reviews = await reviewsRes.json();
+      }
+    } catch (error) {
+      console.error('Failed to fetch reviews:', error);
+      // Continue with empty reviews array
+    }
+  }
+
+  // Fetch similar content from the same category
+  if (content.category) {
+    try {
+      const similarRes = await fetch(`${EXPRESS_URL}/api/content?category=${encodeURIComponent(content.category)}&limit=6`, {
+        cache: 'no-store',
+      });
+      if (similarRes.ok) {
+        const similarData = await similarRes.json();
+        // Filter out the current content from similar results
+        similarContent = (Array.isArray(similarData) ? similarData : similarData.items || [])
+          .filter((item: Content) => item.id !== content.id)
+          .slice(0, 5);
+      }
+    } catch (error) {
+      console.error('Failed to fetch similar content:', error);
+      // Continue with empty array
+    }
+  }
+
+  // Fetch other releases by the same author
+  if (content.authorId) {
+    try {
+      const authorReleasesRes = await fetch(`${EXPRESS_URL}/api/user/${content.authorId}/content`, {
+        cache: 'no-store',
+      });
+      if (authorReleasesRes.ok) {
+        const releasesData = await authorReleasesRes.json();
+        // Filter out the current content from author releases
+        authorReleases = (Array.isArray(releasesData) ? releasesData : releasesData.items || [])
+          .filter((item: Content) => item.id !== content.id);
+      }
+    } catch (error) {
+      console.error('Failed to fetch author releases:', error);
+      // Continue with empty array
+    }
+  }
+
+  // Pass all fetched data to the client component
+  return (
+    <ContentDetailClient
+      slug={slug}
+      initialContent={content}
+      initialAuthor={author}
+      initialReviews={reviews}
+      initialSimilarContent={similarContent}
+      initialAuthorReleases={authorReleases}
+    />
+  );
 }
 
 // Enable dynamic rendering with no caching

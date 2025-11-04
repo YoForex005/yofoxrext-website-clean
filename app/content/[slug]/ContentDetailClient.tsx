@@ -81,10 +81,10 @@ export default function ContentDetailClient({
   // Use initial data for content query
   const { data: content } = useQuery<Content>({
     queryKey: isUUID
-      ? ["/api/content", slug]
-      : ["/api/content/slug", slug],
+      ? [`/api/content/${slug}`]
+      : [`/api/content/slug/${slug}`],
     initialData: initialContent,
-    enabled: !!slug,
+    enabled: !!slug && !initialContent, // Only fetch if no initial data provided
   });
 
   // Use initial data for author query
@@ -120,7 +120,7 @@ export default function ContentDetailClient({
 
   // Check if user has purchased content
   const { data: purchaseStatus, isLoading: isLoadingPurchase } = useQuery<{ hasPurchased: boolean }>({
-    queryKey: ["/api/content", content?.id, "purchased", user?.id],
+    queryKey: [`/api/content/${content?.id}/purchased/${user?.id}`],
     enabled: !!content?.id && !!user?.id,
   });
 
@@ -198,9 +198,9 @@ export default function ContentDetailClient({
 
   // Use initial data for reviews query
   const { data: reviews } = useQuery<Array<ContentReview & { user: UserType }>>({
-    queryKey: ["/api/content", content?.id, "reviews"],
+    queryKey: [`/api/content/${content?.id}/reviews`],
     initialData: initialReviews,
-    enabled: !!content?.id,
+    enabled: !!content?.id && !initialReviews,
   });
 
   // Review form
