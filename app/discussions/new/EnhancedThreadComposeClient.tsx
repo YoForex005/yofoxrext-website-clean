@@ -188,7 +188,8 @@ const threadFormSchema = z.object({
       },
       { message: "Avoid ALL CAPS - it's easier to read in normal case" }
     ),
-  contentHtml: z.string().min(100, "Content must be at least 100 characters"),
+  body: z.string().min(100, "Content must be at least 100 characters"), // Plain text content
+  contentHtml: z.string().min(100, "Content must be at least 100 characters"), // Rich HTML content
   categorySlug: z.string().min(1, "Please select a category"),
   hashtags: z.array(z.string()).max(10).default([]),
   attachments: z.array(z.object({
@@ -938,7 +939,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     defaultValues: {
       threadType: "",
       title: "",
-      contentHtml: "",
+      body: "", // Plain text content
+      contentHtml: "", // Rich HTML content
       categorySlug: categoryParam || "",
       hashtags: [],
       attachments: [],
@@ -1052,7 +1054,9 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   useEffect(() => {
     if (editor) {
       const updateContent = () => {
-        form.setValue("contentHtml", editor.getHTML());
+        // Set both plain text and HTML content
+        form.setValue("body", editor.getText()); // Plain text for backend
+        form.setValue("contentHtml", editor.getHTML()); // Rich HTML for display
       };
       editor.on('update', updateContent);
       return () => {
@@ -1160,16 +1164,11 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     mutationFn: async (data: ThreadFormData) => {
       await requireAuth();
       
-      // Extract plain text from contentHtml for the body field
-      const plainTextBody = data.contentHtml
-        .replace(/<[^>]*>/g, '') // Remove HTML tags
-        .replace(/&nbsp;/g, ' ') // Replace HTML spaces
-        .replace(/&[^;]+;/g, '') // Remove other HTML entities
-        .trim();
-
+      // Use the body field directly from the form data (already extracted by editor.getText())
       const threadData = {
         ...data,
-        body: plainTextBody || data.contentHtml, // Use plain text or fallback to HTML
+        body: data.body, // Plain text content from editor.getText()
+        contentHtml: data.contentHtml, // Rich HTML content from editor.getHTML()
         attachments: attachments.map(a => ({
           id: a.id,
           filename: a.file.name,
