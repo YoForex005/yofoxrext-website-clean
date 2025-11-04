@@ -30,10 +30,11 @@ import {
 } from "@/components/ui/select";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAuthPrompt } from "@/hooks/useAuthPrompt";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Thread = {
   id: string;
@@ -148,11 +149,56 @@ function useActivityFeed() {
 export default function DiscussionsClient({ initialThreads }: DiscussionsClientProps) {
   const { isAuthenticated } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt("start a discussion");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [sortBy, setSortBy] = useState<string>("latest");
-  const [filterChip, setFilterChip] = useState<string>("all");
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Initialize states from URL parameters
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("search") || "");
+  const [categoryFilter, setCategoryFilter] = useState<string>(() => searchParams.get("category") || "all");
+  const [sortBy, setSortBy] = useState<string>(() => searchParams.get("sort") || "latest");
+  const [filterChip, setFilterChip] = useState<string>(() => searchParams.get("filter") || "all");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  
+  // Update URL when filters change
+  const updateUrlParams = (params: Record<string, string | null>) => {
+    const newSearchParams = new URLSearchParams(searchParams.toString());
+    
+    Object.entries(params).forEach(([key, value]) => {
+      if (value && value !== "all") {
+        newSearchParams.set(key, value);
+      } else {
+        newSearchParams.delete(key);
+      }
+    });
+    
+    // Update the URL without causing a page refresh
+    const queryString = newSearchParams.toString();
+    const newPath = queryString ? `?${queryString}` : '';
+    
+    // Use router.replace to update URL without adding to history
+    window.history.replaceState(null, '', `/discussions${newPath}`);
+  };
+  
+  // Handle filter changes with URL updates
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    updateUrlParams({ search: value || null });
+  };
+  
+  const handleCategoryChange = (value: string) => {
+    setCategoryFilter(value);
+    updateUrlParams({ category: value });
+  };
+  
+  const handleSortChange = (value: string) => {
+    setSortBy(value);
+    updateUrlParams({ sort: value });
+  };
+  
+  const handleFilterChipChange = (value: string) => {
+    setFilterChip(value);
+    updateUrlParams({ filter: value });
+  };
 
   const toggleCardExpansion = (threadId: string) => {
     setExpandedCards(prev => {
@@ -449,14 +495,14 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                   placeholder="Search discussions..."
                   className="pl-9"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => handleSearchChange(e.target.value)}
                   data-testid="input-search-discussions"
                 />
               </div>
 
               {/* Filters Row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <Select value={categoryFilter} onValueChange={handleCategoryChange}>
                   <SelectTrigger data-testid="select-category">
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -470,7 +516,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                   </SelectContent>
                 </Select>
 
-                <Select value={sortBy} onValueChange={setSortBy}>
+                <Select value={sortBy} onValueChange={handleSortChange}>
                   <SelectTrigger data-testid="select-sort">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
@@ -488,7 +534,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 <Button
                   variant={filterChip === 'all' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilterChip('all')}
+                  onClick={() => handleFilterChipChange('all')}
                   data-testid="chip-all"
                 >
                   All
@@ -496,7 +542,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 <Button
                   variant={filterChip === 'hot' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilterChip('hot')}
+                  onClick={() => handleFilterChipChange('hot')}
                   data-testid="chip-hot"
                 >
                   <Flame className="w-3 h-3 mr-1" />
@@ -505,7 +551,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 <Button
                   variant={filterChip === 'trending' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilterChip('trending')}
+                  onClick={() => handleFilterChipChange('trending')}
                   data-testid="chip-trending"
                 >
                   <TrendingUp className="w-3 h-3 mr-1" />
@@ -514,7 +560,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 <Button
                   variant={filterChip === 'unanswered' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilterChip('unanswered')}
+                  onClick={() => handleFilterChipChange('unanswered')}
                   data-testid="chip-unanswered"
                 >
                   Unanswered
@@ -522,7 +568,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 <Button
                   variant={filterChip === 'solved' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilterChip('solved')}
+                  onClick={() => handleFilterChipChange('solved')}
                   data-testid="chip-solved"
                 >
                   <CheckCircle className="w-3 h-3 mr-1" />
