@@ -14,7 +14,7 @@ import {
 
 export default function LeftEngagementSidebar() {
   return (
-    <aside className="w-[280px] space-y-4" data-testid="sidebar-left">
+    <aside className="w-[240px] space-y-4" data-testid="sidebar-left">
       {/* Posting Tips Card */}
       <Card data-testid="card-posting-tips">
         <CardHeader className="pb-3">

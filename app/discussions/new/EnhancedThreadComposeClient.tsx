@@ -1267,7 +1267,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
             steps={steps}
           />
 
-          <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr,200px] gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-[240px,1fr,320px] gap-6 max-w-[1600px] mx-auto">
             {/* Left Sidebar */}
             <div className="hidden lg:block">
               <div className="lg:sticky lg:top-[88px]">
