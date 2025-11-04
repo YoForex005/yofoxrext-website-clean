@@ -145,6 +145,15 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
   - Enhanced not-found page with category suggestions
   - Files changed: `server/routes.ts`, `app/category/[slug]/page.tsx`, `lib/utils/levenshtein.ts`
 
+### November 4, 2025 - Fixed Marketplace Product Navigation
+- **Fixed "Content Not Found" Error on Product Pages:** Resolved critical issue where clicking any marketplace product card showed error page
+  - Root cause: Content page was using incorrect API URL for server-side rendering (`localhost:5000` instead of internal API URL)
+  - Fixed by importing and using `getInternalApiUrl()` from centralized API configuration
+  - Removed problematic redirect logic that was trying to use non-existent hierarchical category URLs
+  - Product pages now fetch and display all data correctly including author info, reviews, and similar products
+  - Files changed: `app/content/[slug]/page.tsx`
+  - Result: All marketplace products now load properly with complete details and specifications
+
 ## External Dependencies
 
 ### Core Infrastructure
