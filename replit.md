@@ -97,17 +97,20 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
-### November 4, 2025 - Fixed TipTap Editor Shortcuts and Image Upload
+### November 4, 2025 - Fixed TipTap Editor with Inline Image Rendering
 - **Fixed Keyboard Shortcuts in TipTap Editor:** 
   - Configured all keyboard shortcuts properly (Ctrl+B for bold, Ctrl+I for italic, Ctrl+U for underline, etc.)
   - Added explicit keyboard bindings to TipTap extensions
   - Shortcuts now work correctly as displayed in the UI
-- **Fixed Image Upload Functionality:**
-  - Created simplified `/api/upload/simple` endpoint bypassing complex GCS authentication
-  - Implemented in-memory image storage with Sharp optimization
-  - Fixed hydration issues with `immediatelyRender: false` in editor config
-  - Images now upload successfully with proper error handling
-- **Result:** Thread creation editor fully functional with working shortcuts and image uploads
+- **Fixed Inline Image Rendering (Visual Display):**
+  - Enhanced Image extension to render images as visual elements, not markdown text
+  - Images now display inline with rounded corners, shadows, and hover effects
+  - Added support for drag & drop images directly into editor
+  - Enabled paste from clipboard (Ctrl+V) for quick image insertion
+  - Created simplified `/api/upload/simple` endpoint for reliable uploads
+  - Images properly inserted as image nodes with alt and title attributes
+  - Content sanitization preserves all image attributes when saving
+- **Result:** Thread creation editor fully functional with rich text and visual inline images
 
 ### November 4, 2025 - Fixed All TypeScript Errors
 - **Resolved 323 TypeScript Errors:**
