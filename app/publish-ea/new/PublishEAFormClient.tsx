@@ -1109,7 +1109,7 @@ export default function PublishEAFormClient() {
   
   const router = useRouter();
   const { toast } = useToast();
-  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt();
 
   const form = useForm<EAFormData>({
@@ -1467,41 +1467,8 @@ export default function PublishEAFormClient() {
     publishMutation.mutate(data);
   };
 
-  // Use the original isAuthLoading flag but with a simpler check
-  // If still loading after initial render, assume not authenticated
-  const [hasInitialized, setHasInitialized] = useState(false);
-  
-  useEffect(() => {
-    // Set initialized after component mounts
-    const timer = setTimeout(() => {
-      setHasInitialized(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Trigger auth requirement when not authenticated
-  useEffect(() => {
-    if (hasInitialized && !isAuthLoading && !isAuthenticated) {
-      requireAuth(() => {});
-    }
-  }, [hasInitialized, isAuthLoading, isAuthenticated, requireAuth]);
-
-  // Show loading only briefly on initial mount
-  if (!hasInitialized) {
-    return (
-      <>
-        <Header />
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="text-center">
-            <div className="h-8 w-8 rounded-full border-4 border-primary border-t-transparent animate-spin mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading...</p>
-          </div>
-        </div>
-      </>
-    );
-  }
-
-  // After initialization, if not authenticated, show login prompt
+  // Simple authentication check - show login prompt if not authenticated
+  // This avoids any complex loading states that could get stuck
   if (!isAuthenticated) {
     return (
       <>
@@ -1514,7 +1481,13 @@ export default function PublishEAFormClient() {
               <p className="text-muted-foreground mb-4">
                 Please log in to publish an EA
               </p>
-              <Button onClick={() => requireAuth(() => window.location.reload())}>
+              <Button 
+                onClick={() => requireAuth(() => {
+                  // Reload after successful auth
+                  window.location.reload();
+                })}
+                data-testid="button-login"
+              >
                 Log In
               </Button>
             </CardContent>
