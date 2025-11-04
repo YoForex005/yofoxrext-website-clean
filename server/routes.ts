@@ -5663,19 +5663,49 @@ export async function registerRoutes(app: Express): Promise<Express> {
         // Award coins to the thread author if it's not the same user
         if (thread.authorId !== authenticatedUserId) {
           try {
+            // CRITICAL FIX: Deduct coins from the liker (FORUM_LIKE_GIVEN)
+            const deductResult = await coinTransactionService.executeTransaction({
+              userId: authenticatedUserId,
+              amount: -1, // Deduct 1 coin from liker
+              trigger: COIN_TRIGGERS.FORUM_LIKE_GIVEN,
+              channel: COIN_CHANNELS.FORUM,
+              description: `Liked thread: ${thread.title}`,
+              metadata: {
+                threadId: thread.id,
+                threadSlug: thread.slug,
+                receiverUserId: thread.authorId,
+                threadTitle: thread.title,
+                actorId: authenticatedUserId // Track who gave the like
+              },
+              idempotencyKey: `thread-like-given-${threadId}-${authenticatedUserId}`
+            });
+            
+            if (!deductResult.success) {
+              console.error('Failed to deduct coins for thread like:', deductResult.error);
+              // If user doesn't have enough coins, prevent the like
+              await storage.unlikeThread(threadId, authenticatedUserId);
+              await storage.updateThreadEngagementScore(threadId, -10);
+              return res.status(400).json({ 
+                error: "Insufficient coins to like thread. You need 1 coin.",
+                requiredCoins: 1
+              });
+            }
+            
+            // Award coins to thread author (FORUM_LIKE_RECEIVED)
             const coinResult = await coinTransactionService.executeTransaction({
               userId: thread.authorId,
               amount: 1, // 1 coin for receiving a like
               trigger: COIN_TRIGGERS.FORUM_LIKE_RECEIVED,
               channel: COIN_CHANNELS.FORUM,
-              description: `Thread liked: ${thread.title}`,
+              description: `Thread liked`,
               metadata: {
                 threadId: thread.id,
                 threadSlug: thread.slug,
                 likedByUserId: authenticatedUserId,
-                threadTitle: thread.title
+                threadTitle: thread.title,
+                actorId: authenticatedUserId // Track who gave the like
               },
-              idempotencyKey: `thread-like-${threadId}-${authenticatedUserId}`
+              idempotencyKey: `thread-like-received-${threadId}-${authenticatedUserId}`
             });
             
             if (!coinResult.success) {
