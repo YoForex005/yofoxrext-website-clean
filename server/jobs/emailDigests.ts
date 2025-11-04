@@ -20,7 +20,6 @@ export function scheduleDailyDigest() {
       .from(users)
       .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
       .where(and(
-        eq(users.is_active, true),
         eq(users.is_email_verified, true),
         // Default to true if no preference set
         sql`COALESCE(${userPreferences.emailDailyDigest}, true) = true`
@@ -68,7 +67,6 @@ export function scheduleWeeklySummary() {
       .from(users)
       .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
       .where(and(
-        eq(users.is_active, true),
         eq(users.is_email_verified, true),
         // Default to true if no preference set
         sql`COALESCE(${userPreferences.emailWeeklyDigest}, true) = true`
