@@ -35,29 +35,30 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Use mounted state to control stat value rendering
+  // Use data if available, regardless of mounted state for initial server data
   const stats = [
     { 
       label: "Forum Threads", 
-      value: mounted && data?.totalThreads ? data.totalThreads.toLocaleString('en-US') : "0", 
+      value: data?.totalThreads !== undefined ? data.totalThreads.toLocaleString('en-US') : "0", 
       icon: MessageSquare, 
       key: "threads" 
     },
     { 
       label: "Community Members", 
-      value: mounted && data?.totalMembers ? data.totalMembers.toLocaleString('en-US') : "0", 
+      // Fixed: Use totalMembers from the API response
+      value: data?.totalMembers !== undefined ? data.totalMembers.toLocaleString('en-US') : "0", 
       icon: Users, 
       key: "members" 
     },
     { 
       label: "Total Replies", 
-      value: mounted && data?.totalPosts ? data.totalPosts.toLocaleString('en-US') : "0", 
+      value: data?.totalPosts !== undefined ? data.totalPosts.toLocaleString('en-US') : "0", 
       icon: MessagesSquare, 
       key: "replies" 
     },
     { 
       label: "Active Today", 
-      value: mounted && data?.todayActivity?.threads ? `+${data.todayActivity.threads}` : "+0", 
+      value: data?.todayActivity?.threads !== undefined ? `+${data.todayActivity.threads}` : "+0", 
       icon: Activity, 
       key: "activity" 
     }
@@ -69,11 +70,11 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
         <div className="container max-w-7xl mx-auto px-4 py-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center gap-3 animate-pulse">
-                <div className="bg-muted rounded-lg h-11 w-11" />
-                <div className="space-y-2">
-                  <div className="h-8 w-20 bg-muted rounded" />
-                  <div className="h-4 w-24 bg-muted rounded" />
+              <div key={i} className="bg-muted/50 rounded-lg p-4 animate-pulse">
+                <div className="flex flex-col items-center justify-center space-y-3">
+                  <div className="bg-muted rounded-lg h-12 w-12" />
+                  <div className="h-8 w-16 bg-muted rounded" />
+                  <div className="h-4 w-20 bg-muted rounded" />
                 </div>
               </div>
             ))}
@@ -94,17 +95,22 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
             variant="ghost"
           />
         </div>
+        {/* Fixed: Using consistent grid layout with proper alignment */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <div key={stat.key} className="flex items-center gap-3">
-              <div className="bg-primary/10 dark:bg-primary/20 rounded-lg p-2.5">
-                <stat.icon className="h-5 w-5 text-primary dark:text-primary" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
-                  {mounted ? stat.value : "0"}
+            <div key={stat.key} className="bg-card/50 hover:bg-card/70 transition-colors rounded-lg p-4">
+              {/* Fixed: Center-aligned content with consistent spacing */}
+              <div className="flex flex-col items-center justify-center text-center space-y-2">
+                {/* Icon container with consistent sizing */}
+                <div className="bg-primary/10 dark:bg-primary/20 rounded-lg p-3 flex items-center justify-center">
+                  <stat.icon className="h-6 w-6 text-primary dark:text-primary" />
                 </div>
-                <div className="text-sm text-muted-foreground font-medium truncate">{stat.label}</div>
+                {/* Value with consistent sizing */}
+                <div className="text-2xl font-bold leading-tight" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
+                  {stat.value}
+                </div>
+                {/* Label with consistent styling */}
+                <div className="text-sm text-muted-foreground font-medium">{stat.label}</div>
               </div>
             </div>
           ))}
