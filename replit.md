@@ -96,6 +96,16 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation, and admin analytics dashboard for fraud detection.
 - **EA Publishing System:** Complete Expert Advisor marketplace with multi-step publishing form, file uploads (.ex4, .ex5, .mq4, .mq5), secure Object Storage, preview functionality, SEO optimization, and download management.
 
+## Recent Changes
+
+### November 2024
+- **File Upload Enhancement (11/04):** Fixed file attachment functionality in thread composer
+  - Enhanced error handling with specific error messages for authentication, file size, and server errors
+  - Added file size validation (max 20MB per file, max 10 files total)
+  - Improved visual feedback during upload with progress indicators
+  - Better user experience with clear error states and recovery options
+  - Added detailed console logging for debugging upload issues
+
 ## External Dependencies
 
 ### Core Infrastructure
