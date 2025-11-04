@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { storage } from "../storage";
+import { COIN_TRIGGERS, COIN_CHANNELS } from "../../shared/schema";
 
 // Run daily at 3 AM
 export const startBotRefundJob = () => {
@@ -16,7 +17,9 @@ export const startBotRefundJob = () => {
           await storage.createCoinTransaction({
             userId: refund.sellerId,
             amount: -refund.refundAmount,
-            type: "bot_refund",
+            type: "spend",
+            trigger: COIN_TRIGGERS.TREASURY_WITHDRAW_REJECTED,
+            channel: COIN_CHANNELS.TREASURY,
             description: "Bot purchase refund (automated)",
             metadata: { 
               botActionId: refund.botActionId,

@@ -1,5 +1,6 @@
 import type { IStorage } from "../storage";
 import type { InsertBotAction } from "@shared/schema";
+import { COIN_TRIGGERS, COIN_CHANNELS } from "@shared/schema";
 
 interface BotEngagementConfig {
   scanIntervalMinutes: number;
@@ -137,7 +138,9 @@ export class BotOrchestrator {
       await this.storage.createCoinTransaction({
         userId: targetUserId,
         amount: 1,
-        type: "follower_reward",
+        type: "earn",
+        trigger: COIN_TRIGGERS.ENGAGEMENT_FOLLOWER_GAINED,
+        channel: COIN_CHANNELS.ENGAGEMENT,
         description: "New follower gained",
         metadata: { botId, isBot: true }
       });
@@ -204,7 +207,9 @@ export class BotOrchestrator {
       await this.storage.createCoinTransaction({
         userId: sellerId,
         amount: sellerEarnings,
-        type: "content_sale",
+        type: "earn",
+        trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
+        channel: COIN_CHANNELS.MARKETPLACE,
         description: `EA purchase by automated user`,
         metadata: { 
           contentId: eaId,

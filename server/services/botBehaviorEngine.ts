@@ -9,7 +9,9 @@ import {
   users, 
   userFollows,
   coinTransactions,
-  type Bot
+  type Bot,
+  COIN_TRIGGERS,
+  COIN_CHANNELS
 } from '../../shared/schema.js';
 import { eq, and, lt, gte, sql, desc, notInArray } from 'drizzle-orm';
 import { spend, wouldExceedWalletCap, getEconomySettings } from './treasuryService.js';
@@ -117,6 +119,8 @@ export async function executeLikes(threadId: string, aggressionLevel: number = 5
             userId: thread[0].authorId,
             type: 'earn',
             amount: 1,
+            trigger: COIN_TRIGGERS.FORUM_LIKE_RECEIVED,
+            channel: COIN_CHANNELS.FORUM,
             description: 'Thread liked',
             status: 'completed',
             botId: bot.id
@@ -223,6 +227,8 @@ export async function executeFollow(userId: string) {
         userId,
         type: 'earn',
         amount: 1,
+        trigger: COIN_TRIGGERS.ENGAGEMENT_FOLLOWER_GAINED,
+        channel: COIN_CHANNELS.ENGAGEMENT,
         description: 'New follower',
         status: 'completed',
         botId: bot.id
@@ -342,6 +348,8 @@ export async function executePurchase(contentId: string) {
         userId: sellerId,
         type: 'earn',
         amount: sellerEarnings,
+        trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
+        channel: COIN_CHANNELS.MARKETPLACE,
         description: `Sale of "${contentItem[0].title}" (bot order)`,
         status: 'completed',
         botId: bot.id
@@ -352,6 +360,8 @@ export async function executePurchase(contentId: string) {
         userId: bot.id,
         type: 'spend',
         amount: -price,
+        trigger: COIN_TRIGGERS.MARKETPLACE_PURCHASE_ITEM,
+        channel: COIN_CHANNELS.MARKETPLACE,
         description: `Purchased "${contentItem[0].title}"`,
         status: 'completed',
         botId: bot.id
