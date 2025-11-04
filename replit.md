@@ -94,6 +94,7 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Engagement Sidebars:** Responsive 3-column layout for thread creation page with static posting tips/guidelines and dynamic community stats.
 - **Wallet System Integrity:** 100% wallet coverage, 99.99% balance accuracy, and comprehensive audit trail with dual-write requirement.
 - **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation, and admin analytics dashboard for fraud detection.
+- **EA Publishing System:** Complete Expert Advisor marketplace with multi-step publishing form, file uploads (.ex4, .ex5, .mq4, .mq5), secure Object Storage, preview functionality, SEO optimization, and download management.
 
 ## External Dependencies
 
