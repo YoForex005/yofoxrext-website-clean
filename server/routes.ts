@@ -6035,7 +6035,32 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
     
     const users = await storage.getLeaderboard(type, limit);
-    res.json(users);
+    
+    // Add contribution and upload counts for each user
+    const enrichedUsers = await Promise.all(users.map(async (user) => {
+      // Get contribution count (threads + replies)
+      const [threads, replies] = await Promise.all([
+        db.select({ count: count() })
+          .from(forumThreads)
+          .where(eq(forumThreads.authorId, user.id)),
+        db.select({ count: count() })
+          .from(forumReplies)
+          .where(eq(forumReplies.userId, user.id))
+      ]);
+      
+      // Get upload count (content items)
+      const uploads = await db.select({ count: count() })
+        .from(content)
+        .where(eq(content.authorId, user.id));
+      
+      return {
+        ...user,
+        contributionCount: threads[0].count + replies[0].count,
+        uploadCount: uploads[0].count
+      };
+    }));
+    
+    res.json(enrichedUsers);
   });
 
   // Get member stats (real data for community stats widget)
@@ -7843,37 +7868,38 @@ export async function registerRoutes(app: Express): Promise<Express> {
   });
 
   // GET /api/leaderboard - Top users by reputation score
-  app.get("/api/leaderboard", async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      
-      // Sort by reputation score
-      const sorted = users
-        .sort((a, b) => (b.reputationScore || 0) - (a.reputationScore || 0))
-        .slice(0, 50);
-      
-      const leaderboard = await Promise.all(sorted.map(async (user, index) => {
-        const stats = await storage.getUserStats(user.id);
-        return {
-          rank: index + 1,
-          id: user.id,
-          username: user.username,
-          profileImageUrl: user.profileImageUrl,
-          reputationScore: user.reputationScore || 0,
-          threadsCreated: stats.threadsCreated,
-          repliesPosted: stats.repliesPosted,
-          isVerifiedTrader: user.isVerifiedTrader
-        };
-      }));
-      
-      res.json({
-        leaderboard,
-        lastUpdated: new Date().toISOString()
-      });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
+  // COMMENTED OUT: This duplicate endpoint was overriding the correct one above
+  // app.get("/api/leaderboard", async (req, res) => {
+  //   try {
+  //     const users = await storage.getAllUsers();
+  //     
+  //     // Sort by reputation score
+  //     const sorted = users
+  //       .sort((a, b) => (b.reputationScore || 0) - (a.reputationScore || 0))
+  //       .slice(0, 50);
+  //     
+  //     const leaderboard = await Promise.all(sorted.map(async (user, index) => {
+  //       const stats = await storage.getUserStats(user.id);
+  //       return {
+  //         rank: index + 1,
+  //         id: user.id,
+  //         username: user.username,
+  //         profileImageUrl: user.profileImageUrl,
+  //         reputationScore: user.reputationScore || 0,
+  //         threadsCreated: stats.threadsCreated,
+  //         repliesPosted: stats.repliesPosted,
+  //         isVerifiedTrader: user.isVerifiedTrader
+  //       };
+  //     }));
+  //     
+  //     res.json({
+  //       leaderboard,
+  //       lastUpdated: new Date().toISOString()
+  //     });
+  //   } catch (error: any) {
+  //     res.status(500).json({ error: error.message });
+  //   }
+  // });
 
   // ============================================
   // DASHBOARD ANALYTICS APIS

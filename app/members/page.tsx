@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import MembersClient from './MembersClient';
+import { getInternalApiUrl } from '@/lib/api-config';
 
 // SEO Metadata
 export const metadata: Metadata = {
@@ -22,7 +23,7 @@ export const metadata: Metadata = {
 // Fetch leaderboard data from Express API
 async function getLeaderboardData() {
   try {
-    const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+    const EXPRESS_URL = getInternalApiUrl();
     
     // Fetch all three leaderboard types in parallel
     const [topByCoinsRes, topByContributionsRes, topByUploadsRes] = await Promise.all([
