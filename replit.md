@@ -99,6 +99,39 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
+- **Comprehensive Email Notification System (11/04):** Implemented full engagement email system
+  - **Email Templates Created:**
+    - Thread posted confirmation emails with thread details and links
+    - Reply notifications to thread authors with reply preview
+    - Like notifications showing engagement metrics
+    - New follower alerts with profile links
+    - Daily digest emails (9 AM) with 24-hour engagement stats
+    - Weekly summary emails (Mondays 10 AM) with performance analytics
+    - Milestone achievement emails for user accomplishments
+  - **Notification Triggers Added:**
+    - Thread creation triggers follower notifications
+    - Replies trigger author notifications
+    - Likes trigger content creator notifications
+    - Follows trigger followed user notifications
+  - **User Preferences System:**
+    - Created userPreferences table for email settings
+    - Users can control which notifications they receive
+    - Default to enabled for better engagement
+  - **Scheduled Email Jobs:**
+    - Daily digest at 9:00 AM with engagement metrics
+    - Weekly summary every Monday at 10:00 AM
+    - Hourly milestone checker for achievements
+  - **Technical Implementation:**
+    - Async fire-and-forget pattern for performance
+    - Email tracking with pixels and unsubscribe tokens
+    - Proper error handling and retry logic
+    - Integration with Hostinger SMTP
+  - **Files Added/Modified:**
+    - `server/services/engagementEmails.ts` - Email templates
+    - `server/jobs/emailDigests.ts` - Cron job schedulers
+    - `server/routes.ts` - Email triggers in endpoints
+    - `shared/schema.ts` - userPreferences table
+
 - **Thread Creation & Redirection (11/04):** Enhanced thread creation workflow
   - Fixed missing "body" field error that prevented thread creation (406 validation error)
   - Added proper plain text extraction from TipTap editor using editor.getText()
