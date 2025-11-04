@@ -99,6 +99,12 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
+- **Settings Page Fix (11/04):** Fixed main Settings page not loading
+  - Issue: Server-side rendering was using public URL instead of internal Express URL
+  - Solution: Changed `app/settings/page.tsx` to use `process.env.EXPRESS_URL` for SSR in both getUserSettings() and getUserCoins() functions
+  - Result: Settings page now loads correctly for authenticated users
+  - Technical note: Consistent with pattern - server-side Next.js must use internal Express URL (`http://127.0.0.1:3001`)
+
 - **Dashboard Settings Page Fix (11/04):** Fixed "Customize Dashboard" page not loading
   - Issue: Server-side rendering was using public URL instead of internal Express URL
   - Solution: Changed `app/dashboard/settings/page.tsx` to use `process.env.EXPRESS_URL` for SSR

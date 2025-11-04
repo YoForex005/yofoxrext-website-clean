@@ -21,7 +21,8 @@ export const metadata: Metadata = {
 };
 
 async function getUserSettings() {
-  const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+  // Use internal Express API URL for server-side fetches
+  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll()
     .map((cookie: { name: string; value: string }) => `${cookie.name}=${cookie.value}`)
@@ -52,7 +53,8 @@ async function getUserSettings() {
 }
 
 async function getUserCoins() {
-  const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+  // Use internal Express API URL for server-side fetches
+  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll()
     .map((cookie: { name: string; value: string }) => `${cookie.name}=${cookie.value}`)
