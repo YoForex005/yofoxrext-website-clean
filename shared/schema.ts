@@ -166,6 +166,9 @@ export const users = pgTable("users", {
   // User level system
   level: integer("level").default(0).notNull(),
   
+  // Account freeze system (for moderation)
+  frozen_reason: text("frozen_reason"), // Reason for account freeze if frozen
+  
   // Bot identification (for filtering bot users from analytics)
   isBot: boolean("is_bot").notNull().default(false),
   
@@ -187,6 +190,9 @@ export const users = pgTable("users", {
   // Referral System fields
   referralCode: varchar("referral_code", { length: 20 }).unique(), // User's unique referral code
   referredBy: varchar("referred_by"), // Referral code of user who referred them
+  
+  // Transaction limits for security and compliance
+  daily_transaction_limit: integer("daily_transaction_limit"), // Daily transaction limit in coins (nullable for existing users)
   
   // Timestamps
   createdAt: timestamp("created_at").defaultNow(),
@@ -228,6 +234,10 @@ export const userActivity = pgTable("user_activity", {
   coinsEarned: integer("coins_earned").notNull().default(0),
   lastActivityAt: timestamp("last_activity_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
+  
+  // Tracking fields for analytics and security
+  ip_address: varchar("ip_address", { length: 45 }), // IPv4 or IPv6
+  user_agent: text("user_agent"), // Browser/client information
 }, (table) => ({
   userDateIdx: uniqueIndex("idx_user_activity_user_date").on(table.userId, table.date),
 }));
@@ -1113,6 +1123,9 @@ export const userWallet = pgTable("user_wallet", {
   status: text("status").notNull().default("active"),
   version: integer("version").notNull().default(1), // For optimistic concurrency control
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  
+  // Transaction limits for security and compliance
+  daily_transaction_limit: integer("daily_transaction_limit").notNull().default(10000), // Daily transaction limit in coins
 }, (table) => ({
   userIdIdx: uniqueIndex("idx_user_wallet_user_id").on(table.userId),
   statusIdx: index("idx_user_wallet_status").on(table.status),

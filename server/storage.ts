@@ -8899,44 +8899,37 @@ export class DrizzleStorage implements IStorage {
   }
   
   async listPopularCategories(limit: number): Promise<Array<{ category: ForumCategory; threadCount: number }>> {
-    // Use raw SQL to get categories with their thread counts
-    const result = await db.execute<{
-      slug: string;
-      name: string;
-      description: string | null;
-      icon: string | null;
-      thread_count: string;
-      post_count: number;
-      parent_slug: string | null;
-      sort_order: number;
-      created_at: Date;
-      updated_at: Date;
-    }>(sql`
-      SELECT 
-        c.*,
-        COALESCE(COUNT(t.id), 0) as thread_count
-      FROM forum_categories c
-      LEFT JOIN forum_threads t ON t.category_slug = c.slug
-      GROUP BY c.slug, c.name, c.description, c.icon, c.thread_count, c.post_count, c.parent_slug, c.sort_order, c.created_at, c.updated_at
-      ORDER BY COALESCE(COUNT(t.id), 0) DESC
-      LIMIT ${limit}
-    `);
-    
-    return result.rows.map(row => ({
-      category: {
-        slug: row.slug,
-        name: row.name,
-        description: row.description,
-        icon: row.icon,
-        threadCount: row.thread_count,
-        postCount: row.post_count,
-        parentSlug: row.parent_slug,
-        sortOrder: row.sort_order,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      },
-      threadCount: Number(row.thread_count)
-    }));
+    try {
+      // Use Drizzle ORM query for better type safety
+      const categories = await db
+        .select({
+          slug: forumCategories.slug,
+          name: forumCategories.name,
+          description: forumCategories.description,
+          icon: forumCategories.icon,
+          color: forumCategories.color,
+          parentSlug: forumCategories.parentSlug,
+          threadCount: forumCategories.threadCount,
+          postCount: forumCategories.postCount,
+          sortOrder: forumCategories.sortOrder,
+          isActive: forumCategories.isActive,
+          createdAt: forumCategories.createdAt,
+          updatedAt: forumCategories.updatedAt,
+        })
+        .from(forumCategories)
+        .where(eq(forumCategories.isActive, true))
+        .orderBy(desc(forumCategories.threadCount))
+        .limit(limit);
+      
+      return categories.map(cat => ({
+        category: cat,
+        threadCount: cat.threadCount
+      }));
+    } catch (error) {
+      console.error('Error in listPopularCategories:', error);
+      // Fallback to return empty array if there's an error
+      return [];
+    }
   }
   
   async listRecentThreadActivity(limit: number): Promise<Array<{ thread: ForumThread; author: { username: string; firstName?: string | null } }>> {
