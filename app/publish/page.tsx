@@ -44,9 +44,16 @@ async function getCategories() {
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeout);
-    console.error("[SSR Fetch] Error fetching categories:", error);
+    
+    // Handle abort errors gracefully
+    if (error.name === 'AbortError') {
+      console.log("[SSR Fetch] Request timed out for categories");
+      return [];
+    }
+    
+    console.error("[SSR Fetch] Error fetching categories:", error.message);
     return [];
   }
 }
@@ -79,9 +86,16 @@ async function checkAuth() {
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeout);
-    console.error("[SSR Fetch] Error checking auth:", error);
+    
+    // Handle abort errors gracefully
+    if (error.name === 'AbortError') {
+      console.log("[SSR Fetch] Request timed out for auth check");
+      return null;
+    }
+    
+    console.error("[SSR Fetch] Error checking auth:", error.message);
     return null;
   }
 }

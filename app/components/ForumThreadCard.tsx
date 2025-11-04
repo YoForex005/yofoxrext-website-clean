@@ -145,8 +145,10 @@ export default function ForumThreadCard({
         <CardHeader className="pb-2.5">
           <div className="flex items-start gap-2.5">
             <Avatar className="h-9 w-9 shrink-0">
-              <AvatarImage src={author.avatar} />
-              <AvatarFallback className="text-xs">{author.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+              <AvatarImage src={author?.avatar} />
+              <AvatarFallback className="text-xs">
+                {author?.name ? author.name.slice(0, 2).toUpperCase() : 'UN'}
+              </AvatarFallback>
             </Avatar>
             
             <div className="flex-1 min-w-0">
@@ -209,10 +211,12 @@ export default function ForumThreadCard({
               </p>
               
               <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
-                <span data-testid="text-author" className="truncate max-w-[120px]">{author.name}</span>
+                <span data-testid="text-author" className="truncate max-w-[120px]">
+                  {author?.name || 'Unknown User'}
+                </span>
                 <div className="flex items-center gap-0.5">
                   <TrendingUp className="h-3 w-3" />
-                  <span>{author.reputation}</span>
+                  <span>{author?.reputation || 0}</span>
                 </div>
                 <span className="hidden sm:inline">•</span>
                 <span className="hidden sm:inline truncate">{timeAgo}</span>

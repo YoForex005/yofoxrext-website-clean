@@ -101,9 +101,16 @@ async function checkAuth() {
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeout);
-    console.error("[SSR Fetch] Error checking auth:", error);
+    
+    // Handle abort errors gracefully
+    if (error.name === 'AbortError') {
+      console.log("[SSR Fetch] Request timed out for auth check");
+      return null;
+    }
+    
+    console.error("[SSR Fetch] Error checking auth:", error.message);
     return null;
   }
 }
@@ -132,9 +139,16 @@ async function getBrokers() {
     }
 
     return response.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeout);
-    console.error("[SSR Fetch] Error fetching brokers:", error);
+    
+    // Handle abort errors gracefully
+    if (error.name === 'AbortError') {
+      console.log("[SSR Fetch] Request timed out for brokers");
+      return [];
+    }
+    
+    console.error("[SSR Fetch] Error fetching brokers:", error.message);
     return [];
   }
 }

@@ -15481,6 +15481,49 @@ export async function registerRoutes(app: Express): Promise<Express> {
 
   // 7. ECONOMY MANIPULATION ENDPOINTS
 
+  // GET /api/economy/wallet - Get user wallet balance (alias for /api/wallet)
+  app.get("/api/economy/wallet", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      
+      // First try to get the wallet from the storage
+      const wallet = await storage.getUserWallet(userId);
+      
+      // If wallet exists, return it
+      if (wallet) {
+        return res.json(wallet);
+      }
+      
+      // If no wallet exists, get user data and create a response
+      const user = await storage.getUserById(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Return a wallet-like response based on user data
+      return res.json({
+        userId: user.id,
+        balance: user.totalCoins || 0,
+        currency: 'coins',
+        lastUpdated: new Date().toISOString()
+      });
+      
+    } catch (error: any) {
+      // Log the error for debugging but return a user-friendly message
+      console.error("[API] /api/economy/wallet error:", error.message);
+      
+      if (error.message === "No authenticated user") {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+      
+      // Return a generic error message to avoid exposing internal details
+      return res.status(500).json({ 
+        error: "Failed to fetch wallet details",
+        message: "Unable to retrieve wallet information. Please try again later."
+      });
+    }
+  });
+
   // POST /api/admin/economy/drain-wallet - Drain user wallet by percentage
   app.post("/api/admin/economy/drain-wallet", isAuthenticated, isAdminMiddleware, async (req, res) => {
     try {

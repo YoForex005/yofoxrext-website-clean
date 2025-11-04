@@ -35,9 +35,23 @@ async function fetchData(url: string) {
     }
     
     return await res.json();
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(timeout);
-    console.error(`[SSR Fetch] Error ${url}:`, error);
+    
+    // Handle abort errors gracefully - these are expected when the request times out
+    if (error.name === 'AbortError') {
+      console.log(`[SSR Fetch] Request timed out for ${url}`);
+      return null;
+    }
+    
+    // Handle network errors
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+      console.log(`[SSR Fetch] Network error for ${url}: Service unavailable`);
+      return null;
+    }
+    
+    // Log other unexpected errors
+    console.error(`[SSR Fetch] Unexpected error for ${url}:`, error.message);
     return null;
   }
 }

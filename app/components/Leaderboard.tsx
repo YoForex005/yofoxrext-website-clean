@@ -83,7 +83,9 @@ export default function Leaderboard({
               </div>
               <Avatar className="h-7 w-7 shrink-0">
                 <AvatarImage src={user.avatar} />
-                <AvatarFallback className="text-[10px]">{user.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                <AvatarFallback className="text-[10px]">
+                  {user.name ? user.name.slice(0, 2).toUpperCase() : 'UN'}
+                </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate" data-testid={`text-username-${user.rank}`}>
