@@ -18196,11 +18196,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // GET /api/sweets/redemptions/options - Get all redemption options (authenticated users only)
   app.get("/api/sweets/redemptions/options", sweetsAuthMiddleware, async (req, res) => {
     try {
-      const { category, isActive } = req.query;
+      const { category, isActive, sortBy } = req.query;
       
       const filters: any = {};
       if (category) filters.category = category as string;
       if (isActive !== undefined) filters.isActive = isActive === 'true';
+      if (sortBy) filters.sortBy = sortBy as string;
       
       const options = await storage.getAllRedemptionOptions(filters);
       res.json(options);

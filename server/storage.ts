@@ -2958,7 +2958,7 @@ export interface IStorage {
   /**
    * Get all redemption options with filters
    */
-  getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean }): Promise<RedemptionOption[]>;
+  getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean; sortBy?: string }): Promise<RedemptionOption[]>;
   
   /**
    * Get a redemption option by ID
@@ -20636,12 +20636,13 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
-  async getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean }): Promise<RedemptionOption[]> {
+  async getAllRedemptionOptions(filters?: { category?: string; isActive?: boolean; sortBy?: string }): Promise<RedemptionOption[]> {
     try {
       let query = db.select().from(redemptionOptions);
       
       const conditions = [];
-      if (filters?.category) {
+      // Only apply category filter if not "all"
+      if (filters?.category && filters.category !== 'all') {
         conditions.push(eq(redemptionOptions.category, filters.category as any));
       }
       if (filters?.isActive !== undefined) {
@@ -20652,7 +20653,26 @@ export class DrizzleStorage implements IStorage {
         query = query.where(and(...conditions)) as any;
       }
       
-      const options = await query.orderBy(desc(redemptionOptions.createdAt));
+      // Apply sorting based on sortBy parameter
+      let orderedQuery;
+      switch (filters?.sortBy) {
+        case 'cost_low':
+          orderedQuery = query.orderBy(asc(redemptionOptions.coinCost));
+          break;
+        case 'cost_high':
+          orderedQuery = query.orderBy(desc(redemptionOptions.coinCost));
+          break;
+        case 'popular':
+          // For now, order by stock (lower stock = more popular)
+          orderedQuery = query.orderBy(asc(redemptionOptions.stock));
+          break;
+        case 'newest':
+        default:
+          orderedQuery = query.orderBy(desc(redemptionOptions.createdAt));
+          break;
+      }
+      
+      const options = await orderedQuery;
       return options;
     } catch (error) {
       console.error('Error getting redemption options:', error);

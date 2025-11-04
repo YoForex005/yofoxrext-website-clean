@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import RedemptionModal from "@/components/RedemptionModal";
+import Header from "@/components/Header";
+import EnhancedFooter from "@/components/EnhancedFooter";
 import type { RedemptionOption } from "../../shared/schema";
 
 export default function RewardsCatalogPage() {
@@ -32,6 +34,16 @@ export default function RewardsCatalogPage() {
 
   const { data: items, isLoading } = useQuery<RedemptionOption[]>({
     queryKey: ["/api/sweets/redemptions/options", selectedCategory, sortBy],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedCategory) params.append('category', selectedCategory);
+      if (sortBy) params.append('sortBy', sortBy);
+      params.append('isActive', 'true'); // Only show active items
+      
+      const res = await fetch(`/api/sweets/redemptions/options?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch redemption options');
+      return res.json();
+    },
     enabled: !!user && isAuthenticated,
   });
 
@@ -72,19 +84,28 @@ export default function RewardsCatalogPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold mb-4 dark:text-white">Sign in to view rewards</h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            You need to be signed in to browse and redeem rewards.
-          </p>
+      <>
+        <Header />
+        <div className="min-h-screen bg-background">
+          <div className="container mx-auto px-4 py-8">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4 dark:text-white">Sign in to view rewards</h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                You need to be signed in to browse and redeem rewards.
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
+        <EnhancedFooter />
+      </>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-7xl" data-testid="page-rewards-catalog">
+    <>
+      <Header />
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-7xl" data-testid="page-rewards-catalog">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2 dark:text-white">Rewards Catalog</h1>
@@ -225,6 +246,9 @@ export default function RewardsCatalogPage() {
         item={selectedItem}
         currentBalance={currentBalance}
       />
-    </div>
+        </div>
+      </div>
+      <EnhancedFooter />
+    </>
   );
 }
