@@ -2,10 +2,11 @@ import { Suspense } from "react";
 import ThreadComposeClient from "./EnhancedThreadComposeClient";
 import type { ForumCategory } from "@shared/schema";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getInternalApiUrl } from "@/lib/api-config";
 
 async function getCategories(): Promise<ForumCategory[]> {
   try {
-    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+    const baseUrl = getInternalApiUrl();
     const res = await fetch(`${baseUrl}/api/categories`, {
       cache: 'no-store',
     });
