@@ -99,11 +99,14 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
-- **Thread Submission Fix (11/04):** Fixed critical thread posting validation error
+- **Thread Creation & Redirection (11/04):** Enhanced thread creation workflow
   - Fixed missing "body" field error that prevented thread creation (406 validation error)
   - Added proper plain text extraction from TipTap editor using editor.getText()
   - Now correctly sends both body (plain text) and contentHtml (rich HTML) to the API
   - Improved form validation to include body field in the schema
+  - **Added automatic redirection**: Users are now redirected to view their thread after successful posting
+  - Redirect URL follows correct pattern: `/thread/[category-slug]/[thread-slug]`
+  - Fallback redirects to discussions page if thread URL is unavailable
 
 - **File Upload Enhancement (11/04):** Fixed file attachment functionality in thread composer
   - Enhanced error handling with specific error messages for authentication, file size, and server errors
