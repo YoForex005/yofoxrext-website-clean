@@ -28,7 +28,8 @@ async function getDashboardPreferences() {
   }
 
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    // Use internal Express API URL for server-side fetches
+    const baseUrl = process.env.EXPRESS_URL || "http://127.0.0.1:3001";
     const response = await fetch(`${baseUrl}/api/dashboard/preferences`, {
       headers: {
         Cookie: `connect.sid=${sessionCookie.value}`,
