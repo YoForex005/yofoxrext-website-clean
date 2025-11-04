@@ -97,6 +97,17 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Fixed Critical EA Publishing and Detail Page Issues
+- **Fixed EA Detail Page 404 Errors:** Corrected API endpoint URLs from `/api/content/by-slug/` to `/api/content/slug/` to match backend routes
+- **Fixed "Publish New EA" Page Infinite Loading:** 
+  - Removed complex authentication state management that caused infinite loading loops
+  - Simplified component to render immediately without waiting for multiple state updates
+  - Page now properly shows authentication prompt for unauthenticated users
+  - Eliminated hydration mismatch issues by removing client-side only state checks
+- **Fixed Next.js 15+ Params Handling:** Updated EA pages to properly await params Promise for SSR compatibility
+- **Fixed TypeScript Errors:** Added proper type annotations to editor component event handlers
+- **Result:** All EA features now working correctly - listing, detail views, and publishing form
+
 ### November 4, 2025 - Fixed Like Button Not Showing on Thread Replies
 - **Fixed Field Name Mismatch:** Changed from `helpfulCount` to `helpful` to match backend field name
 - **Implemented Optimistic Updates:** Likes now show immediately without page reload
