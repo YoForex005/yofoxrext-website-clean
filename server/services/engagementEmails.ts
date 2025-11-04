@@ -1,8 +1,143 @@
 import { emailService } from './emailService';
 import { db } from '../db';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
-import { users, threads, posts, likes, follows, notifications, userPreferences } from '../../shared/schema';
+import { users, forumThreads, forumReplies, contentLikes, userFollows, notifications, userPreferences, emailNotifications, unsubscribeTokens } from '../../shared/schema';
 import { format, formatDistanceToNow } from 'date-fns';
+import nodemailer from 'nodemailer';
+import { emailTrackingService } from './emailTracking';
+
+// Create SMTP transporter with Hostinger configuration
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: true, // Use SSL/TLS for port 465
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD
+  }
+});
+
+// Helper function to send emails with tracking
+async function sendEmailWithTracking(options: {
+  to: string;
+  subject: string;
+  html: string;
+  userId?: string;
+  templateKey?: string;
+}): Promise<void> {
+  try {
+    let trackingId: string | undefined;
+    let finalHtml = options.html;
+
+    // Add tracking if userId is provided
+    if (options.userId) {
+      try {
+        // Generate tracking ID
+        trackingId = emailTrackingService.generateTrackingId();
+        
+        // Generate and store unsubscribe token
+        const unsubscribeToken = emailTrackingService.generateUnsubscribeToken();
+        const tokenHash = emailTrackingService.hashToken(unsubscribeToken);
+        
+        // Store unsubscribe token in database (expires in 90 days)
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 90);
+        
+        await db.insert(unsubscribeTokens).values({
+          userId: options.userId,
+          tokenHash,
+          notificationId: trackingId,
+          expiresAt
+        });
+
+        // Create email notification record with tracking ID
+        await db.insert(emailNotifications).values({
+          id: trackingId, // Use tracking ID as notification ID
+          userId: options.userId,
+          templateKey: options.templateKey || 'engagement_email',
+          recipientEmail: options.to,
+          subject: options.subject,
+          payload: {},
+          status: 'queued'
+        });
+
+        // Add tracking pixel
+        finalHtml = emailTrackingService.insertTrackingPixel(finalHtml, trackingId);
+
+        // Wrap trackable links
+        finalHtml = emailTrackingService.wrapTrackableLinks(finalHtml, trackingId);
+
+        // Add unsubscribe link with token
+        finalHtml = emailTrackingService.addUnsubscribeLink(finalHtml, unsubscribeToken, options.to);
+
+      } catch (error) {
+        console.error('Error adding email tracking:', error);
+        // Continue without tracking if there's an error
+      }
+    }
+
+    // Wrap content in email template
+    const wrappedHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+        <div style="max-width: 600px; margin: 0 auto; background: white;">
+          <!-- Header with gradient -->
+          <div style="background: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%); padding: 32px 24px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: bold;">YoForex</h1>
+            <p style="color: #e0e7ff; margin: 8px 0 0 0; font-size: 14px;">Your Forex Trading Community</p>
+          </div>
+          
+          <!-- Content -->
+          <div style="padding: 32px 24px;">
+            ${finalHtml}
+          </div>
+          
+          <!-- Footer -->
+          <div style="background: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 12px; margin: 0 0 8px 0;">
+              © 2025 YoForex. All rights reserved.
+            </p>
+            <p style="margin: 0;">
+              <a href="${process.env.BASE_URL}/settings/notifications" style="color: #2563eb; font-size: 12px; text-decoration: none;">Email Preferences</a>
+              <span style="color: #d1d5db; margin: 0 8px;">|</span>
+              <a href="${process.env.BASE_URL}/unsubscribe" style="color: #2563eb; font-size: 12px; text-decoration: none;">Unsubscribe</a>
+            </p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Send email
+    const info = await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || 'YoForex'}" <${process.env.SMTP_FROM_EMAIL}>`,
+      to: options.to,
+      subject: options.subject,
+      html: wrappedHtml
+    });
+
+    // Update email status to sent
+    if (trackingId) {
+      await db.update(emailNotifications)
+        .set({ 
+          status: 'sent',
+          sentAt: new Date(),
+          providerMessageId: info.messageId
+        })
+        .where(eq(emailNotifications.id, trackingId));
+    }
+    
+    console.log(`Email sent to ${options.to}: ${options.subject}`);
+  } catch (error) {
+    console.error('Error sending email:', error);
+    throw error;
+  }
+}
 
 // Email template interfaces
 interface ThreadData {
@@ -121,7 +256,7 @@ export async function sendThreadPostedEmail(userId: string, threadData: ThreadDa
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `✅ Your thread "${threadData.title}" is live!`,
       html: emailContent,
@@ -194,7 +329,7 @@ export async function sendReplyNotificationEmail(threadAuthorId: string, replyDa
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `${replyData.authorUsername} replied to "${replyData.threadTitle}"`,
       html: emailContent,
@@ -261,7 +396,7 @@ export async function sendLikeNotificationEmail(userId: string, likeCount: numbe
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `❤️ ${likeCount} new like${likeCount > 1 ? 's' : ''} on your post!`,
       html: emailContent,
@@ -323,7 +458,7 @@ export async function sendFollowNotificationEmail(followedUserId: string, follow
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `${followerUsername} is now following you!`,
       html: emailContent,
@@ -356,30 +491,30 @@ export async function sendDailyDigestEmail(userId: string) {
 
     // Get thread stats
     const threadStats = await db.select({
-      views: sql<number>`COALESCE(SUM(${threads.viewCount}), 0)`,
-      likes: sql<number>`COALESCE(COUNT(DISTINCT ${likes.id}), 0)`,
-      replies: sql<number>`COALESCE(COUNT(DISTINCT ${posts.id}), 0)`
+      views: sql<number>`COALESCE(SUM(${forumThreads.viewCount}), 0)`,
+      likes: sql<number>`COALESCE(COUNT(DISTINCT ${contentLikes.id}), 0)`,
+      replies: sql<number>`COALESCE(COUNT(DISTINCT ${forumReplies.id}), 0)`
     })
-    .from(threads)
+    .from(forumThreads)
     .leftJoin(likes, and(
-      eq(likes.contentId, threads.id),
-      eq(likes.contentType, 'thread'),
-      gte(likes.createdAt, yesterday)
+      eq(contentLikes.contentId, forumThreads.id),
+      eq(contentLikes.contentType, 'thread'),
+      gte(contentLikes.createdAt, yesterday)
     ))
     .leftJoin(posts, and(
-      eq(posts.threadId, threads.id),
-      gte(posts.createdAt, yesterday)
+      eq(forumReplies.threadId, forumThreads.id),
+      gte(forumReplies.createdAt, yesterday)
     ))
-    .where(eq(threads.authorId, userId));
+    .where(eq(forumThreads.authorId, userId));
 
     // Get new followers count
     const newFollowers = await db.select({
       count: sql<number>`COUNT(*)`
     })
-    .from(follows)
+    .from(userFollows)
     .where(and(
-      eq(follows.followedId, userId),
-      gte(follows.createdAt, yesterday)
+      eq(userFollows.followedId, userId),
+      gte(userFollows.createdAt, yesterday)
     ));
 
     const stats = {
@@ -391,14 +526,14 @@ export async function sendDailyDigestEmail(userId: string) {
 
     // Get trending threads
     const trendingThreads = await db.select({
-      title: threads.title,
-      slug: threads.slug,
-      categorySlug: threads.categorySlug,
-      viewCount: threads.viewCount
+      title: forumThreads.title,
+      slug: forumThreads.slug,
+      categorySlug: forumThreads.categorySlug,
+      viewCount: forumThreads.viewCount
     })
-    .from(threads)
-    .where(gte(threads.createdAt, yesterday))
-    .orderBy(desc(threads.viewCount))
+    .from(forumThreads)
+    .where(gte(forumThreads.createdAt, yesterday))
+    .orderBy(desc(forumThreads.viewCount))
     .limit(3);
 
     const emailContent = `
@@ -467,7 +602,7 @@ export async function sendDailyDigestEmail(userId: string) {
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `📊 Daily Digest: ${stats.views} views, ${stats.likes} likes, ${stats.followers} new followers`,
       html: emailContent,
@@ -500,45 +635,45 @@ export async function sendWeeklySummaryEmail(userId: string) {
 
     // Get comprehensive weekly stats
     const weeklyStats = await db.select({
-      totalThreads: sql<number>`COUNT(DISTINCT ${threads.id})`,
-      totalViews: sql<number>`COALESCE(SUM(${threads.viewCount}), 0)`,
+      totalThreads: sql<number>`COUNT(DISTINCT ${forumThreads.id})`,
+      totalViews: sql<number>`COALESCE(SUM(${forumThreads.viewCount}), 0)`,
       totalLikes: sql<number>`(
-        SELECT COUNT(*) FROM ${likes} 
-        WHERE ${likes.createdAt} >= ${weekAgo}
-        AND ${likes.contentId} IN (
-          SELECT ${threads.id} FROM ${threads} WHERE ${threads.authorId} = ${userId}
+        SELECT COUNT(*) FROM ${contentLikes} 
+        WHERE ${contentLikes.createdAt} >= ${weekAgo}
+        AND ${contentLikes.contentId} IN (
+          SELECT ${forumThreads.id} FROM ${forumThreads} WHERE ${forumThreads.authorId} = ${userId}
         )
       )`,
       totalReplies: sql<number>`(
-        SELECT COUNT(*) FROM ${posts}
-        WHERE ${posts.createdAt} >= ${weekAgo}
-        AND ${posts.threadId} IN (
-          SELECT ${threads.id} FROM ${threads} WHERE ${threads.authorId} = ${userId}
+        SELECT COUNT(*) FROM ${forumReplies}
+        WHERE ${forumReplies.createdAt} >= ${weekAgo}
+        AND ${forumReplies.threadId} IN (
+          SELECT ${forumThreads.id} FROM ${forumThreads} WHERE ${forumThreads.authorId} = ${userId}
         )
       )`
     })
-    .from(threads)
+    .from(forumThreads)
     .where(and(
-      eq(threads.authorId, userId),
-      gte(threads.createdAt, weekAgo)
+      eq(forumThreads.authorId, userId),
+      gte(forumThreads.createdAt, weekAgo)
     ));
 
     const stats = weeklyStats[0] || { totalThreads: 0, totalViews: 0, totalLikes: 0, totalReplies: 0 };
 
     // Get top performing thread
     const topThread = await db.select({
-      title: threads.title,
-      slug: threads.slug,
-      categorySlug: threads.categorySlug,
-      viewCount: threads.viewCount,
-      score: threads.score
+      title: forumThreads.title,
+      slug: forumThreads.slug,
+      categorySlug: forumThreads.categorySlug,
+      viewCount: forumThreads.viewCount,
+      score: forumThreads.score
     })
-    .from(threads)
+    .from(forumThreads)
     .where(and(
-      eq(threads.authorId, userId),
-      gte(threads.createdAt, weekAgo)
+      eq(forumThreads.authorId, userId),
+      gte(forumThreads.createdAt, weekAgo)
     ))
-    .orderBy(desc(threads.score))
+    .orderBy(desc(forumThreads.score))
     .limit(1);
 
     const emailContent = `
@@ -617,7 +752,7 @@ export async function sendWeeklySummaryEmail(userId: string) {
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `📈 Weekly Summary: ${stats.totalViews} views, ${stats.totalLikes} likes this week`,
       html: emailContent,
@@ -670,7 +805,7 @@ export async function sendMilestoneEmail(userId: string, milestone: string, achi
       </div>
     `;
 
-    await emailService.sendEmail({
+    await sendEmailWithTracking({
       to: user[0].email,
       subject: `🏆 Achievement Unlocked: ${milestone}!`,
       html: emailContent,

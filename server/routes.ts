@@ -274,6 +274,12 @@ import { sendCampaign, updateCampaignStats } from './services/campaignService.js
 import { insertAnnouncementSchema, insertEmailCampaignSchema } from "../shared/schema.js";
 import { coinTransactionService } from './services/coinTransactionService.js';
 import { emitAdminUserRegistered, emitAdminContentSubmitted, emitAdminModerationFlagged } from './services/dashboardWebSocket.js';
+import { 
+  sendThreadPostedEmail, 
+  sendReplyNotificationEmail, 
+  sendLikeNotificationEmail, 
+  sendFollowNotificationEmail 
+} from './services/engagementEmails.js';
 
 // Helper function to get authenticated user ID from session
 function getAuthenticatedUserId(req: any): string {
@@ -4004,7 +4010,18 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Failed to award coins for like:', error);
       }
       
-      // Queue like notification email (fire-and-forget)
+      // Send like notification email using engagement email service
+      try {
+        const content = await storage.getContent(validated.contentId);
+        if (content && content.authorId !== authenticatedUserId) {
+          await sendLikeNotificationEmail(content.authorId, 1, content.title);
+        }
+      } catch (error) {
+        console.error('Failed to send like notification email:', error);
+        // Don't fail the request if email fails
+      }
+      
+      // Queue like notification email (fire-and-forget) - keeping legacy code for backup
       (async () => {
         try {
           const liker = await storage.getUser(authenticatedUserId);
@@ -4857,6 +4874,24 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Onboarding step failed:', error);
       }
       
+      // Send thread posted email notification
+      try {
+        const user = await storage.getUserById(authenticatedUserId);
+        if (user && user.username) {
+          await sendThreadPostedEmail(authenticatedUserId, {
+            id: thread.id,
+            title: thread.title,
+            slug: thread.slug,
+            categorySlug: thread.categorySlug,
+            authorUsername: user.username,
+            excerpt: thread.body.substring(0, 200) + (thread.body.length > 200 ? '...' : '')
+          });
+        }
+      } catch (error) {
+        console.error('Failed to send thread posted email:', error);
+        // Don't fail the request if email fails
+      }
+      
       res.json({
         thread,
         coinsEarned: coinReward,
@@ -5488,69 +5523,54 @@ export async function registerRoutes(app: Express): Promise<Express> {
       try {
         const onboardingResult = await storage.trackOnboardingProgress(authenticatedUserId, 'firstReply');
         if (onboardingResult.completed && onboardingResult.coinsEarned > 0) {
-          // Queue thread reply email (fire-and-forget)
-          (async () => {
-            try {
-              const replier = await storage.getUser(authenticatedUserId);
-              const thread = await storage.getForumThreadById(req.params.threadId);
-              
-              if (thread && replier?.username && replier?.email) {
-                const threadAuthor = await storage.getUser(thread.authorId);
-                
-                // Don't send email if user replies to their own thread
-                if (threadAuthor?.email && threadAuthor.id !== authenticatedUserId) {
-                  const replyPreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
-                  
-                  // Use display name for bots (firstName + lastName), username for regular users
-                  const replierDisplayName = replier.isBot && replier.firstName && replier.lastName
-                    ? `${replier.firstName} ${replier.lastName}`
-                    : replier.username;
-                  
-                  await emailQueueService.queueEmail({
-                    userId: threadAuthor.id,
-                    templateKey: 'thread_reply',
-                    recipientEmail: threadAuthor.email,
-                    subject: `${replierDisplayName} replied to your thread`,
-                    payload: {
-                      recipientName: threadAuthor.username,
-                      replierName: replierDisplayName,
-                      threadTitle: thread.title,
-                      replyPreview,
-                      threadUrl: `/threads/${thread.slug}`
-                    },
-                    priority: EmailPriority.MEDIUM,
-                    groupType: EmailGroupType.COMMENTS
-                  });
-                }
-              }
-            } catch (emailError) {
-              console.error('Failed to queue thread reply email:', emailError);
-            }
-          })();
-          
-          return res.json({ 
-            ...reply, 
-            onboardingReward: {
-              task: 'firstReply',
-              coinsEarned: onboardingResult.coinsEarned 
-            }
-          });
+          console.log('Onboarding step completed: firstReply');
         }
       } catch (error) {
         console.error('Onboarding tracking failed:', error);
       }
-      
-      // Send thread reply email (fire-and-forget)
+
+      // Send reply notification email
+      try {
+        const replier = await storage.getUser(authenticatedUserId);
+        if (thread && replier?.username) {
+          const threadAuthor = await storage.getUser(thread.authorId);
+          
+          // Don't send email if user replies to their own thread
+          if (threadAuthor?.id && threadAuthor.id !== authenticatedUserId) {
+            const replyPreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
+            
+            // Use display name for bots (firstName + lastName), username for regular users
+            const replierDisplayName = replier.isBot && replier.firstName && replier.lastName
+              ? `${replier.firstName} ${replier.lastName}`
+              : replier.username;
+            
+            await sendReplyNotificationEmail(thread.authorId, {
+              id: reply.id,
+              body: replyPreview,
+              authorUsername: replierDisplayName,
+              authorAvatar: replier.profileImageUrl,
+              threadTitle: thread.title,
+              threadSlug: thread.slug,
+              categorySlug: thread.categorySlug
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to send reply notification email:', error);
+        // Don't fail the request if email fails
+      }
+
+      // Queue thread reply email (fire-and-forget) - keeping legacy code for backup
       (async () => {
         try {
           const replier = await storage.getUser(authenticatedUserId);
           const thread = await storage.getForumThreadById(req.params.threadId);
           
-          if (thread && replier?.username) {
+          if (thread && replier?.username && replier?.email) {
             const threadAuthor = await storage.getUser(thread.authorId);
             
             // Don't send email if user replies to their own thread
-            if (threadAuthor?.username && threadAuthor.id !== authenticatedUserId) {
+            if (threadAuthor?.email && threadAuthor.id !== authenticatedUserId) {
               const replyPreview = validated.body.replace(/<[^>]*>/g, '').substring(0, 200);
               
               // Use display name for bots (firstName + lastName), username for regular users
@@ -5558,17 +5578,25 @@ export async function registerRoutes(app: Express): Promise<Express> {
                 ? `${replier.firstName} ${replier.lastName}`
                 : replier.username;
               
-              await emailService.sendThreadReply(
-                threadAuthor.username,
-                replierDisplayName,
-                thread.title,
-                replyPreview,
-                thread.slug
-              );
+              await emailQueueService.queueEmail({
+                userId: threadAuthor.id,
+                templateKey: 'thread_reply',
+                recipientEmail: threadAuthor.email,
+                subject: `${replierDisplayName} replied to your thread`,
+                payload: {
+                  recipientName: threadAuthor.username,
+                  replierName: replierDisplayName,
+                  threadTitle: thread.title,
+                  replyPreview,
+                  threadUrl: `/threads/${thread.slug}`
+                },
+                priority: EmailPriority.MEDIUM,
+                groupType: EmailGroupType.COMMENTS
+              });
             }
           }
         } catch (emailError) {
-          console.error('Failed to send thread reply email:', emailError);
+          console.error('Failed to queue thread reply email:', emailError);
         }
       })();
       
@@ -6287,7 +6315,27 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Onboarding step failed:', error);
       }
       
-      // Queue follow notification email (fire-and-forget)
+      // Send follow notification email using engagement email service
+      try {
+        const follower = await storage.getUser(validated.followerId);
+        if (follower?.username) {
+          const followerDisplayName = follower.isBot && follower.firstName && follower.lastName
+            ? `${follower.firstName} ${follower.lastName}`
+            : follower.username;
+          
+          await sendFollowNotificationEmail(
+            validated.followingId,
+            followerDisplayName,
+            follower.username,
+            follower.profileImageUrl
+          );
+        }
+      } catch (error) {
+        console.error('Failed to send follow notification email:', error);
+        // Don't fail the request if email fails
+      }
+      
+      // Queue follow notification email (fire-and-forget) - keeping legacy code for backup
       (async () => {
         try {
           const follower = await storage.getUser(validated.followerId);

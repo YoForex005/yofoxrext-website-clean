@@ -832,6 +832,24 @@ export const notifications = pgTable("notifications", {
   createdAtIdx: index("idx_notifications_created_at").on(table.createdAt),
 }));
 
+// User Email Preferences - Settings for email notifications
+export const userPreferences = pgTable("user_preferences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  emailOnThreadPosted: boolean("email_on_thread_posted").notNull().default(true),
+  emailOnReply: boolean("email_on_reply").notNull().default(true),
+  emailOnLike: boolean("email_on_like").notNull().default(true),
+  emailOnFollow: boolean("email_on_follow").notNull().default(true),
+  emailDailyDigest: boolean("email_daily_digest").notNull().default(false),
+  emailWeeklyDigest: boolean("email_weekly_digest").notNull().default(true),
+  emailMarketing: boolean("email_marketing").notNull().default(true),
+  emailSystemUpdates: boolean("email_system_updates").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdIdx: index("idx_user_preferences_user_id").on(table.userId),
+}));
+
 // Forum Threads (separate from marketplace content)
 export const forumThreads = pgTable("forum_threads", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
