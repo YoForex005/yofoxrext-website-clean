@@ -249,14 +249,14 @@ function ChipSelector({
             <Badge 
               key={item} 
               variant="secondary"
-              className="gap-1 px-3 py-1 hover:bg-secondary/80 transition-colors animate-in fade-in-50 zoom-in-95"
+              className="gap-1 px-3 py-1 hover:bg-secondary/80 transition-colors animate-in fade-in-50 zoom-in-95 max-w-[200px]"
             >
-              {icon && <icon className="w-3 h-3" />}
-              {item}
+              {icon && <icon className="w-3 h-3 flex-shrink-0" />}
+              <span className="truncate">{item}</span>
               <button
                 type="button"
                 onClick={() => toggleOption(item)}
-                className="ml-1 hover:text-destructive transition-colors"
+                className="ml-1 hover:text-destructive transition-colors flex-shrink-0"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -294,9 +294,10 @@ function ChipSelector({
                   key={option}
                   type="button"
                   onClick={() => toggleOption(option)}
-                  className="text-left px-3 py-2 text-sm border rounded-lg hover:bg-accent transition-colors"
+                  className="text-left px-3 py-2 text-sm border rounded-lg hover:bg-accent transition-colors overflow-hidden"
+                  title={option}
                 >
-                  {option}
+                  <span className="block truncate">{option}</span>
                 </button>
               ))}
             </div>
@@ -648,8 +649,8 @@ function FileAttachmentSection({
                   {getFileIcon(attachment.file.name)}
                 </div>
                 
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">
+                <div className="flex-1 min-w-0 overflow-hidden">
+                  <p className="font-medium truncate" title={attachment.file.name}>
                     {attachment.file.name}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -1334,7 +1335,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                   <Input
                                     {...field}
                                     placeholder="What's your XAUUSD scalping rule that actually works?"
-                                    className="text-lg h-12"
+                                    className="text-lg h-12 overflow-wrap-anywhere"
                                     data-testid="input-title"
                                   />
                                 </FormControl>
@@ -1450,13 +1451,13 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                         <Badge 
                                           key={tag} 
                                           variant="secondary"
-                                          className="gap-1 px-3 py-1 animate-in fade-in-50 zoom-in-95"
+                                          className="hashtag-badge gap-1 px-3 py-1 animate-in fade-in-50 zoom-in-95"
                                         >
-                                          #{tag}
+                                          <span className="truncate">#{tag}</span>
                                           <button
                                             type="button"
                                             onClick={() => removeHashtag(tag)}
-                                            className="ml-1 hover:text-destructive transition-colors"
+                                            className="ml-1 hover:text-destructive transition-colors flex-shrink-0"
                                           >
                                             <X className="h-3 w-3" />
                                           </button>

@@ -242,6 +242,86 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* Global overflow handling for all input elements and text areas */
+  input,
+  textarea,
+  select {
+    @apply overflow-hidden;
+  }
+
+  input,
+  textarea {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    text-overflow: ellipsis;
+  }
+
+  /* Handle long words in content containers */
+  .prose,
+  .ProseMirror,
+  [contenteditable] {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  /* Prevent horizontal overflow in cards and forms */
+  form {
+    @apply overflow-x-hidden;
+  }
+
+  .card {
+    @apply overflow-hidden;
+  }
+
+  /* Specific overflow handling utilities */
+  .overflow-wrap-anywhere {
+    overflow-wrap: anywhere;
+  }
+
+  .word-break-all {
+    word-break: break-all;
+  }
+
+  .text-ellipsis {
+    @apply truncate;
+  }
+
+  /* Keywords and tags overflow handling */
+  .keyword-badge,
+  .hashtag-badge {
+    @apply inline-flex items-center max-w-[200px];
+  }
+
+  .keyword-badge span,
+  .hashtag-badge span {
+    @apply truncate;
+  }
+
+  /* SEO fields overflow handling */
+  .seo-excerpt,
+  .url-slug-input,
+  .meta-description {
+    word-break: break-all;
+    overflow-wrap: break-word;
+  }
+
+  /* File name overflow handling */
+  .file-name-display {
+    @apply truncate max-w-[250px];
+  }
+
+  /* Responsive overflow handling */
+  @media (max-width: 640px) {
+    .keyword-badge,
+    .hashtag-badge {
+      @apply max-w-[150px];
+    }
+    
+    .file-name-display {
+      @apply max-w-[180px];
+    }
+  }
 }
 
 /**
