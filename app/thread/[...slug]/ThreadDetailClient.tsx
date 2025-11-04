@@ -274,6 +274,8 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [threadTimeAgo, setThreadTimeAgo] = useState<string>("");
+  const [isLiked, setIsLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
 
   const { data: thread, isLoading: threadLoading } = useQuery<ForumThread>({
     queryKey: ["/api/threads/slug", slug],
@@ -292,7 +294,26 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
     if (thread?.createdAt) {
       setThreadTimeAgo(formatDistanceToNow(new Date(thread.createdAt), { addSuffix: true }));
     }
-  }, [thread?.createdAt]);
+    // Set initial like count
+    if (thread?.likeCount !== undefined) {
+      setLikeCount(thread.likeCount);
+    }
+  }, [thread?.createdAt, thread?.likeCount]);
+
+  // Fetch like status for the current user
+  useEffect(() => {
+    if (thread?.id && isAuthenticated) {
+      apiRequest("GET", `/api/threads/${thread.id}/like`)
+        .then(data => {
+          setIsLiked(data.liked);
+          setLikeCount(data.likeCount);
+        })
+        .catch(() => {
+          // If not authenticated or error, just use thread data
+          setLikeCount(thread.likeCount || 0);
+        });
+    }
+  }, [thread?.id, isAuthenticated]);
 
   const createReplyMutation = useMutation({
     mutationFn: (data: { body: string; parentId?: string }) => {
@@ -345,6 +366,38 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
       toast({ title: "Marked as accepted answer!" });
     },
   });
+
+  const likeMutation = useMutation({
+    mutationFn: () => {
+      if (!thread?.id) {
+        return Promise.reject(new Error("Thread not found"));
+      }
+      return apiRequest("POST", `/api/threads/${thread.id}/like`);
+    },
+    onSuccess: (data) => {
+      setIsLiked(data.liked);
+      setLikeCount(data.likeCount);
+      if (data.liked) {
+        toast({ 
+          title: "Thread liked!",
+          description: data.coinsAwarded > 0 ? `The author earned ${data.coinsAwarded} Sweets!` : undefined
+        });
+      } else {
+        toast({ title: "Like removed" });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to like thread",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleLikeThread = () => {
+    likeMutation.mutate();
+  };
 
   const handleBookmark = () => {
     requireAuth(() => {
@@ -515,6 +568,17 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
                     <MessageSquare className="h-4 w-4" />
                     <span data-testid="text-replies">{thread.replyCount || 0}</span>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => requireAuth(handleLikeThread)}
+                    disabled={likeMutation.isPending}
+                    className={`hover-elevate active-elevate-2 ${isLiked ? 'text-primary' : ''}`}
+                    data-testid="button-like-thread"
+                  >
+                    <ThumbsUp className={`h-4 w-4 mr-1.5 ${isLiked ? 'fill-current' : ''}`} />
+                    <span data-testid="text-likes">{likeCount}</span>
+                  </Button>
                 </div>
               </div>
 
