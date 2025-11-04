@@ -3,6 +3,7 @@ import type { IStorage } from '../storage';
 import { calculateEngagementScore, calculateUserReputation, calculateSalesScore } from '../utils/rankingAlgorithm';
 import { startEmailQueueProcessor } from '../services/emailQueue';
 import { initRetentionJobs } from './retentionJobs';
+import { initializeEmailDigestJobs } from './emailDigests';
 
 export function startBackgroundJobs(storage: IStorage) {
   console.log('[JOBS] Background jobs DISABLED for performance optimization');
@@ -17,6 +18,11 @@ export function startBackgroundJobs(storage: IStorage) {
   console.log('[RETENTION] Initializing retention jobs...');
   initRetentionJobs();
   console.log('[RETENTION] Retention jobs initialized successfully');
+  
+  // Start Email Digest Jobs (daily/weekly summaries, milestone notifications)
+  console.log('[EMAIL DIGEST] Initializing email digest jobs...');
+  initializeEmailDigestJobs();
+  console.log('[EMAIL DIGEST] Email digest jobs initialized successfully');
   
   // Sitemap Generation Job - Runs every 24 hours (ENABLED)
   cron.schedule('0 2 * * *', async () => { // Runs at 2 AM daily
