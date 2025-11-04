@@ -165,7 +165,7 @@ export default function ForumThreadCard({
                   {threadConfig.label}
                 </Badge>
                 <Badge 
-                  className={`text-[10px] h-4 px-1.5 border-0 ${categoryStyles.badgeBg} ${categoryStyles.badgeText}`}
+                  className={`text-[10px] h-4 px-1.5 border-0 truncate max-w-[150px] ${categoryStyles.badgeBg} ${categoryStyles.badgeText}`}
                   data-testid="badge-category"
                 >
                   {category}

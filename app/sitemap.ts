@@ -96,6 +96,31 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...categoryUrls,
     // SEO-optimized category pages
     ...seoCategoryUrls,
+    // SEO Landing Pages - High Priority
+    {
+      url: `${baseUrl}/best-forex-ea`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/forex-signals`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/mt4-vs-mt5`,
+      lastModified: new Date(),
+      changeFrequency: 'monthly',
+      priority: 0.95,
+    },
+    {
+      url: `${baseUrl}/forex-trading-guide`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.95,
+    },
     // Static pages
     {
       url: `${baseUrl}/marketplace`,

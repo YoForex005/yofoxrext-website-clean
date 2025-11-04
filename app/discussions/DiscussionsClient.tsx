@@ -603,7 +603,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                         <div className="flex items-center justify-between gap-2 flex-wrap">
                           <Badge 
                             variant="outline" 
-                            className={`text-[10px] px-2 py-0.5 ${categoryStyles.bg} ${categoryStyles.text} ${categoryStyles.border}`}
+                            className={`text-[10px] px-2 py-0.5 truncate max-w-[150px] ${categoryStyles.bg} ${categoryStyles.text} ${categoryStyles.border}`}
                             data-testid={`badge-category-${thread.slug}`}
                           >
                             {formatCategoryName(thread.categorySlug)}

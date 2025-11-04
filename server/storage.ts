@@ -8908,7 +8908,7 @@ export class DrizzleStorage implements IStorage {
       thread_count: string;
       post_count: number;
       parent_slug: string | null;
-      order_index: number;
+      sort_order: number;
       created_at: Date;
       updated_at: Date;
     }>(sql`
@@ -8917,7 +8917,7 @@ export class DrizzleStorage implements IStorage {
         COALESCE(COUNT(t.id), 0) as thread_count
       FROM forum_categories c
       LEFT JOIN forum_threads t ON t.category_slug = c.slug
-      GROUP BY c.slug, c.name, c.description, c.icon, c.thread_count, c.post_count, c.parent_slug, c.order_index, c.created_at, c.updated_at
+      GROUP BY c.slug, c.name, c.description, c.icon, c.thread_count, c.post_count, c.parent_slug, c.sort_order, c.created_at, c.updated_at
       ORDER BY COALESCE(COUNT(t.id), 0) DESC
       LIMIT ${limit}
     `);
@@ -8931,7 +8931,7 @@ export class DrizzleStorage implements IStorage {
         threadCount: row.thread_count,
         postCount: row.post_count,
         parentSlug: row.parent_slug,
-        orderIndex: row.order_index,
+        sortOrder: row.sort_order,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       },

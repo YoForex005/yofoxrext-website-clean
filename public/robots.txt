@@ -1,0 +1,68 @@
+# Robots.txt for YoForex.net
+# Updated: November 2025
+# https://yoforex.net/
+
+# Allow all bots
+User-agent: *
+Allow: /
+
+# Specific rules for search engine crawlers
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 1
+
+User-agent: Baiduspider
+Allow: /
+Crawl-delay: 1
+
+# Block bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+# Protect sensitive areas
+User-agent: *
+Disallow: /admin/
+Disallow: /api/
+Disallow: /_next/
+Disallow: /login
+Disallow: /register
+Disallow: /reset-password
+Disallow: /settings/
+Disallow: /dashboard/
+Disallow: /checkout/
+Disallow: /cart/
+Disallow: /search?
+Disallow: /*?page=
+Disallow: /*?sort=
+Disallow: /*?filter=
+Disallow: /tmp/
+Disallow: /temp/
+Disallow: /cache/
+
+# Allow specific API endpoints for structured data
+Allow: /api/sitemap
+Allow: /api/rss
+
+# Sitemap locations
+Sitemap: https://yoforex.net/sitemap.xml
+Sitemap: https://yoforex.net/sitemap-index.xml
+
+# Cache directives
+# Cache-Control: public, max-age=3600
