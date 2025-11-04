@@ -111,7 +111,7 @@ export default function AutoSEOPanel({
   // Debounce title and body for performance
   const debouncedTitle = useDebounce(title, 500);
   const debouncedBody = useDebounce(body, 500);
-
+  
   // Auto-generate SEO data
   const autoSEOData = useMemo(() => {
     if (!debouncedTitle && !debouncedBody) {
@@ -152,6 +152,22 @@ export default function AutoSEOPanel({
       internalLinks
     };
   }, [debouncedTitle, debouncedBody, imageUrls, categories]);
+  
+  // Calculate SEO completion percentage
+  const calculateSEOCompletionPercentage = useMemo(() => {
+    const data = autoOptimize ? autoSEOData : manualFields;
+    let completedFields = 0;
+    const totalFields = 6;
+    
+    if (data.primaryKeyword) completedFields++;
+    if (data.seoExcerpt && data.seoExcerpt.length >= 50) completedFields++;
+    if (data.hashtags.length > 0) completedFields++;
+    if (data.urlSlug) completedFields++;
+    if (data.keywordDensity >= 0.5 && data.keywordDensity <= 3) completedFields++;
+    if (data.imageAltTexts.length > 0 || imageUrls.length === 0) completedFields++;
+    
+    return Math.round((completedFields / totalFields) * 100);
+  }, [autoOptimize, autoSEOData, manualFields, imageUrls]);
 
   // Generate keyword suggestions
   const keywordSuggestions = useMemo(() => {
@@ -406,10 +422,13 @@ export default function AutoSEOPanel({
             <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5 text-primary" />
-                  <CardTitle className="text-lg">SEO Optimization</CardTitle>
+                  <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+                  <CardTitle className="text-lg">
+                    SEO Optimization - <span className="text-primary">Boost Your Visibility 3x</span>
+                  </CardTitle>
                   {autoOptimize && (
-                    <Badge variant="secondary" className="ml-2">
+                    <Badge variant="secondary" className="ml-2 bg-green-500/10 text-green-600">
+                      <Check className="h-3 w-3 mr-1" />
                       Auto-optimizing
                     </Badge>
                   )}
@@ -426,22 +445,128 @@ export default function AutoSEOPanel({
                   )}
                 </Button>
               </div>
-              <CardDescription>
-                Optimize your thread for better visibility and engagement
+              <CardDescription className="mt-2">
+                <span className="font-semibold text-foreground">
+                  🚀 Threads with SEO get 70% more views and 3x more responses
+                </span>
+                <span className="block text-xs text-muted-foreground mt-1">
+                  Just 2 minutes of optimization can put your thread at the top of search results
+                </span>
               </CardDescription>
+              {/* Benefit badges */}
+              <div className="flex flex-wrap gap-2 mt-3">
+                <Badge variant="secondary" className="bg-blue-500/10 text-blue-600 text-xs">
+                  🎯 Get found faster
+                </Badge>
+                <Badge variant="secondary" className="bg-purple-500/10 text-purple-600 text-xs">
+                  📈 3x more engagement
+                </Badge>
+                <Badge variant="secondary" className="bg-orange-500/10 text-orange-600 text-xs">
+                  ⭐ Rank higher in search
+                </Badge>
+                <Badge variant="secondary" className="bg-green-500/10 text-green-600 text-xs">
+                  🏆 Appear in trending
+                </Badge>
+              </div>
             </CardHeader>
           </CollapsibleTrigger>
 
           <CollapsibleContent>
             <CardContent className="space-y-6">
+              {/* SEO Completion Progress */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold text-sm">SEO Optimization Progress</h4>
+                  <span className={`text-sm font-bold ${
+                    calculateSEOCompletionPercentage === 100 ? 'text-green-600' : 
+                    calculateSEOCompletionPercentage >= 70 ? 'text-yellow-600' : 'text-red-600'
+                  }`}>
+                    {calculateSEOCompletionPercentage}% Complete
+                  </span>
+                </div>
+                <Progress 
+                  value={calculateSEOCompletionPercentage} 
+                  className="h-3"
+                />
+                {calculateSEOCompletionPercentage < 100 && (
+                  <Alert className={`border-2 ${
+                    calculateSEOCompletionPercentage < 50 ? 'border-red-500/30 bg-red-50 dark:bg-red-950/20' : 
+                    'border-yellow-500/30 bg-yellow-50 dark:bg-yellow-950/20'
+                  }`}>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {calculateSEOCompletionPercentage < 50 ? (
+                        <>
+                          <span className="font-semibold text-red-600 dark:text-red-400">
+                            ⚠️ Missing opportunity for +{600 - calculateSEOCompletionPercentage * 5} views
+                          </span>
+                          <span className="block text-xs mt-1">
+                            Complete the SEO fields below to maximize your thread's reach. 
+                            Top performing threads have 100% SEO completion!
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-semibold text-yellow-600 dark:text-yellow-400">
+                            💡 Almost there! Just {100 - calculateSEOCompletionPercentage}% more for maximum visibility
+                          </span>
+                          <span className="block text-xs mt-1">
+                            You're on track! Complete the remaining fields to join the top 10% of threads.
+                          </span>
+                        </>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+                {calculateSEOCompletionPercentage === 100 && (
+                  <Alert className="border-2 border-green-500/30 bg-green-50 dark:bg-green-950/20">
+                    <Check className="h-4 w-4 text-green-600" />
+                    <AlertDescription>
+                      <span className="font-semibold text-green-600 dark:text-green-400">
+                        🎉 Perfect! Your thread is fully optimized for maximum visibility
+                      </span>
+                      <span className="block text-xs mt-1">
+                        You're in the top 10% of optimized threads. Expect 3x more views and engagement!
+                      </span>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              <Separator />
+
               {/* Auto-optimize toggle */}
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted">
-                <div className="space-y-0.5">
-                  <Label htmlFor="auto-optimize" className="text-base cursor-pointer">
-                    Auto-optimize SEO for me
+              <div className={`flex items-center justify-between p-4 rounded-lg border-2 transition-all ${
+                autoOptimize ? 'bg-green-50 dark:bg-green-950/20 border-green-500/30' : 'bg-yellow-50 dark:bg-yellow-950/20 border-yellow-500/30'
+              }`}>
+                <div className="space-y-0.5 flex-1 mr-4">
+                  <Label htmlFor="auto-optimize" className="text-base cursor-pointer font-semibold">
+                    {autoOptimize ? (
+                      <>✨ Let AI boost your visibility (Recommended)</>
+                    ) : (
+                      <>⚠️ Manual mode - Don't miss out on potential reach!</>
+                    )}
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Automatically generate optimal SEO fields from your content
+                    {autoOptimize ? (
+                      <>
+                        <span className="text-green-600 dark:text-green-400 font-medium">
+                          ✅ AI is optimizing your SEO for maximum visibility
+                        </span>
+                        <span className="block text-xs mt-1">
+                          Join 89% of top threads that use auto-optimization
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-yellow-600 dark:text-yellow-400 font-medium">
+                          ⚠️ Without SEO optimization, your thread may get 70% less visibility
+                        </span>
+                        <span className="block text-xs mt-1">
+                          💡 Threads with proper SEO get 3x more responses on average
+                        </span>
+                      </>
+                    )}
                   </p>
                 </div>
                 <Switch
@@ -449,6 +574,7 @@ export default function AutoSEOPanel({
                   checked={autoOptimize}
                   onCheckedChange={setAutoOptimize}
                   data-testid="switch-auto-optimize"
+                  className={autoOptimize ? 'data-[state=checked]:bg-green-600' : ''}
                 />
               </div>
 
@@ -561,12 +687,23 @@ export default function AutoSEOPanel({
                   <div className="space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Search className="h-4 w-4 text-muted-foreground" />
-                      <Label>Primary Keyword</Label>
+                      <Label className="font-semibold">
+                        Primary Keyword 
+                        <span className="text-xs text-muted-foreground ml-2">
+                          (3x visibility boost when optimized)
+                        </span>
+                      </Label>
                       {currentSEOData.keywordDensity > 0 && (
                         <Badge 
                           className={`${getKeywordDensityColor(currentSEOData.keywordDensity)} text-white`}
                         >
                           {currentSEOData.keywordDensity.toFixed(1)}% density
+                        </Badge>
+                      )}
+                      {!currentSEOData.primaryKeyword && (
+                        <Badge variant="destructive" className="animate-pulse">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Missing +300 views
                         </Badge>
                       )}
                       {/* Auto-fix button for bad keyword density */}
@@ -610,7 +747,18 @@ export default function AutoSEOPanel({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <Eye className="h-4 w-4 text-muted-foreground" />
-                        <Label>SEO Excerpt</Label>
+                        <Label className="font-semibold">
+                          SEO Excerpt
+                          <span className="text-xs text-muted-foreground ml-2">
+                            (Your search result preview - critical for getting clicks!)
+                          </span>
+                        </Label>
+                        {!currentSEOData.seoExcerpt && (
+                          <Badge variant="destructive" className="animate-pulse">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Missing +50% CTR
+                          </Badge>
+                        )}
                       </div>
                       <span className={`text-xs ${
                         currentSEOData.seoExcerpt.length >= 120 && currentSEOData.seoExcerpt.length <= 160

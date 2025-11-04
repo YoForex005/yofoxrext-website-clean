@@ -17,6 +17,7 @@ import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
 import LeftEngagementSidebar from "./LeftEngagementSidebar";
 import RightEngagementSidebar from "./RightEngagementSidebar";
+import AutoSEOPanel, { type SEOData } from "@/components/AutoSEOPanel";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -822,6 +823,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [quickStartMode, setQuickStartMode] = useState(true);
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [seoData, setSeoData] = useState<SEOData | null>(null);
   
   // Pre-select category from URL param
   const categoryParam = searchParams?.get("category") || "";
@@ -1474,9 +1476,19 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                     </div>
                   )}
 
-                  {/* STEP 2: File Attachments */}
+                  {/* STEP 2: Enhance with SEO & File Attachments */}
                   {currentStep === 2 && (
                     <div className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-2">
+                      {/* SEO Optimization Section */}
+                      <AutoSEOPanel
+                        title={form.watch("title")}
+                        body={editor?.getText() || ""}
+                        imageUrls={[]}
+                        categories={categories.map(c => c.slug)}
+                        onSEOUpdate={(data) => setSeoData(data)}
+                      />
+                      
+                      {/* File Attachments Section */}
                       <FileAttachmentSection 
                         attachments={attachments}
                         onAttachmentsChange={setAttachments}
