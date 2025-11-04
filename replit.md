@@ -97,6 +97,17 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Fixed All Navigation Issues from Recent Discussions Page
+- **Fixed Thread Navigation Links:** Updated all thread links to use `/thread/[categorySlug]/[threadSlug]` format
+  - Main discussion grid cards now navigate correctly
+  - Trending Now section links work properly
+  - Recent Activity items link to correct thread pages
+- **Backend API Updates:** 
+  - Activity feed endpoint now includes `threadSlug` and `categorySlug` fields
+  - Thread slug route extracts thread slug from full path correctly
+- **Files Changed:** `app/discussions/DiscussionsClient.tsx`, `server/routes.ts`
+- **Result:** All navigation from Recent Discussions page now works correctly for existing threads
+
 ### November 4, 2025 - Fixed Thread Reply Validation Issue
 - **Reduced Reply Minimum Character Requirement:** Changed from 10 to 3 characters in `shared/schema.ts`
   - Users can now post short replies like "Yes", "No", "OK", etc.
