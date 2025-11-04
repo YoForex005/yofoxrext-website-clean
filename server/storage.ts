@@ -171,6 +171,22 @@ import {
   type InsertFeatureUnlock,
   type AuditLog,
   type InsertAuditLog,
+  // Add missing PageControl types
+  type PageControl,
+  type InsertPageControl,
+  // Add missing messaging-related types
+  type UserMessageSettings,
+  type InsertUserMessageSettings,
+  type BlockedUser,
+  type InsertBlockedUser,
+  type MessageReport,
+  type InsertMessageReport,
+  type ModerationAction,
+  type InsertModerationAction,
+  type SpamDetectionLog,
+  type InsertSpamDetectionLog,
+  type TicketMessage,
+  type InsertTicketMessage,
   users,
   userActivity,
   coinTransactions,
@@ -270,7 +286,9 @@ import {
   featureUnlocks,
   auditLogs,
   BADGE_TYPES,
-  type BadgeType
+  type BadgeType,
+  COIN_TRIGGERS,
+  COIN_CHANNELS
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { applySEOAutomations, generateUniqueSlug, generateThreadSlug, generateReplySlug, generateMetaDescription, extractFocusKeyword } from "./seo-engine";
@@ -3294,6 +3312,10 @@ export class MemStorage implements IStorage {
       onboardingProgress: null,
       reputationScore: 0,
       lastReputationUpdate: null,
+      isBot: false,
+      banReason: null,
+      referralCode: null,
+      referredBy: null,
       lastJournalPost: null,
       level: 2,
       role: "member",
@@ -3388,6 +3410,11 @@ export class MemStorage implements IStorage {
       lastActivityTime: new Date(),
       emailBounceCount: 0,
       lastEmailSentAt: null,
+      // Missing fields
+      isBot: false,
+      banReason: null,
+      referralCode: null,
+      referredBy: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -3509,6 +3536,13 @@ export class MemStorage implements IStorage {
       amount: taskInfo.reward,
       description: `Onboarding reward: ${task}`,
       status: "completed",
+      channel: COIN_CHANNELS.ONBOARDING,
+      trigger: task === 'profilePicture' ? COIN_TRIGGERS.ONBOARDING_PROFILE_PICTURE :
+               task === 'firstReply' ? COIN_TRIGGERS.ONBOARDING_FIRST_POST :
+               task === 'firstThread' ? COIN_TRIGGERS.ONBOARDING_FIRST_THREAD :
+               task === 'firstPublish' ? COIN_TRIGGERS.ONBOARDING_FIRST_PUBLISH :
+               task === 'fiftyFollowers' ? COIN_TRIGGERS.ENGAGEMENT_FOLLOWER_GAINED :
+               COIN_TRIGGERS.ONBOARDING_WELCOME,
     });
 
     return { completed: true, coinsEarned: taskInfo.reward };
@@ -3560,6 +3594,8 @@ export class MemStorage implements IStorage {
         amount: newCoins,
         description: `Daily activity reward: ${minutes} active minutes`,
         status: "completed",
+        channel: COIN_CHANNELS.ENGAGEMENT,
+        trigger: COIN_TRIGGERS.ENGAGEMENT_DAILY_LOGIN,
       });
     }
     
@@ -3705,6 +3741,8 @@ export class MemStorage implements IStorage {
         amount: order.coinAmount,
         description: `Coin recharge via ${order.paymentMethod}`,
         status: "completed",
+        channel: COIN_CHANNELS.SYSTEM,
+        trigger: COIN_TRIGGERS.SYSTEM_WELCOME_BONUS,
       });
     }
     
@@ -3906,6 +3944,8 @@ export class MemStorage implements IStorage {
         amount: item.priceCoins,
         description: `Purchased: ${item.title}`,
         status: "completed",
+        channel: COIN_CHANNELS.MARKETPLACE,
+        trigger: COIN_TRIGGERS.MARKETPLACE_PURCHASE_ITEM,
       });
     } catch (error) {
       throw new Error("Failed to debit buyer");
@@ -3919,6 +3959,8 @@ export class MemStorage implements IStorage {
         amount: sellerAmount,
         description: `Sale: ${item.title} (90% of ${item.priceCoins})`,
         status: "completed",
+        channel: COIN_CHANNELS.MARKETPLACE,
+        trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
       });
     } catch (error) {
       // Rollback buyer's transaction by crediting back
@@ -3928,6 +3970,8 @@ export class MemStorage implements IStorage {
         amount: item.priceCoins,
         description: `Refund: ${item.title} (seller error)`,
         status: "completed",
+        channel: COIN_CHANNELS.MARKETPLACE,
+        trigger: COIN_TRIGGERS.MARKETPLACE_PURCHASE_ITEM,
       });
       throw new Error("Failed to credit seller - purchase cancelled");
     }
@@ -4076,6 +4120,8 @@ export class MemStorage implements IStorage {
       amount: 1,
       description: `Liked: ${content.title}`,
       status: "completed",
+      channel: COIN_CHANNELS.FORUM,
+      trigger: COIN_TRIGGERS.FORUM_LIKE_GIVEN,
     });
     
     return like;
@@ -7584,6 +7630,13 @@ export class DrizzleStorage implements IStorage {
       amount: taskInfo.reward,
       description: `Onboarding reward: ${task}`,
       status: "completed",
+      channel: COIN_CHANNELS.ONBOARDING,
+      trigger: task === 'profilePicture' ? COIN_TRIGGERS.ONBOARDING_PROFILE_PICTURE :
+               task === 'firstReply' ? COIN_TRIGGERS.ONBOARDING_FIRST_POST :
+               task === 'firstThread' ? COIN_TRIGGERS.ONBOARDING_FIRST_THREAD :
+               task === 'firstPublish' ? COIN_TRIGGERS.ONBOARDING_FIRST_PUBLISH :
+               task === 'fiftyFollowers' ? COIN_TRIGGERS.ENGAGEMENT_FOLLOWER_GAINED :
+               COIN_TRIGGERS.ONBOARDING_WELCOME,
     });
 
     return { completed: true, coinsEarned: taskInfo.reward };

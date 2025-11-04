@@ -40,6 +40,8 @@ import {
   insertTreasuryAdjustmentSchema,
   insertBotWalletEventSchema,
   insertPageControlSchema,
+  insertUserMessageSettingsSchema,
+  insertBlockedUserSchema,
   BADGE_METADATA,
   type BadgeType,
   type User,
@@ -77,6 +79,8 @@ import {
   rankTiers,
   weeklyEarnings,
   contentPurchases,
+  errorGroups,
+  errorStatusChanges,
   SWEETS_TRIGGERS,
   SWEETS_CHANNELS,
   COIN_TRIGGERS,
@@ -8964,8 +8968,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
         const validated = insertPageControlSchema.parse(req.body);
         const control = await storage.createPageControl({
           ...validated,
-          createdBy: req.user!.id,
-          updatedBy: req.user!.id,
+          createdBy: getAuthenticatedUserId(req),
+          updatedBy: getAuthenticatedUserId(req),
         });
         res.json(control);
       } catch (error) {
@@ -8991,7 +8995,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         const validated = insertPageControlSchema.partial().parse(req.body);
         const control = await storage.updatePageControl(parseInt(req.params.id), {
           ...validated,
-          updatedBy: req.user!.id,
+          updatedBy: getAuthenticatedUserId(req),
         });
         res.json(control);
       } catch (error) {
@@ -10134,7 +10138,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const coinResult = await coinTransactionService.executeTransaction({
         userId: targetUserId,
         amount: validated.amount, // Can be positive (add) or negative (deduct)
-        trigger: COIN_TRIGGERS.ADMIN_MANUAL_ADJUSTMENT,
+        trigger: COIN_TRIGGERS.ADMIN_ADJUSTMENT_MANUAL,
         channel: COIN_CHANNELS.ADMIN,
         description: `Admin adjustment: ${validated.reason}`,
         metadata: {
@@ -15204,16 +15208,17 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.post("/api/admin/bots", isAuthenticated, isAdminMiddleware, async (req, res) => {
     try {
       const botData = insertBotSchema.parse(req.body);
-      botData.createdBy = req.user!.id;
+      botData.createdBy = getAuthenticatedUserId(req);
       const bot = await storage.createBot(botData);
       
       // Log audit trail
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: "create_bot",
         targetType: "bot",
         targetId: bot.id,
-        newValue: bot
+        newValue: bot,
+        isUndone: false
       });
       
       res.status(201).json(bot);
@@ -15230,11 +15235,12 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const bot = await storage.updateBot(req.params.id, updates);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
-        actionType: "update_bot",
+        adminId: getAuthenticatedUserId(req),
+        actionType: "deactivate_bot",
         targetType: "bot",
         targetId: bot.id,
-        newValue: updates
+        newValue: updates,
+        isUndone: false
       });
       
       res.json(bot);
@@ -15250,10 +15256,11 @@ export async function registerRoutes(app: Express): Promise<Express> {
       await storage.deleteBot(req.params.id);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
-        actionType: "delete_bot",
+        adminId: getAuthenticatedUserId(req),
+        actionType: "deactivate_bot",
         targetType: "bot",
-        targetId: req.params.id
+        targetId: req.params.id,
+        isUndone: false
       });
       
       res.status(204).send();
@@ -15270,7 +15277,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const bot = await storage.toggleBotStatus(req.params.id, isActive);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: isActive ? "activate_bot" : "deactivate_bot",
         targetType: "bot",
         targetId: bot.id
@@ -15359,7 +15366,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const treasury = await storage.refillTreasury(amount);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: "refill_treasury",
         targetType: "treasury",
         newValue: { amount, newBalance: treasury.balance }
@@ -15459,7 +15466,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
   // POST /api/admin/bot-audit/:id/undo - Undo audit action
   app.post("/api/admin/bot-audit/:id/undo", isAuthenticated, isAdminMiddleware, async (req, res) => {
     try {
-      const log = await storage.undoAuditAction(req.params.id, req.user!.id);
+      const log = await storage.undoAuditAction(req.params.id, getAuthenticatedUserId(req));
       res.json(log);
     } catch (error: any) {
       console.error('Failed to undo audit action:', error);
@@ -15491,7 +15498,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const settings = await storage.updateBotSettings(updates);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: "update_bot_settings",
         targetType: "system",
         previousValue: previousSettings,
@@ -15577,7 +15584,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       await storage.updateUserCoins(userId, -drainAmount);
       
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: "drain_wallet",
         targetType: "user",
         targetId: userId,
@@ -15598,7 +15605,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const { userId, newCap } = req.body;
       
       await storage.logBotAction({
-        adminId: req.user!.id,
+        adminId: getAuthenticatedUserId(req),
         actionType: "override_wallet_cap",
         targetType: "user",
         targetId: userId,
