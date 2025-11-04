@@ -99,6 +99,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
+- **Categories Page Fix (11/04):** Fixed categories page showing "No categories found" issue
+  - Issue: Server-side rendering was using public URL instead of internal Express URL
+  - Solution: Changed `app/categories/page.tsx` and `app/category/[slug]/page.tsx` to use `process.env.EXPRESS_URL` for SSR
+  - Result: All 60 categories now display correctly with proper counts
+  - Technical note: Server-side Next.js must use internal Express URL (`http://127.0.0.1:3001`), not public URL
+
+### November 2024 (continued)
 - **Discussions Page Filter Fix (11/04):** Fixed filter tabs that weren't working
   - Added URL parameter synchronization for bookmarkable filter states  
   - Fixed filter state management using Next.js navigation hooks

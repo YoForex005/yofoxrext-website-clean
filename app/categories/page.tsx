@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import CategoriesClient from './CategoriesClient';
 import type { ForumCategory } from '@shared/schema';
 
-// Express API base URL
-const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+// Express API base URL - Use internal URL for server-side fetching
+const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
 
 // Enable ISR with 60-second revalidation
 export const revalidate = 60;
