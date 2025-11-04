@@ -523,6 +523,17 @@ function FileAttachmentSection({
     const newAttachments: FileAttachment[] = [];
     
     for (const file of Array.from(files)) {
+      // Check file size (20MB max)
+      const maxFileSize = 20 * 1024 * 1024; // 20MB in bytes
+      if (file.size > maxFileSize) {
+        toast({
+          title: "File too large",
+          description: `${file.name} exceeds 20MB limit`,
+          variant: "destructive",
+        });
+        continue;
+      }
+
       const id = Math.random().toString(36).substring(7);
       newAttachments.push({
         id,
@@ -531,6 +542,8 @@ function FileAttachmentSection({
         uploading: true,
       });
     }
+
+    if (newAttachments.length === 0) return;
 
     onAttachmentsChange([...attachments, ...newAttachments]);
 
@@ -542,30 +555,87 @@ function FileAttachmentSection({
       try {
         setUploadingFiles(prev => [...prev, attachment.id]);
         
+        console.log(`[FileUpload] Starting upload for: ${attachment.file.name}`);
+        
         const res = await fetch("/api/upload", {
           method: "POST",
           body: formData,
           credentials: "include",
         });
 
+        // Parse response regardless of status
+        const responseText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('[FileUpload] Failed to parse response:', responseText);
+          data = { error: responseText };
+        }
+
         if (res.ok) {
-          const data = await res.json();
+          console.log(`[FileUpload] Upload successful for: ${attachment.file.name}`, data);
           const url = data.urls?.[0];
+          
+          if (!url) {
+            console.error('[FileUpload] No URL returned from server:', data);
+            throw new Error("Server did not return file URL");
+          }
           
           onAttachmentsChange(prev => prev.map(a => 
             a.id === attachment.id 
               ? { ...a, url, uploading: false }
               : a
           ));
+          
+          toast({
+            title: "File uploaded",
+            description: `${attachment.file.name} uploaded successfully`,
+            variant: "default",
+          });
         } else {
-          throw new Error("Upload failed");
+          // Handle different error scenarios
+          console.error(`[FileUpload] Upload failed for: ${attachment.file.name}`, {
+            status: res.status,
+            statusText: res.statusText,
+            response: data
+          });
+
+          let errorMessage = "Upload failed";
+          
+          // Parse error message based on status code
+          if (res.status === 401) {
+            errorMessage = "Please log in to upload files";
+          } else if (res.status === 400) {
+            errorMessage = data.error || "Invalid file or request";
+          } else if (res.status === 413) {
+            errorMessage = "File size too large (max 20MB)";
+          } else if (res.status === 415) {
+            errorMessage = "File type not supported";
+          } else if (res.status === 500) {
+            errorMessage = data.error || "Server error - please try again";
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+
+          throw new Error(errorMessage);
         }
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Upload failed';
+        
+        console.error(`[FileUpload] Error uploading ${attachment.file.name}:`, error);
+        
         onAttachmentsChange(prev => prev.map(a => 
           a.id === attachment.id 
-            ? { ...a, uploading: false, error: 'Upload failed' }
+            ? { ...a, uploading: false, error: errorMessage }
             : a
         ));
+        
+        toast({
+          title: "Upload failed",
+          description: errorMessage,
+          variant: "destructive",
+        });
       } finally {
         setUploadingFiles(prev => prev.filter(id => id !== attachment.id));
       }
@@ -644,35 +714,50 @@ function FileAttachmentSection({
             {attachments.map((attachment) => (
               <div 
                 key={attachment.id} 
-                className="flex items-center gap-3 p-4 border-2 rounded-xl bg-card hover:shadow-md transition-all animate-in fade-in-50 zoom-in-95"
+                className={cn(
+                  "relative p-4 border-2 rounded-xl bg-card transition-all animate-in fade-in-50 zoom-in-95",
+                  attachment.error ? "border-destructive/50 bg-destructive/5" : "hover:shadow-md"
+                )}
               >
-                <div className="p-2 bg-primary/10 rounded-lg">
-                  {getFileIcon(attachment.file.name)}
-                </div>
-                
-                <div className="flex-1 min-w-0 overflow-hidden">
-                  <p className="font-medium truncate" title={attachment.file.name}>
-                    {attachment.file.name}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {(attachment.file.size / 1024).toFixed(1)} KB
-                  </p>
-                </div>
-
                 <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1">
-                    <Coins className="h-4 w-4 text-yellow-600" />
-                    <Input
-                      type="number"
-                      min="0"
-                      max="10000"
-                      value={attachment.price}
-                      onChange={(e) => handlePriceChange(attachment.id, parseInt(e.target.value) || 0)}
-                      className="w-20 h-7 text-sm bg-transparent border-0 focus-visible:ring-0"
-                      placeholder="0"
-                      disabled={attachment.uploading}
-                    />
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    attachment.error ? "bg-destructive/20" : "bg-primary/10"
+                  )}>
+                    {getFileIcon(attachment.file.name)}
                   </div>
+                  
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <p className="font-medium truncate" title={attachment.file.name}>
+                      {attachment.file.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {(attachment.file.size / 1024).toFixed(1)} KB
+                    </p>
+                  </div>
+
+                  {!attachment.error && !attachment.uploading && (
+                    <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-1">
+                      <Coins className="h-4 w-4 text-yellow-600" />
+                      <Input
+                        type="number"
+                        min="0"
+                        max="10000"
+                        value={attachment.price}
+                        onChange={(e) => handlePriceChange(attachment.id, parseInt(e.target.value) || 0)}
+                        className="w-20 h-7 text-sm bg-transparent border-0 focus-visible:ring-0"
+                        placeholder="0"
+                        disabled={attachment.uploading}
+                      />
+                    </div>
+                  )}
+
+                  {attachment.uploading && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Uploading...</span>
+                    </div>
+                  )}
                   
                   <Button
                     type="button"
@@ -686,16 +771,11 @@ function FileAttachmentSection({
                   </Button>
                 </div>
 
-                {attachment.uploading && (
-                  <div className="flex items-center gap-2">
-                    <Progress className="w-20 h-1" value={50} />
-                  </div>
-                )}
-                
                 {attachment.error && (
-                  <Badge variant="destructive" className="text-xs">
-                    {attachment.error}
-                  </Badge>
+                  <div className="mt-2 flex items-center gap-2 text-destructive">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <p className="text-sm font-medium">{attachment.error}</p>
+                  </div>
                 )}
               </div>
             ))}
