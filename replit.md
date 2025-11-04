@@ -97,6 +97,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Thread Page 404 Fix
+- **Fixed Thread Page Connectivity Issue:** Resolved 503 errors when accessing thread pages
+  - Thread page was using wrong Express URL configuration causing server-side rendering failures
+  - Updated `app/thread/[...slug]/page.tsx` to use `getInternalApiUrl()` from api-config module
+  - Created test thread "test-something-good" to verify functionality
+  - Thread pages now load correctly with all data fetched successfully
+
 ### November 4, 2025 - Category Navigation Fix
 - **Implemented Fuzzy Slug Matching:** Added intelligent category slug matching using Levenshtein distance
   - New `/api/categories/find/:slug` endpoint handles slug variations (e.g., "ea" vs "eas", singular vs plural)

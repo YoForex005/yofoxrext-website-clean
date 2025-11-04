@@ -4,6 +4,7 @@ import type { ForumThread, ForumReply } from '@shared/schema';
 import ThreadDetailClient from './ThreadDetailClient';
 import { getThreadUrl } from '../../../lib/category-path';
 import { getMetadataWithOverrides } from '../../lib/metadata-helper';
+import { getInternalApiUrl } from '../../lib/api-config';
 
 interface PageProps {
   params: Promise<{ slug: string[] }>;
@@ -11,7 +12,7 @@ interface PageProps {
 
 async function fetchData(url: string) {
   try {
-    const expressUrl = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+    const expressUrl = getInternalApiUrl();
     const res = await fetch(`${expressUrl}${url}`, {
       cache: 'no-store',
       headers: {
