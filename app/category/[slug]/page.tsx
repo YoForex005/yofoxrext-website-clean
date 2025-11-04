@@ -106,39 +106,36 @@ export default async function CategoryDiscussionPage({ params }: { params: Promi
 
   // If category not found, try fuzzy matching
   if (!category) {
-    try {
-      const fuzzyRes = await fetch(`${EXPRESS_URL}/api/categories/find/${slug}`, {
-        next: { revalidate: 60 },
-      });
+    const fuzzyRes = await fetch(`${EXPRESS_URL}/api/categories/find/${slug}`, {
+      next: { revalidate: 60 },
+    }).catch(() => null);
+    
+    if (fuzzyRes && fuzzyRes.ok) {
+      const fuzzyResult: any = await fuzzyRes.json();
       
-      if (fuzzyRes.ok) {
-        const fuzzyResult: any = await fuzzyRes.json();
-        
-        // If fuzzy match found and it's a different slug, redirect to correct URL
-        if (fuzzyResult && fuzzyResult.slug !== slug) {
-          redirect(`/category/${fuzzyResult.slug}`);
+      // If fuzzy match found a valid category
+      if (fuzzyResult && fuzzyResult.slug) {
+        // If it's a different slug, redirect to the correct URL and return immediately
+        if (fuzzyResult.slug !== slug) {
+          return redirect(`/category/${fuzzyResult.slug}`);
         }
         
-        // If exact match through fuzzy endpoint, use it
-        if (fuzzyResult && fuzzyResult.slug === slug) {
-          category = fuzzyResult;
-          
-          // Fetch threads for this category
-          const threadsRes2 = await fetch(`${EXPRESS_URL}/api/categories/${fuzzyResult.slug}/threads`, {
-            next: { revalidate: 60 },
-          }).catch(() => null);
-          
-          if (threadsRes2 && threadsRes2.ok) {
-            try {
-              threads = await threadsRes2.json();
-            } catch (error) {
-              console.error('Error parsing threads:', error);
-            }
+        // Set the category for any valid fuzzy match result (including same slug)
+        category = fuzzyResult;
+        
+        // Fetch threads for this category
+        const threadsRes2 = await fetch(`${EXPRESS_URL}/api/categories/${fuzzyResult.slug}/threads`, {
+          next: { revalidate: 60 },
+        }).catch(() => null);
+        
+        if (threadsRes2 && threadsRes2.ok) {
+          try {
+            threads = await threadsRes2.json();
+          } catch (error) {
+            console.error('Error parsing threads:', error);
           }
         }
       }
-    } catch (error) {
-      console.error('Error with fuzzy matching:', error);
     }
   }
 
