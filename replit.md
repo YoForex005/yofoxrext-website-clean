@@ -99,6 +99,12 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
+- **Thread Submission Fix (11/04):** Fixed critical thread posting validation error
+  - Fixed missing "body" field error that prevented thread creation (406 validation error)
+  - Added proper plain text extraction from TipTap editor using editor.getText()
+  - Now correctly sends both body (plain text) and contentHtml (rich HTML) to the API
+  - Improved form validation to include body field in the schema
+
 - **File Upload Enhancement (11/04):** Fixed file attachment functionality in thread composer
   - Enhanced error handling with specific error messages for authentication, file size, and server errors
   - Added file size validation (max 20MB per file, max 10 files total)
