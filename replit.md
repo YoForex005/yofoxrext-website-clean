@@ -99,6 +99,19 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 ## Recent Changes
 
 ### November 2024
+- **Discussions Page Filter Fix (11/04):** Fixed filter tabs that weren't working
+  - Added URL parameter synchronization for bookmarkable filter states  
+  - Fixed filter state management using Next.js navigation hooks
+  - All filters now properly filter threads:
+    - "All": Shows all threads (default)
+    - "Hot": Filters threads with engagement score > 50
+    - "Trending": Shows threads active in last 24 hours with replies
+    - "Unanswered": Displays threads with no replies
+    - "Solved": Shows threads marked as solved
+  - Active filter is visually indicated with blue background
+  - Filters update URL for sharing/bookmarking filtered views
+
+### November 2024 (continued)
 - **Comprehensive Email Notification System (11/04):** Implemented full engagement email system
   - **Email Templates Created:**
     - Thread posted confirmation emails with thread details and links
