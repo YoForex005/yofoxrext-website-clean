@@ -1191,9 +1191,14 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
         description: "Your thread has been published successfully.",
       });
       
-      if (data.thread?.slug) {
-        router.push(`/discussions/${data.thread.slug}`);
+      // Redirect to the newly created thread
+      if (data.thread?.slug && data.thread?.categorySlug) {
+        router.push(`/thread/${data.thread.categorySlug}/${data.thread.slug}`);
+      } else if (data.thread?.slug) {
+        // Fallback if categorySlug is missing
+        router.push(`/thread/${data.thread.slug}`);
       } else {
+        // Fallback to discussions page
         router.push("/discussions");
       }
     },

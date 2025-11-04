@@ -309,8 +309,16 @@ export default function ThreadCreationWizard({ categorySlug = "general" }: Threa
         )
       });
       
-      // Redirect to the new thread
-      router.push(`/thread/${data.slug}`);
+      // Redirect to the newly created thread
+      if (data.thread?.slug && data.thread?.categorySlug) {
+        router.push(`/thread/${data.thread.categorySlug}/${data.thread.slug}`);
+      } else if (data.thread?.slug || data.slug) {
+        // Fallback if categorySlug is missing
+        router.push(`/thread/${data.thread?.slug || data.slug}`);
+      } else {
+        // Fallback to discussions page
+        router.push("/discussions");
+      }
     },
     onError: (error: any) => {
       toast({
