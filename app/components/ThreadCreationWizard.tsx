@@ -77,7 +77,7 @@ const MDEditor = dynamic(
 // Validation schema for the form
 const threadSchema = z.object({
   title: z.string().min(15, "Title must be at least 15 characters").max(90, "Title must be at most 90 characters"),
-  body: z.string().min(150, "A little more context helps people reply. Two more sentences?").max(50000, "Body is too long"),
+  body: z.string().min(100, "Content must be at least 100 characters").max(50000, "Body is too long"),
   
   // Media
   imageUrls: z.array(z.string()).max(10, "Maximum 10 images allowed").default([]),
@@ -414,7 +414,7 @@ export default function ThreadCreationWizard({ categorySlug = "general" }: Threa
                     <FormItem>
                       <FormLabel>Thread Content *</FormLabel>
                       <FormDescription>
-                        Use markdown to format your content (minimum 500 characters)
+                        Use markdown to format your content (minimum 100 characters)
                       </FormDescription>
                       <FormControl>
                         <div className="space-y-2">
