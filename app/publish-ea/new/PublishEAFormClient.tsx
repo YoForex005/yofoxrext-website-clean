@@ -285,6 +285,7 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const [imageCount, setImageCount] = useState(0);
 
   const editor = useEditor({
+    immediatelyRender: false, // Fix SSR hydration mismatch
     extensions: [
       StarterKit,
       Underline,

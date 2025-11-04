@@ -570,6 +570,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
 
   // Initialize TipTap editor
   const editor = useEditor({
+    immediatelyRender: false, // Fix SSR hydration mismatch
     extensions: [
       StarterKit.configure({
         heading: {
