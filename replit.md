@@ -97,6 +97,12 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Fixed Thread Reply Validation Issue
+- **Reduced Reply Minimum Character Requirement:** Changed from 10 to 3 characters in `shared/schema.ts`
+  - Users can now post short replies like "Yes", "No", "OK", etc.
+  - Prevents validation errors that were blocking legitimate short responses
+  - Maintains anti-spam protection while allowing common brief responses
+
 ### November 4, 2025 - Broker Reviews Coming Soon Page
 - **Replaced Broker Reviews with Coming Soon Page:** Temporarily replaced the broker directory with an engaging Coming Soon page
   - Preserved original broker directory code in `app/brokers/page.backup.tsx` for future restoration
