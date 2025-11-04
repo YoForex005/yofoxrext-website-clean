@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import CategoryDiscussionClient from './CategoryDiscussionClient';
 import type { ForumCategory, ForumThread } from '@shared/schema';
 
@@ -104,7 +104,45 @@ export default async function CategoryDiscussionPage({ params }: { params: Promi
     }
   }
 
-  // Return 404 if category doesn't exist
+  // If category not found, try fuzzy matching
+  if (!category) {
+    try {
+      const fuzzyRes = await fetch(`${EXPRESS_URL}/api/categories/find/${slug}`, {
+        next: { revalidate: 60 },
+      });
+      
+      if (fuzzyRes.ok) {
+        const fuzzyResult: any = await fuzzyRes.json();
+        
+        // If fuzzy match found and it's a different slug, redirect to correct URL
+        if (fuzzyResult && fuzzyResult.slug !== slug) {
+          redirect(`/category/${fuzzyResult.slug}`);
+        }
+        
+        // If exact match through fuzzy endpoint, use it
+        if (fuzzyResult && fuzzyResult.slug === slug) {
+          category = fuzzyResult;
+          
+          // Fetch threads for this category
+          const threadsRes2 = await fetch(`${EXPRESS_URL}/api/categories/${fuzzyResult.slug}/threads`, {
+            next: { revalidate: 60 },
+          }).catch(() => null);
+          
+          if (threadsRes2 && threadsRes2.ok) {
+            try {
+              threads = await threadsRes2.json();
+            } catch (error) {
+              console.error('Error parsing threads:', error);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error with fuzzy matching:', error);
+    }
+  }
+
+  // Return 404 if still no category found
   if (!category) {
     notFound();
   }
@@ -112,7 +150,7 @@ export default async function CategoryDiscussionPage({ params }: { params: Promi
   // Pass all data to Client Component
   return (
     <CategoryDiscussionClient
-      slug={slug}
+      slug={category.slug}
       initialCategory={category}
       initialThreads={threads}
     />

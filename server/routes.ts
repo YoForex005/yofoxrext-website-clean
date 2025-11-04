@@ -5730,6 +5730,59 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
   
+  // Find category by fuzzy slug matching (MUST be before :slug route)
+  app.get("/api/categories/find/:slug", async (req, res) => {
+    const requestedSlug = req.params.slug.toLowerCase();
+    const categories = await storage.listForumCategories();
+    const activeCategories = categories.filter((c: any) => c.isActive);
+    
+    // Try exact match first
+    let category = activeCategories.find((c: any) => c.slug === requestedSlug);
+    
+    // If no exact match, try fuzzy matching
+    if (!category) {
+      // Helper function to calculate similarity score
+      const getSimilarityScore = (str1: string, str2: string): number => {
+        const longer = str1.length > str2.length ? str1 : str2;
+        const shorter = str1.length > str2.length ? str2 : str1;
+        
+        if (longer.length === 0) return 1.0;
+        
+        // Count matching characters
+        let matches = 0;
+        for (let i = 0; i < shorter.length; i++) {
+          if (longer.includes(shorter[i])) matches++;
+        }
+        
+        return matches / longer.length;
+      };
+      
+      // Find categories with similar slugs
+      const candidates = activeCategories
+        .map((c: any) => ({
+          category: c,
+          score: getSimilarityScore(requestedSlug, c.slug.toLowerCase())
+        }))
+        .filter(item => item.score > 0.7) // Only consider if 70%+ similar
+        .sort((a, b) => b.score - a.score);
+      
+      if (candidates.length > 0) {
+        category = candidates[0].category;
+      }
+    }
+    
+    if (!category) {
+      return res.status(404).json({ 
+        error: "Category not found",
+        suggestions: activeCategories
+          .slice(0, 5)
+          .map((c: any) => ({ slug: c.slug, name: c.name }))
+      });
+    }
+    
+    res.json({ ...category, matchType: category.slug === requestedSlug ? 'exact' : 'fuzzy' });
+  });
+  
   // Get category by slug
   app.get("/api/categories/:slug", async (req, res) => {
     const category = await storage.getForumCategoryBySlug(req.params.slug);
