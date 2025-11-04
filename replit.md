@@ -95,6 +95,16 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Wallet System Integrity:** 100% wallet coverage, 99.99% balance accuracy, and comprehensive audit trail with dual-write requirement.
 - **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation, and admin analytics dashboard for fraud detection.
 
+## Recent Changes
+
+### November 4, 2025 - Category Navigation Fix
+- **Implemented Fuzzy Slug Matching:** Added intelligent category slug matching using Levenshtein distance
+  - New `/api/categories/find/:slug` endpoint handles slug variations (e.g., "ea" vs "eas", singular vs plural)
+  - Category pages now redirect to correct slugs when similar ones are accessed
+  - Eliminated 404 errors when users click category links with minor slug differences
+  - Enhanced not-found page with category suggestions
+  - Files changed: `server/routes.ts`, `app/category/[slug]/page.tsx`, `lib/utils/levenshtein.ts`
+
 ## External Dependencies
 
 ### Core Infrastructure
