@@ -6,6 +6,16 @@ import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import crypto from "crypto";
+
+// Global type declarations for uploaded images
+declare global {
+  var uploadedImages: Map<string, {
+    buffer: Buffer;
+    mimeType: string;
+    originalName: string;
+    uploadedAt: Date;
+  }> | undefined;
+}
 import { 
   insertCoinTransactionSchema, 
   insertRechargeOrderSchema,
@@ -1017,6 +1027,113 @@ export async function registerRoutes(app: Express): Promise<Express> {
         error: error.message || 'Readiness check failed',
       });
     }
+  });
+
+  // Simple file upload endpoint for images (without complex object storage)
+  app.post("/api/upload/simple", isAuthenticated, uploadSingle.single('files'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const sharp = (await import('sharp')).default;
+      const file = req.file;
+      const ext = path.extname(file.originalname).toLowerCase();
+      const isImage = ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+
+      if (!isImage) {
+        return res.status(400).json({ error: "Only image files are allowed" });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const randomString = crypto.randomBytes(8).toString('hex');
+      const filename = `image_${timestamp}_${randomString}${ext}`;
+
+      // Process image with sharp for optimization
+      let processedBuffer = file.buffer;
+      
+      try {
+        // Resize image if too large (max 1920px width/height)
+        const metadata = await sharp(file.buffer).metadata();
+        const maxDimension = 1920;
+        
+        let sharpInstance = sharp(file.buffer);
+        
+        if ((metadata.width || 0) > maxDimension || (metadata.height || 0) > maxDimension) {
+          sharpInstance = sharpInstance.resize(maxDimension, maxDimension, {
+            fit: 'inside',
+            withoutEnlargement: true,
+          });
+        }
+        
+        // Optimize based on format
+        if (ext === '.png') {
+          processedBuffer = await sharpInstance
+            .png({ quality: 85, compressionLevel: 9 })
+            .toBuffer();
+        } else {
+          processedBuffer = await sharpInstance
+            .jpeg({ quality: 85, mozjpeg: true })
+            .toBuffer();
+        }
+      } catch (sharpError) {
+        console.error('Image processing error:', sharpError);
+        // Use original buffer if processing fails
+      }
+
+      // Generate a public URL path for the image
+      // Store it in memory or a temporary location since we don't have a proper file storage configured
+      const publicUrl = `/api/images/${filename}`;
+      
+      // Store in memory (in production, you'd want to use proper storage)
+      if (!global.uploadedImages) {
+        global.uploadedImages = new Map();
+      }
+      global.uploadedImages.set(filename, {
+        buffer: processedBuffer,
+        mimeType: file.mimetype,
+        originalName: file.originalname,
+        uploadedAt: new Date(),
+      });
+
+      // Clean up old images (keep only last 100)
+      if (global.uploadedImages.size > 100) {
+        const entries = Array.from(global.uploadedImages.entries());
+        const toDelete = entries.slice(0, entries.length - 100);
+        toDelete.forEach(([key]) => global.uploadedImages.delete(key));
+      }
+
+      res.json({
+        urls: [publicUrl],
+        files: [{
+          originalName: file.originalname,
+          filename: filename,
+          size: processedBuffer.length,
+          url: publicUrl,
+          mimeType: file.mimetype,
+        }],
+      });
+    } catch (error: any) {
+      console.error('Simple file upload error:', error);
+      res.status(500).json({ 
+        error: error.message || "Failed to upload file" 
+      });
+    }
+  });
+
+  // Serve uploaded images from memory
+  app.get("/api/images/:filename", (req, res) => {
+    const { filename } = req.params;
+    
+    if (!global.uploadedImages || !global.uploadedImages.has(filename)) {
+      return res.status(404).json({ error: "Image not found" });
+    }
+    
+    const imageData = global.uploadedImages.get(filename);
+    res.setHeader('Content-Type', imageData.mimeType);
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
+    res.send(imageData.buffer);
   });
 
   // FILE UPLOAD ENDPOINT with enhanced metadata and image resizing (using object storage)

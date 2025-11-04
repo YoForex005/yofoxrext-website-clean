@@ -10,7 +10,6 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
 import Placeholder from '@tiptap/extension-placeholder';
 import DOMPurify from 'isomorphic-dompurify';
 import type { ForumCategory } from "@shared/schema";
@@ -142,6 +141,7 @@ function FormattingToolbar({
         variant={editor.isActive('bold') ? 'default' : 'ghost'}
         onClick={() => editor.chain().focus().toggleBold().run()}
         className="h-8 w-8 p-0"
+        title="Bold (Ctrl+B)"
         data-testid="button-bold"
       >
         <Bold className="h-4 w-4" />
@@ -153,6 +153,7 @@ function FormattingToolbar({
         variant={editor.isActive('italic') ? 'default' : 'ghost'}
         onClick={() => editor.chain().focus().toggleItalic().run()}
         className="h-8 w-8 p-0"
+        title="Italic (Ctrl+I)"
         data-testid="button-italic"
       >
         <Italic className="h-4 w-4" />
@@ -164,6 +165,7 @@ function FormattingToolbar({
         variant={editor.isActive('underline') ? 'default' : 'ghost'}
         onClick={() => editor.chain().focus().toggleUnderline().run()}
         className="h-8 w-8 p-0"
+        title="Underline (Ctrl+U)"
         data-testid="button-underline"
       >
         <UnderlineIcon className="h-4 w-4" />
@@ -517,13 +519,24 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
       return;
     }
 
+    // Check file size (max 5MB for images)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Images must be less than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const formData = new FormData();
     formData.append('files', file);
 
     try {
       setIsUploadingImage(true);
       
-      const res = await fetch("/api/upload", {
+      // Use simple file upload endpoint
+      const res = await fetch("/api/upload/simple", {
         method: "POST",
         body: formData,
         credentials: "include",
@@ -533,20 +546,24 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
         const data = await res.json();
         const imageUrl = data.urls?.[0];
         if (imageUrl && editor) {
+          // Add the image to the editor
           editor.chain().focus().setImage({ src: imageUrl }).run();
           toast({
             title: "Image uploaded!",
             description: "Image inserted at cursor position",
           });
+        } else {
+          throw new Error("No image URL returned");
         }
       } else {
-        throw new Error("Upload failed");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed with status ${res.status}`);
       }
     } catch (error) {
       console.error('Image upload failed:', error);
       toast({
         title: "Upload failed",
-        description: "Could not upload image. Please try again.",
+        description: error instanceof Error ? error.message : "Could not upload image. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -576,8 +593,22 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
         heading: {
           levels: [1, 2, 3],
         },
+        bold: {
+          HTMLAttributes: {
+            class: 'font-bold',
+          },
+        },
+        italic: {
+          HTMLAttributes: {
+            class: 'italic',
+          },
+        },
       }),
-      Underline,
+      Underline.configure({
+        HTMLAttributes: {
+          class: 'underline',
+        },
+      }),
       Image.configure({
         inline: true,
         allowBase64: false,
@@ -586,21 +617,38 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           style: 'max-height: 500px; object-fit: contain;',
         },
       }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-primary underline',
-        },
-      }),
       Placeholder.configure({
         placeholder: 'Start typing... You can add images by clicking the "Insert Image" button, dragging & dropping, or pasting (Ctrl+V)',
         emptyEditorClass: 'is-editor-empty',
       }),
     ],
     content: '',
+    enableInputRules: true,
+    enablePasteRules: true,
     editorProps: {
       attributes: {
         class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[300px] p-4',
+      },
+      handleKeyDown: (view, event) => {
+        // Ensure keyboard shortcuts work
+        if (event.ctrlKey || event.metaKey) {
+          if (event.key === 'b') {
+            event.preventDefault();
+            editor?.chain().focus().toggleBold().run();
+            return true;
+          }
+          if (event.key === 'i') {
+            event.preventDefault();
+            editor?.chain().focus().toggleItalic().run();
+            return true;
+          }
+          if (event.key === 'u') {
+            event.preventDefault();
+            editor?.chain().focus().toggleUnderline().run();
+            return true;
+          }
+        }
+        return false;
       },
       handleDrop: (view, event, slice, moved) => {
         if (!moved && event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
