@@ -2581,7 +2581,7 @@ export const insertForumReplySchema = createInsertSchema(forumReplies).omit({
   slug: true,
   metaDescription: true,
 }).extend({
-  body: z.string().min(10).max(10000),
+  body: z.string().min(3).max(10000),
 });
 
 export const insertForumCategorySchema = createInsertSchema(forumCategories).omit({
