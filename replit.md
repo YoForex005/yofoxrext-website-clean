@@ -97,6 +97,14 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### November 4, 2025 - Broker Reviews Coming Soon Page
+- **Replaced Broker Reviews with Coming Soon Page:** Temporarily replaced the broker directory with an engaging Coming Soon page
+  - Preserved original broker directory code in `app/brokers/page.backup.tsx` for future restoration
+  - Created professional Coming Soon page with header, footer, and email notification signup
+  - Added feature preview grid showcasing upcoming broker review capabilities
+  - Included timeline and statistics to maintain user engagement
+  - Files changed: `app/brokers/page.tsx`, `app/brokers/BrokersComingSoonClient.tsx`
+
 ### November 4, 2025 - Thread Page 404 Fix
 - **Fixed Thread Page Connectivity Issue:** Resolved 503 errors when accessing thread pages
   - Thread page was using wrong Express URL configuration causing server-side rendering failures
