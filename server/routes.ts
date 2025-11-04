@@ -5176,7 +5176,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
           return {
             type: thread.replyCount > 0 ? 'reply_posted' : 'thread_created',
             threadId: thread.id,
+            threadSlug: thread.slug,
             threadTitle: thread.title,
+            categorySlug: thread.categorySlug,
             userId: user?.id || '',
             username: user?.username || 'Unknown',
             profileImageUrl: user?.profileImageUrl || '',
@@ -5205,7 +5207,10 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.get("/api/threads/slug/*", async (req, res) => {
     // Extract the full slug path from the URL (everything after /slug/)
     const fullSlug = req.params[0];
-    const thread = await storage.getForumThreadBySlug(fullSlug);
+    // Extract just the thread slug (last part after final slash)
+    const parts = fullSlug.split('/');
+    const threadSlug = parts[parts.length - 1];
+    const thread = await storage.getForumThreadBySlug(threadSlug);
     if (!thread) {
       return res.status(404).json({ error: "Thread not found" });
     }

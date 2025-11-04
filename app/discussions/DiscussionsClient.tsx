@@ -75,7 +75,9 @@ type TrendingThread = {
 type ActivityFeedItem = {
   type: string;
   threadId: string;
+  threadSlug: string;
   threadTitle: string;
+  categorySlug: string;
   userId: string;
   username: string;
   profileImageUrl?: string;
@@ -545,7 +547,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 const isExpanded = expandedCards.has(thread.id);
 
                 return (
-                  <Link key={thread.id} href={thread.fullUrl || `/thread/${thread.slug}`}>
+                  <Link key={thread.id} href={`/thread/${thread.categorySlug}/${thread.slug}`}>
                     <Card 
                       className="h-full hover:border-primary/30 hover-elevate active-elevate-2 cursor-pointer transition-all duration-200"
                       data-testid={`card-thread-${thread.slug}`}
@@ -681,7 +683,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 ))
               ) : trendingThreads && trendingThreads.length > 0 ? (
                 trendingThreads.map((thread, idx) => (
-                  <Link key={thread.threadId} href={`/thread/${thread.slug}`}>
+                  <Link key={thread.threadId} href={`/thread/${thread.categorySlug}/${thread.slug}`}>
                     <div className="p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer" data-testid={`trending-item-${idx}`}>
                       <div className="flex items-start gap-2">
                         <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0.5">
@@ -730,7 +732,7 @@ export default function DiscussionsClient({ initialThreads }: DiscussionsClientP
                 ))
               ) : activityFeed && activityFeed.length > 0 ? (
                 activityFeed.slice(0, 10).map((activity, idx) => (
-                  <Link key={idx} href={`/thread/${activity.threadId}`}>
+                  <Link key={idx} href={`/thread/${activity.categorySlug}/${activity.threadSlug}`}>
                     <div className="p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer text-xs" data-testid={`activity-item-${idx}`}>
                       <div className="flex items-start gap-2">
                         <Avatar className="h-6 w-6 shrink-0">
