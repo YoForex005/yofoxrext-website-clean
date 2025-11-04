@@ -266,7 +266,8 @@ function FloatingActionBar({
 
 export default function ThreadDetailClient({ initialThread, initialReplies }: ThreadDetailClientProps) {
   const params = useParams();
-  const slug = params?.slug as string;
+  const slugArray = params?.slug as string[];
+  const slugPath = slugArray?.join('/');
   const { toast } = useToast();
   const { user, isAuthenticated } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt("reply to this thread");
@@ -278,8 +279,8 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
   const [likeCount, setLikeCount] = useState(0);
 
   const { data: thread, isLoading: threadLoading } = useQuery<ForumThread>({
-    queryKey: ["/api/threads/slug", slug],
-    enabled: !!slug,
+    queryKey: ["/api/threads/slug", slugPath],
+    enabled: !!slugPath,
     initialData: initialThread,
   });
 
@@ -330,7 +331,7 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
         queryKey: ["/api/threads", thread!.id, "replies"],
       });
       queryClient.invalidateQueries({
-        queryKey: ["/api/threads/slug", slug],
+        queryKey: ["/api/threads/slug", slugPath],
       });
       setReplyBody("");
       setReplyingTo(null);
