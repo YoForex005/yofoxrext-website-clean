@@ -3,6 +3,7 @@ import Header from '../components/Header';
 import { Footer } from '../components/Footer';
 import DiscussionsClient from './DiscussionsClient';
 import { getMetadataWithOverrides } from '../lib/metadata-helper';
+import { getInternalApiUrl } from '../lib/api-config';
 
 // Enable ISR with 60-second revalidation
 export const revalidate = 60;
@@ -30,20 +31,21 @@ export async function generateMetadata(): Promise<Metadata> {
 // Fetch from Express API
 async function getThreads() {
   try {
-    const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
-    const res = await fetch(`${EXPRESS_URL}/api/threads?sortBy=newest&limit=50`, {
+    // Use internal API URL for server-side fetching
+    const apiUrl = getInternalApiUrl();
+    const res = await fetch(`${apiUrl}/api/threads?sortBy=newest&limit=50`, {
       next: { revalidate: 60 },
       credentials: 'include',
     });
 
     if (!res.ok) {
-      console.error('Failed to fetch threads:', res.status);
+      console.error('[Discussions Page] Failed to fetch threads:', res.status);
       return [];
     }
 
     return await res.json();
   } catch (error) {
-    console.error('Error fetching threads:', error);
+    console.error('[Discussions Page] Error fetching threads:', error);
     return [];
   }
 }

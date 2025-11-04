@@ -124,6 +124,15 @@ class SeoScanner {
       console.log(`[SEO SCANNER] Scanning ${urls.length} URLs`);
       let totalIssues = 0;
       const allIssues: SeoCheckResult[] = [];
+      const criticalIssuesBatch: Array<{
+        id: string;
+        issueType: string;
+        pageUrl: string;
+        pageTitle: string | null;
+        description: string;
+        autoFixable: boolean;
+        metadata?: Record<string, any>;
+      }> = [];
 
       for (const url of urls) {
         const urlStartTime = Date.now();
@@ -149,23 +158,17 @@ class SeoScanner {
 
           totalIssues++;
 
-          // Send critical alert immediately for critical severity issues
+          // Batch critical issues instead of sending immediately
           if (definition.severity === 'critical' && insertedIssue) {
-            try {
-              const { sendCriticalSeoAlert } = await import('./seo-alerts.js');
-              await sendCriticalSeoAlert(
-                insertedIssue.id,
-                insertedIssue.issueType,
-                insertedIssue.pageUrl,
-                insertedIssue.pageTitle,
-                insertedIssue.description,
-                insertedIssue.autoFixable,
-                insertedIssue.metadata as Record<string, any> | undefined
-              );
-              console.log(`[SEO SCANNER] Critical alert sent for issue: ${insertedIssue.issueType}`);
-            } catch (alertError) {
-              console.error('[SEO SCANNER] Failed to send critical alert:', alertError);
-            }
+            criticalIssuesBatch.push({
+              id: insertedIssue.id,
+              issueType: insertedIssue.issueType,
+              pageUrl: insertedIssue.pageUrl,
+              pageTitle: insertedIssue.pageTitle,
+              description: insertedIssue.description,
+              autoFixable: insertedIssue.autoFixable,
+              metadata: insertedIssue.metadata as Record<string, any> | undefined
+            });
           }
 
           // Auto-fix integration: Attempt to fix auto-fixable issues
@@ -228,6 +231,49 @@ class SeoScanner {
         await this.recordScanHistory(url, scanId, options.triggeredBy, issues.length, Date.now() - urlStartTime);
       }
 
+      // Send batched critical alerts (limit to 5 per scan to avoid rate limiting)
+      if (criticalIssuesBatch.length > 0) {
+        console.log(`[SEO SCANNER] Processing ${criticalIssuesBatch.length} critical issues for alerts`);
+        
+        // Limit to 5 critical alerts per scan to avoid SMTP rate limits
+        const alertsToSend = criticalIssuesBatch.slice(0, 5);
+        const remainingAlerts = criticalIssuesBatch.length - alertsToSend.length;
+        
+        if (remainingAlerts > 0) {
+          console.log(`[SEO SCANNER] Rate limiting: Sending ${alertsToSend.length} critical alerts, deferring ${remainingAlerts} alerts`);
+        }
+        
+        // Send alerts with delay between them to avoid rate limiting
+        for (let i = 0; i < alertsToSend.length; i++) {
+          const alert = alertsToSend[i];
+          try {
+            // Add 2-second delay between emails to avoid hitting rate limits
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            
+            const { sendCriticalSeoAlert } = await import('./seo-alerts.js');
+            await sendCriticalSeoAlert(
+              alert.id,
+              alert.issueType,
+              alert.pageUrl,
+              alert.pageTitle,
+              alert.description,
+              alert.autoFixable,
+              alert.metadata
+            );
+            console.log(`[SEO SCANNER] Critical alert ${i + 1}/${alertsToSend.length} sent for issue: ${alert.issueType}`);
+          } catch (alertError) {
+            console.error(`[SEO SCANNER] Failed to send critical alert for issue ${alert.id}:`, alertError);
+            // Continue with other alerts even if one fails
+          }
+        }
+        
+        if (remainingAlerts > 0) {
+          console.log(`[SEO SCANNER] Note: ${remainingAlerts} additional critical issues were found but not alerted due to rate limiting. Check the SEO dashboard for full details.`);
+        }
+      }
+
       await db.update(seoScans)
         .set({
           status: 'completed',
@@ -270,12 +316,19 @@ class SeoScanner {
         .limit(1);
 
       const now = new Date();
+      
+      // Ensure scanDuration is a valid number (not NaN)
+      const validScanDuration = !isNaN(scanDuration) ? scanDuration : 0;
+      
+      // Log scan metrics for debugging
+      console.log(`[SEO SCANNER] Recording scan history - URL: ${url}, Duration: ${validScanDuration}ms, Issues: ${issuesFound}`);
 
       if (existing.length > 0) {
         await db.update(seoScanHistory)
           .set({
             lastScanAt: now,
-            scanId: parseInt(scanId),
+            // Don't set scanId to avoid type mismatch (UUID vs integer)
+            // The field allows null per schema definition
             updatedAt: now,
           })
           .where(eq(seoScanHistory.pageUrl, url));
@@ -283,7 +336,7 @@ class SeoScanner {
         await db.insert(seoScanHistory).values({
           pageUrl: url,
           lastScanAt: now,
-          scanId: parseInt(scanId),
+          // Don't set scanId to avoid type mismatch (UUID vs integer)
         });
       }
     } catch (error) {
