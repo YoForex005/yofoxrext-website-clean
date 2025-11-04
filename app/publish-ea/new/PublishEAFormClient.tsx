@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, Suspense, lazy } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,10 +9,31 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useDropzone } from "react-dropzone";
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import Image from "@tiptap/extension-image";
+import dynamic from "next/dynamic";
+
+// Lazy load TipTap components to avoid SSR issues
+const EditorContent = dynamic(
+  () => import("@tiptap/react").then(mod => mod.EditorContent),
+  { ssr: false }
+);
+
+// Import TipTap modules only on client-side
+let useEditor: any;
+let StarterKit: any;
+let Underline: any;
+let Image: any;
+
+if (typeof window !== 'undefined') {
+  const tiptapReact = require("@tiptap/react");
+  const tiptapStarterKit = require("@tiptap/starter-kit");
+  const tiptapUnderline = require("@tiptap/extension-underline");
+  const tiptapImage = require("@tiptap/extension-image");
+  
+  useEditor = tiptapReact.useEditor;
+  StarterKit = tiptapStarterKit.default;
+  Underline = tiptapUnderline.default;
+  Image = tiptapImage.default;
+}
 import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
 import AutoSEOPanel, { type SEOData } from "@/components/AutoSEOPanel";
@@ -284,23 +305,24 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [imageCount, setImageCount] = useState(0);
 
-  const editor = useEditor({
+  // Handle case where TipTap is not yet loaded
+  const editor = typeof window !== 'undefined' && useEditor ? useEditor({
     immediatelyRender: false, // Fix SSR hydration mismatch
     extensions: [
       StarterKit,
       Underline,
-      Image.configure({
+      Image?.configure({
         inline: true,
         allowBase64: false,
       }),
-    ],
+    ].filter(Boolean),
     content: value || '',
     editorProps: {
       attributes: {
         class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none min-h-[200px] max-h-[400px] overflow-y-auto px-4 py-3',
       },
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor }: { editor: any }) => {
       const html = editor.getHTML();
       onChange(html);
       
@@ -312,7 +334,7 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
       }, 0);
       setImageCount(totalImages);
     },
-  }, []);
+  }, []) : null;
   
   // Cleanup editor on unmount to prevent duplicate extension warnings
   useEffect(() => {
@@ -1087,7 +1109,7 @@ export default function PublishEAFormClient() {
   
   const router = useRouter();
   const { toast } = useToast();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt();
 
   const form = useForm<EAFormData>({
@@ -1445,14 +1467,27 @@ export default function PublishEAFormClient() {
     publishMutation.mutate(data);
   };
 
-  // Require authentication
+  // Use the original isAuthLoading flag but with a simpler check
+  // If still loading after initial render, assume not authenticated
+  const [hasInitialized, setHasInitialized] = useState(false);
+  
   useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated) {
+    // Set initialized after component mounts
+    const timer = setTimeout(() => {
+      setHasInitialized(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Trigger auth requirement when not authenticated
+  useEffect(() => {
+    if (hasInitialized && !isAuthLoading && !isAuthenticated) {
       requireAuth(() => {});
     }
-  }, [isAuthLoading, isAuthenticated, requireAuth]);
+  }, [hasInitialized, isAuthLoading, isAuthenticated, requireAuth]);
 
-  if (isAuthLoading) {
+  // Show loading only briefly on initial mount
+  if (!hasInitialized) {
     return (
       <>
         <Header />
@@ -1466,6 +1501,7 @@ export default function PublishEAFormClient() {
     );
   }
 
+  // After initialization, if not authenticated, show login prompt
   if (!isAuthenticated) {
     return (
       <>
@@ -1478,7 +1514,7 @@ export default function PublishEAFormClient() {
               <p className="text-muted-foreground mb-4">
                 Please log in to publish an EA
               </p>
-              <Button onClick={() => requireAuth(() => {})}>
+              <Button onClick={() => requireAuth(() => window.location.reload())}>
                 Log In
               </Button>
             </CardContent>
