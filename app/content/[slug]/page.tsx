@@ -4,9 +4,10 @@ import ContentDetailClient from './ContentDetailClient';
 import type { Content, User as UserType, ContentReview } from '@shared/schema';
 import { getContentUrl } from '../../../lib/category-path';
 import { getMetadataWithOverrides } from '../../lib/metadata-helper';
+import { getInternalApiUrl } from '../../lib/api-config';
 
 // Express API base URL
-const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+const EXPRESS_URL = getInternalApiUrl();
 
 // Generate metadata for SEO
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
