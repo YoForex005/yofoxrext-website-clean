@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Header from "@/components/Header";
+import EnhancedFooter from "@/components/EnhancedFooter";
 
 interface RedemptionOrder {
   id: string;
@@ -38,6 +40,14 @@ export default function MyRedemptionsPage() {
 
   const { data: orders, isLoading } = useQuery<RedemptionOrder[]>({
     queryKey: ["/api/sweets/redemptions/orders/me", statusFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (statusFilter) params.append('status', statusFilter);
+      
+      const res = await fetch(`/api/sweets/redemptions/orders/me?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch redemption orders');
+      return res.json();
+    },
     enabled: !!user && isAuthenticated,
   });
 
@@ -76,19 +86,28 @@ export default function MyRedemptionsPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center py-12">
-          <h2 className="text-2xl font-bold mb-4 dark:text-white">Sign in to view your redemptions</h2>
-          <p className="text-gray-600 dark:text-gray-400">
-            You need to be signed in to view your redemption history.
-          </p>
+      <>
+        <Header />
+        <div className="min-h-screen bg-background">
+          <div className="container mx-auto px-4 py-8">
+            <div className="text-center py-12">
+              <h2 className="text-2xl font-bold mb-4 dark:text-white">Sign in to view your redemptions</h2>
+              <p className="text-gray-600 dark:text-gray-400">
+                You need to be signed in to view your redemption history.
+              </p>
+            </div>
+          </div>
         </div>
-      </div>
+        <EnhancedFooter />
+      </>
     );
   }
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl" data-testid="page-my-redemptions">
+    <>
+      <Header />
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-5xl" data-testid="page-my-redemptions">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2 dark:text-white">My Redemptions</h1>
@@ -228,6 +247,9 @@ export default function MyRedemptionsPage() {
           </a>
         </div>
       )}
-    </div>
+        </div>
+      </div>
+      <EnhancedFooter />
+    </>
   );
 }

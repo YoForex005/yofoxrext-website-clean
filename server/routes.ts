@@ -18307,8 +18307,31 @@ export async function registerRoutes(app: Express): Promise<Express> {
   app.get("/api/sweets/redemptions/orders/me", sweetsAuthMiddleware, async (req, res) => {
     try {
       const user = req.user as User;
-      const orders = await storage.getUserRedemptionOrders(user.id);
-      res.json(orders);
+      const { status } = req.query;
+      
+      let orders = await storage.getUserRedemptionOrders(user.id);
+      
+      // Apply status filter if provided and not "all"
+      if (status && status !== 'all') {
+        orders = orders.filter(order => order.status === status);
+      }
+      
+      // Add option details to each order
+      const ordersWithOptions = await Promise.all(
+        orders.map(async (order) => {
+          const option = await storage.getRedemptionOptionById(order.optionId);
+          return {
+            ...order,
+            option: option ? {
+              name: option.name,
+              description: option.description,
+              category: option.category
+            } : null
+          };
+        })
+      );
+      
+      res.json(ordersWithOptions);
     } catch (error) {
       console.error('[Sweets Redemptions] Error fetching orders:', error);
       res.status(500).json({ error: 'Failed to fetch redemption orders' });
