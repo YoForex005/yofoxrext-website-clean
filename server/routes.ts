@@ -4784,9 +4784,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
       );
       
       // Calculate coin reward
-      // Base: +10 for thread creation
-      // Bonus: +2 if optional details provided
-      let coinReward = 10;
+      // Base: +3 for thread creation
+      // Bonus: +1 if optional details provided
+      let coinReward = 3;
       const hasOptionalDetails = !!(
         validated.seoExcerpt ||
         validated.primaryKeyword ||
@@ -4794,7 +4794,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
         validated.questionSummary
       );
       if (hasOptionalDetails) {
-        coinReward += 2;
+        coinReward += 1;
       }
       
       // Create thread with deduplicated tags and generated metadata
@@ -4823,8 +4823,8 @@ export async function registerRoutes(app: Express): Promise<Express> {
           metadata: {
             threadId: thread.id,
             threadSlug: thread.slug,
-            baseReward: 10,
-            bonusReward: hasOptionalDetails ? 2 : 0,
+            baseReward: 3,
+            bonusReward: hasOptionalDetails ? 1 : 0,
             categorySlug: validated.categorySlug
           },
           idempotencyKey: `thread-${thread.id}`

@@ -1617,7 +1617,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                           ) : (
                             <>
                               <Rocket className="w-4 h-4" />
-                              Post Thread
+                              Post Thread (+3 coins)
                             </>
                           )}
                         </Button>

@@ -4,7 +4,7 @@ Gold coins are YoForex's currency. Earn them by helping others, sharing knowledg
 
 ## Quick Wins
 
-- **Post new threads** – +10 coins each (more with metadata)
+- **Post new threads** – +3 coins each (more with metadata)
 - **Reply helpfully** – +2 coins per reply (max 20/day)
 - **Get upvotes** – +1 coin per upvote received
 - **Accepted answers** – +15 coins when your reply solves the problem
@@ -14,7 +14,7 @@ Gold coins are YoForex's currency. Earn them by helping others, sharing knowledg
 
 ### 1. Forum Participation (Daily Limits Apply)
 
-**Create quality threads: +10 coins base**
+**Create quality threads: +3 coins base**
 - Add instrument/pair (e.g., XAUUSD): +2 bonus coins
 - Add timeframe (e.g., M5, H1): +2 bonus coins
 - Add broker: +1 bonus coin
@@ -22,7 +22,7 @@ Gold coins are YoForex's currency. Earn them by helping others, sharing knowledg
 - Add screenshot or chart: +3 bonus coins
 - Link to 2-3 related threads: +2 bonus coins
 
-**Maximum per thread: 22 coins** (10 base + 12 bonus)
+**Maximum per thread: 15 coins** (3 base + 12 bonus)
 
 **Reply to threads: +2 coins per helpful reply**
 - Limit: 20 replies/day (40 coins max/day)

@@ -837,7 +837,7 @@ export default function ThreadCreationWizard({ categorySlug = "general" }: Threa
                     ) : (
                       <>
                         <Coins className="h-4 w-4 mr-2" />
-                        Post Thread (+10 coins)
+                        Post Thread (+3 coins)
                       </>
                     )}
                   </Button>
