@@ -14,9 +14,11 @@ export async function GET(
 ) {
   try {
     const { slug } = await params;
-    // Forward to the backend Express API
+    // Forward to the backend Express API at /api/content/slug/:slug
     const apiUrl = getInternalApiUrl();
-    const response = await fetch(`${apiUrl}/api/content/slug/${slug}`);
+    const backendUrl = `${apiUrl}/api/content/slug/${slug}`;
+    console.log('[Next.js API] Proxying to Express:', backendUrl);
+    const response = await fetch(backendUrl);
     
     if (!response.ok) {
       return NextResponse.json(

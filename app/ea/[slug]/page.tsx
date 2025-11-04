@@ -7,9 +7,10 @@ import { getInternalApiUrl } from '../../lib/api-config';
 export const revalidate = 60;
 
 // Generate SEO metadata dynamically
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
   try {
-    const res = await fetch(`${getInternalApiUrl()}/api/content/by-slug/${params.slug}`, {
+    const res = await fetch(`${getInternalApiUrl()}/api/content/slug/${slug}`, {
       next: { revalidate: 60 },
     });
     
@@ -48,7 +49,7 @@ export async function generateMetadata({ params }: { params: { slug: string } })
 // Fetch EA data
 async function getEA(slug: string) {
   try {
-    const res = await fetch(`${getInternalApiUrl()}/api/content/by-slug/${slug}`, {
+    const res = await fetch(`${getInternalApiUrl()}/api/content/slug/${slug}`, {
       next: { revalidate: 60 },
     });
     
@@ -82,8 +83,9 @@ async function getSimilarEAs(category: string, excludeId: string) {
   }
 }
 
-export default async function EADetailPage({ params }: { params: { slug: string } }) {
-  const ea = await getEA(params.slug);
+export default async function EADetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  const ea = await getEA(slug);
   
   if (!ea || ea.type !== 'ea') {
     notFound();
