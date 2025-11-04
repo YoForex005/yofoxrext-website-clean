@@ -3340,6 +3340,9 @@ export class MemStorage implements IStorage {
       lastActivityTime: new Date(),
       emailBounceCount: 0,
       lastEmailSentAt: null,
+      // Missing fields from schema
+      frozen_reason: null,
+      daily_transaction_limit: null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -3426,6 +3429,9 @@ export class MemStorage implements IStorage {
       banReason: null,
       referralCode: null,
       referredBy: null,
+      // Missing fields from schema
+      frozen_reason: null,
+      daily_transaction_limit: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -3579,6 +3585,9 @@ export class MemStorage implements IStorage {
         coinsEarned: 0,
         lastActivityAt: new Date(),
         createdAt: new Date(),
+        // Missing fields from schema
+        ip_address: null,
+        user_agent: null,
       };
       this.userActivity.set(activity.id, activity);
     }
@@ -3672,7 +3681,15 @@ export class MemStorage implements IStorage {
       description: insertTransaction.description,
       status: (insertTransaction.status || "completed") as "completed" | "pending" | "failed",
       createdAt: new Date(),
-      botId: null, // Add botId field with null default
+      botId: insertTransaction.botId || null,
+      // Missing fields from schema
+      metadata: insertTransaction.metadata || null,
+      channel: insertTransaction.channel || null,
+      trigger: insertTransaction.trigger || null,
+      expiresAt: insertTransaction.expiresAt || null,
+      reconciledAt: insertTransaction.reconciledAt || null,
+      reversalOf: insertTransaction.reversalOf || null,
+      idempotencyKey: insertTransaction.idempotencyKey || null,
     };
     this.transactions.set(id, transaction);
     
@@ -3845,6 +3862,10 @@ export class MemStorage implements IStorage {
       featured: false,
       featuredUntil: null,
       deletedAt: null,
+      // Missing fields from schema
+      isPaid: insertContent.priceCoins > 0,
+      salesCount: 0,
+      revenue: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -4402,6 +4423,12 @@ export class MemStorage implements IStorage {
       engagementScore: 0,
       lastScoreUpdate: null,
       helpfulVotes: 0,
+      // Missing fields from schema
+      contentHtml: null,
+      attachments: null,
+      moderatedBy: null,
+      moderatedAt: null,
+      moderationReason: null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -5065,7 +5092,7 @@ export class MemStorage implements IStorage {
           dateThreshold = new Date(0);
       }
       
-      allUsers = allUsers.filter(u => u.createdAt && new Date(u.createdAt) >= dateThreshold);
+      allUsers = allUsers.filter(u => u.createdAt !== null && new Date(u.createdAt) >= dateThreshold);
     }
 
     // Sort users
@@ -5092,10 +5119,18 @@ export class MemStorage implements IStorage {
           });
           break;
         case 'newest':
-          allUsers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          allUsers.sort((a, b) => {
+            const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return bDate - aDate;
+          });
           break;
         case 'oldest':
-          allUsers.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          allUsers.sort((a, b) => {
+            const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return aDate - bDate;
+          });
           break;
       }
     }
@@ -5864,8 +5899,16 @@ export class MemStorage implements IStorage {
     return { id: 1, ...ticket, status: 'open' };
   }
 
-  async updateSupportTicket(ticketId: number, updates: any, updatedBy: string): Promise<void> {
-    throw new Error("Not implemented in MemStorage");
+  async updateSupportTicket(ticketId: number, updates: any, updatedBy: string): Promise<void>;
+  async updateSupportTicket(ticketId: number, data: Partial<any>): Promise<any>;
+  async updateSupportTicket(ticketId: number, updatesOrData: any, updatedBy?: string): Promise<void | any> {
+    if (updatedBy !== undefined) {
+      // Three-argument version returns void
+      throw new Error("Not implemented in MemStorage");
+    } else {
+      // Two-argument version returns the updated ticket
+      return { id: ticketId, ...updatesOrData };
+    }
   }
 
   async assignTicket(ticketId: number, assignedTo: string, assignedBy: string): Promise<void> {
@@ -5888,8 +5931,25 @@ export class MemStorage implements IStorage {
     return { id: 1, ...announcement };
   }
 
-  async updateAnnouncement(announcementId: number, updates: any): Promise<void> {
-    throw new Error("Not implemented in MemStorage");
+  async updateAnnouncement(announcementId: number, updates: any): Promise<void>;
+  async updateAnnouncement(announcementId: number, data: Partial<any>): Promise<any>;
+  async updateAnnouncement(announcementId: number, updates: any): Promise<void | any> {
+    // Return a mock updated announcement for the two-parameter version
+    return { 
+      id: announcementId, 
+      ...updates,
+      status: updates.status || 'active',
+      createdAt: new Date(),
+      title: updates.title || '',
+      views: 0,
+      type: updates.type || 'banner',
+      expiresAt: null,
+      updatedAt: new Date(),
+      priority: updates.priority || 0,
+      content: updates.content || '',
+      targetAudience: updates.targetAudience || null,
+      clicks: 0
+    };
   }
 
   async deleteAnnouncement(announcementId: number): Promise<void> {
@@ -5974,8 +6034,21 @@ export class MemStorage implements IStorage {
     severity?: string; 
     status?: string; 
     limit?: number 
-  }): Promise<SecurityEvent[]> {
-    return [];
+  }): Promise<{ events: any[]; total: number }>;
+  async getSecurityEvents(filters?: { 
+    type?: string; 
+    severity?: string; 
+    status?: string; 
+    limit?: number 
+  }): Promise<SecurityEvent[]>;
+  async getSecurityEvents(filters?: { 
+    type?: string; 
+    severity?: string; 
+    status?: string; 
+    limit?: number 
+  }): Promise<{ events: any[]; total: number } | SecurityEvent[]> {
+    // Return the object format that IStorage expects
+    return { events: [], total: 0 };
   }
 
   async updateSecurityEventStatus(id: number, status: 'open' | 'resolved'): Promise<void> {
@@ -7238,12 +7311,26 @@ export class MemStorage implements IStorage {
   async createBot(bot: InsertBot): Promise<Bot> {
     const newBot: Bot = {
       id: randomUUID(),
-      ...bot,
+      username: bot.username,
+      email: bot.email,
+      firstName: bot.firstName || null,
+      lastName: bot.lastName || null,
       isBot: true,
-      joinDate: new Date(),
-      lastActiveAt: null,
+      timezone: bot.timezone || null,
       createdAt: new Date(),
       updatedAt: new Date(),
+      isActive: bot.isActive,
+      squad: bot.squad,
+      purpose: bot.purpose,
+      aggressionLevel: bot.aggressionLevel,
+      preferencesTags: bot.preferencesTags || null,
+      maxDailySpend: bot.maxDailySpend || null,
+      personalityTraits: bot.personalityTraits || null,
+      walletBalance: bot.walletBalance,
+      lifetimeSpend: bot.lifetimeSpend,
+      totalActions: bot.totalActions,
+      joinDate: new Date(),
+      lastActiveAt: null,
     };
     this.botsMap.set(newBot.id, newBot);
     return newBot;
@@ -7270,8 +7357,16 @@ export class MemStorage implements IStorage {
   async recordBotAction(action: InsertBotAction): Promise<BotAction> {
     const newAction: BotAction = {
       id: randomUUID(),
-      ...action,
       createdAt: new Date(),
+      botId: action.botId,
+      targetType: action.targetType,
+      targetId: action.targetId,
+      actionType: action.actionType,
+      coinCost: action.coinCost,
+      wasRefunded: action.wasRefunded || false,
+      refundedAt: action.refundedAt || null,
+      // Ensure metadata is always provided (required field)
+      metadata: action.metadata || {},
     };
     this.botActionsMap.set(newAction.id, newAction);
     return newAction;
@@ -7389,8 +7484,16 @@ export class MemStorage implements IStorage {
   async scheduleRefund(refund: InsertBotRefund): Promise<BotRefund> {
     const newRefund: BotRefund = {
       id: randomUUID(),
-      ...refund,
+      status: refund.status || 'pending',
       createdAt: new Date(),
+      botId: refund.botId,
+      sellerId: refund.sellerId || null,
+      error: refund.error || null,
+      processedAt: refund.processedAt || null,
+      botActionId: refund.botActionId,
+      originalAmount: refund.originalAmount,
+      refundAmount: refund.refundAmount,
+      scheduledFor: refund.scheduledFor,
     };
     this.botRefundsMap.set(newRefund.id, newRefund);
     return newRefund;
@@ -7422,8 +7525,18 @@ export class MemStorage implements IStorage {
   async logBotAction(log: InsertBotAuditLog): Promise<BotAuditLog> {
     const newLog: BotAuditLog = {
       id: randomUUID(),
-      ...log,
       createdAt: new Date(),
+      actionType: log.actionType,
+      adminId: log.adminId,
+      isUndone: log.isUndone || false,
+      undoneBy: log.undoneBy || null,
+      undoneAt: log.undoneAt || null,
+      details: log.details || {},
+      // Additional required fields
+      botId: log.botId || null,
+      targetId: log.targetId || null,
+      previousValue: log.previousValue || null,
+      newValue: log.newValue || null,
     };
     this.botAuditLogMap.set(newLog.id, newLog);
     return newLog;
