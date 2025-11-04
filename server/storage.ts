@@ -479,6 +479,17 @@ export interface IStorage {
   // Ranking System
   getAllForumThreads(): Promise<ForumThread[]>;
   getAllUsers(): Promise<User[]>;
+  getAllMembers(filters?: {
+    search?: string;
+    role?: string;
+    activity?: string;
+    coinsMin?: number;
+    coinsMax?: number;
+    joinDate?: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+  }): Promise<{ users: User[]; total: number }>;
   getUserById(id: string): Promise<User | undefined>;
   getForumStats(): Promise<{
     totalThreads: number;
@@ -4975,6 +4986,128 @@ export class MemStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+
+  async getAllMembers(filters?: {
+    search?: string;
+    role?: string;
+    activity?: string;
+    coinsMin?: number;
+    coinsMax?: number;
+    joinDate?: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+  }): Promise<{ users: User[]; total: number }> {
+    let allUsers = Array.from(this.users.values());
+
+    // Apply filters
+    if (filters?.search) {
+      const searchTerm = filters.search.toLowerCase();
+      allUsers = allUsers.filter(u => 
+        u.username?.toLowerCase().includes(searchTerm) ||
+        u.email?.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    if (filters?.role) {
+      allUsers = allUsers.filter(u => u.role === filters.role);
+    }
+
+    if (filters?.activity) {
+      const now = new Date();
+      const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      switch(filters.activity) {
+        case 'onlineNow':
+          allUsers = allUsers.filter(u => u.lastActive && new Date(u.lastActive) >= fifteenMinutesAgo);
+          break;
+        case 'activeToday':
+          allUsers = allUsers.filter(u => u.lastActive && new Date(u.lastActive) >= oneDayAgo);
+          break;
+        case 'activeWeek':
+          allUsers = allUsers.filter(u => u.lastActive && new Date(u.lastActive) >= oneWeekAgo);
+          break;
+        case 'inactive':
+          allUsers = allUsers.filter(u => !u.lastActive || new Date(u.lastActive) < oneWeekAgo);
+          break;
+      }
+    }
+
+    if (filters?.coinsMin !== undefined) {
+      allUsers = allUsers.filter(u => (u.totalCoins || 0) >= filters.coinsMin!);
+    }
+
+    if (filters?.coinsMax !== undefined) {
+      allUsers = allUsers.filter(u => (u.totalCoins || 0) <= filters.coinsMax!);
+    }
+
+    if (filters?.joinDate && filters.joinDate !== 'all') {
+      const now = new Date();
+      let dateThreshold: Date;
+      
+      switch(filters.joinDate) {
+        case 'today':
+          dateThreshold = new Date(now.setHours(0, 0, 0, 0));
+          break;
+        case 'week':
+          dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case 'year':
+          dateThreshold = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          dateThreshold = new Date(0);
+      }
+      
+      allUsers = allUsers.filter(u => u.createdAt && new Date(u.createdAt) >= dateThreshold);
+    }
+
+    // Sort users
+    if (filters?.sort) {
+      switch(filters.sort) {
+        case 'coins':
+          allUsers.sort((a, b) => (b.totalCoins || 0) - (a.totalCoins || 0));
+          break;
+        case 'contributions':
+          // Sort by posts count (threads + replies)
+          allUsers.sort((a, b) => {
+            const aContributions = Array.from(this.forumThreadsMap.values()).filter(t => t.authorId === a.id).length +
+                                  Array.from(this.forumRepliesMap.values()).filter(r => r.userId === a.id).length;
+            const bContributions = Array.from(this.forumThreadsMap.values()).filter(t => t.authorId === b.id).length +
+                                  Array.from(this.forumRepliesMap.values()).filter(r => r.userId === b.id).length;
+            return bContributions - aContributions;
+          });
+          break;
+        case 'uploads':
+          allUsers.sort((a, b) => {
+            const aUploads = Array.from(this.content.values()).filter(c => c.authorId === a.id).length;
+            const bUploads = Array.from(this.content.values()).filter(c => c.authorId === b.id).length;
+            return bUploads - aUploads;
+          });
+          break;
+        case 'newest':
+          allUsers.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          break;
+        case 'oldest':
+          allUsers.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+          break;
+      }
+    }
+
+    // Apply pagination
+    const total = allUsers.length;
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    const start = (page - 1) * limit;
+    const paginatedUsers = allUsers.slice(start, start + limit);
+
+    return { users: paginatedUsers, total };
   }
 
   async getUserById(id: string): Promise<User | undefined> {
@@ -9483,6 +9616,176 @@ export class DrizzleStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+
+  async getAllMembers(filters?: {
+    search?: string;
+    role?: string;
+    activity?: string;
+    coinsMin?: number;
+    coinsMax?: number;
+    joinDate?: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+  }): Promise<{ users: User[]; total: number }> {
+    let query = db.select().from(users);
+    let conditions: any[] = [];
+
+    // Apply filters
+    if (filters?.search) {
+      conditions.push(
+        or(
+          ilike(users.username, `%${filters.search}%`),
+          ilike(users.email, `%${filters.search}%`)
+        )
+      );
+    }
+
+    if (filters?.role) {
+      conditions.push(eq(users.role, filters.role as any));
+    }
+
+    if (filters?.activity) {
+      const now = new Date();
+      const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+      const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      
+      switch(filters.activity) {
+        case 'onlineNow':
+          conditions.push(gte(users.lastActive, fifteenMinutesAgo));
+          break;
+        case 'activeToday':
+          conditions.push(gte(users.lastActive, oneDayAgo));
+          break;
+        case 'activeWeek':
+          conditions.push(gte(users.lastActive, oneWeekAgo));
+          break;
+        case 'inactive':
+          conditions.push(
+            or(
+              isNull(users.lastActive),
+              lt(users.lastActive, oneWeekAgo)
+            )
+          );
+          break;
+      }
+    }
+
+    if (filters?.coinsMin !== undefined) {
+      conditions.push(gte(users.totalCoins, filters.coinsMin));
+    }
+
+    if (filters?.coinsMax !== undefined) {
+      conditions.push(lte(users.totalCoins, filters.coinsMax));
+    }
+
+    if (filters?.joinDate && filters.joinDate !== 'all') {
+      const now = new Date();
+      let dateThreshold: Date;
+      
+      switch(filters.joinDate) {
+        case 'today':
+          dateThreshold = new Date(now.setHours(0, 0, 0, 0));
+          break;
+        case 'week':
+          dateThreshold = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          dateThreshold = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case 'year':
+          dateThreshold = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          dateThreshold = new Date(0);
+      }
+      
+      conditions.push(gte(users.createdAt, dateThreshold));
+    }
+
+    // Apply conditions to query
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    // Get total count before pagination
+    const countQuery = db
+      .select({ count: count(users.id) })
+      .from(users);
+    
+    if (conditions.length > 0) {
+      countQuery.where(and(...conditions));
+    }
+    
+    const totalResult = await countQuery;
+    const total = Number(totalResult[0]?.count || 0);
+
+    // Apply sorting
+    if (filters?.sort) {
+      switch(filters.sort) {
+        case 'coins':
+          query = query.orderBy(desc(users.totalCoins)) as any;
+          break;
+        case 'newest':
+          query = query.orderBy(desc(users.createdAt)) as any;
+          break;
+        case 'oldest':
+          query = query.orderBy(asc(users.createdAt)) as any;
+          break;
+        default:
+          // For contributions and uploads, we'll need to join with other tables
+          // For now, we'll sort by createdAt as a fallback
+          query = query.orderBy(desc(users.createdAt)) as any;
+          break;
+      }
+    } else {
+      // Default sort by total coins
+      query = query.orderBy(desc(users.totalCoins)) as any;
+    }
+
+    // Apply pagination
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 20;
+    const offset = (page - 1) * limit;
+    
+    query = query.limit(limit).offset(offset) as any;
+    
+    const userResults = await query;
+
+    // For each user, fetch their contribution and upload counts
+    const usersWithStats = await Promise.all(
+      userResults.map(async (user) => {
+        // Get contribution count (threads + replies)
+        const [threadCount, replyCount, uploadCount] = await Promise.all([
+          db.select({ count: count(forumThreads.id) })
+            .from(forumThreads)
+            .where(eq(forumThreads.authorId, user.id)),
+          db.select({ count: count(forumReplies.id) })
+            .from(forumReplies)
+            .where(eq(forumReplies.userId, user.id)),
+          db.select({ count: count(content.id) })
+            .from(content)
+            .where(eq(content.authorId, user.id))
+        ]);
+
+        return {
+          ...user,
+          contributionCount: Number(threadCount[0]?.count || 0) + Number(replyCount[0]?.count || 0),
+          uploadCount: Number(uploadCount[0]?.count || 0)
+        };
+      })
+    );
+
+    // If sorting by contributions or uploads, sort the results
+    if (filters?.sort === 'contributions') {
+      usersWithStats.sort((a, b) => (b.contributionCount || 0) - (a.contributionCount || 0));
+    } else if (filters?.sort === 'uploads') {
+      usersWithStats.sort((a, b) => (b.uploadCount || 0) - (a.uploadCount || 0));
+    }
+
+    return { users: usersWithStats, total };
   }
 
   async getUserById(id: string): Promise<User | undefined> {

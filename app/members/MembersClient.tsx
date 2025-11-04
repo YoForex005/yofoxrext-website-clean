@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@shared/schema";
 import Header from "@/components/Header";
@@ -11,22 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import Link from "next/link";
 import { 
   Trophy, 
   Coins,
   TrendingUp,
   Upload,
-  Star,
-  Award,
-  Crown,
-  Medal,
   Users,
   Search,
   Filter,
@@ -34,100 +28,116 @@ import {
   Activity,
   MessageSquare,
   Target,
-  Flame,
-  Zap,
+  Clock,
+  Eye,
+  Sparkles,
+  Shield,
   ShieldCheck,
   UserCheck,
   Store,
-  Shield,
-  Clock,
-  Eye,
-  ArrowUp,
-  ArrowDown,
-  Sparkles,
-  BadgeCheck,
-  Gift,
   Briefcase,
-  UserPlus,
-  Heart,
+  ChevronLeft,
   ChevronRight,
   BarChart3
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
-interface LeaderboardUser extends User {
+interface MemberUser extends User {
   contributionCount?: number;
   uploadCount?: number;
+  followersCount?: number;
+  isOnline?: boolean;
+}
+
+interface MembersResponse {
+  users: MemberUser[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 interface MembersClientProps {
   initialData: {
-    topByCoins: LeaderboardUser[];
-    topByContributions: LeaderboardUser[];
-    topByUploads: LeaderboardUser[];
+    topByCoins: MemberUser[];
+    topByContributions: MemberUser[];
+    topByUploads: MemberUser[];
   };
 }
 
 export default function MembersClient({ initialData }: MembersClientProps) {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState("coins");
   
-  const [roleFilters, setRoleFilters] = useState({
-    regular: false,
-    premium: false,
-    sellers: false,
-    verified: false,
-    moderators: false,
-  });
-
-  const [activityFilters, setActivityFilters] = useState({
-    onlineNow: false,
-    activeToday: false,
-    activeWeek: false,
-    inactive: false,
-  });
-
-  const [coinsRange, setCoinsRange] = useState([0]);
+  // Role filters
+  const [selectedRole, setSelectedRole] = useState("all");
+  
+  // Activity filter
+  const [selectedActivity, setSelectedActivity] = useState("all");
+  
+  // Coins range filter
+  const [coinsRange, setCoinsRange] = useState([0, 100000]);
+  
+  // Join date filter
   const [joinDateFilter, setJoinDateFilter] = useState("all");
+  
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1); // Reset to first page on search
+    }, 500);
+    
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
-  const { data: topByCoins, isLoading: coinsLoading } = useQuery<LeaderboardUser[]>({
-    queryKey: ['/api/leaderboard', 'coins'],
+  // Build query parameters
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    
+    if (debouncedSearch) params.append('search', debouncedSearch);
+    if (selectedRole && selectedRole !== 'all') params.append('role', selectedRole);
+    if (selectedActivity && selectedActivity !== 'all') params.append('activity', selectedActivity);
+    if (coinsRange[0] > 0) params.append('coinsMin', coinsRange[0].toString());
+    if (coinsRange[1] < 100000) params.append('coinsMax', coinsRange[1].toString());
+    if (joinDateFilter !== 'all') params.append('joinDate', joinDateFilter);
+    params.append('page', currentPage.toString());
+    params.append('limit', '20');
+    params.append('sort', sortBy);
+    
+    return params.toString();
+  };
+
+  // Main members query
+  const { data: membersData, isLoading } = useQuery<MembersResponse>({
+    queryKey: ['/api/members', buildQueryParams()],
     queryFn: async () => {
-      const res = await fetch('/api/leaderboard?type=coins&limit=50', {
+      const res = await fetch(`/api/members?${buildQueryParams()}`, {
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Failed to fetch');
+      if (!res.ok) throw new Error('Failed to fetch members');
       return res.json();
     },
-    initialData: initialData.topByCoins,
     refetchInterval: 30000,
   });
 
-  const { data: topByContributions, isLoading: contributionsLoading } = useQuery<LeaderboardUser[]>({
-    queryKey: ['/api/leaderboard', 'contributions'],
+  // Get trending members for sidebar (top 10 by coins this week)
+  const { data: trendingMembers } = useQuery<MemberUser[]>({
+    queryKey: ['/api/members', 'trending'],
     queryFn: async () => {
-      const res = await fetch('/api/leaderboard?type=contributions&limit=50', {
+      const res = await fetch('/api/members?joinDate=week&sort=coins&limit=10', {
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Failed to fetch');
-      return res.json();
+      if (!res.ok) throw new Error('Failed to fetch trending');
+      const data = await res.json();
+      return data.users;
     },
-    initialData: initialData.topByContributions,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
   });
 
-  const { data: topByUploads, isLoading: uploadsLoading } = useQuery<LeaderboardUser[]>({
-    queryKey: ['/api/leaderboard', 'uploads'],
-    queryFn: async () => {
-      const res = await fetch('/api/leaderboard?type=uploads&limit=50', {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch');
-      return res.json();
-    },
-    initialData: initialData.topByUploads,
-    refetchInterval: 30000,
-  });
-
+  // Member stats
   const { data: memberStats } = useQuery<{
     totalMembers: number;
     onlineNow: number;
@@ -146,112 +156,102 @@ export default function MembersClient({ initialData }: MembersClientProps) {
   });
 
   const clearFilters = () => {
-    setRoleFilters({
-      regular: false,
-      premium: false,
-      sellers: false,
-      verified: false,
-      moderators: false,
-    });
-    setActivityFilters({
-      onlineNow: false,
-      activeToday: false,
-      activeWeek: false,
-      inactive: false,
-    });
-    setCoinsRange([0]);
-    setJoinDateFilter("all");
     setSearchTerm("");
+    setSelectedRole("all");
+    setSelectedActivity("all");
+    setCoinsRange([0, 100000]);
+    setJoinDateFilter("all");
+    setSortBy("coins");
+    setCurrentPage(1);
   };
 
-  const filterUsers = (users: LeaderboardUser[]) => {
-    if (!searchTerm) return users;
-    return users.filter(user => 
-      user.username?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  };
-
-  const getRankBadge = (rank: number) => {
-    if (rank === 1) return { icon: Crown, color: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30" };
-    if (rank === 2) return { icon: Medal, color: "bg-gray-400/15 text-gray-700 dark:text-gray-400 border-gray-400/30" };
-    if (rank === 3) return { icon: Medal, color: "bg-amber-600/15 text-amber-700 dark:text-amber-400 border-amber-600/30" };
-    return { icon: Trophy, color: "bg-primary/10 text-primary border-primary/20" };
-  };
-
-  const renderCompactMemberCard = (user: LeaderboardUser, index: number, type: 'coins' | 'contributions' | 'uploads') => {
-    const { icon: RankIcon, color } = getRankBadge(index + 1);
-    
-    const getStatValue = () => {
-      if (type === 'coins') return (user.totalCoins ?? 0).toLocaleString();
-      if (type === 'contributions') return (user.contributionCount ?? 0).toLocaleString();
-      if (type === 'uploads') return (user.uploadCount ?? 0).toLocaleString();
-      return '0';
-    };
-
-    const getStatIcon = () => {
-      if (type === 'coins') return Coins;
-      if (type === 'contributions') return MessageSquare;
-      if (type === 'uploads') return Upload;
-      return Activity;
-    };
-
-    const StatIcon = getStatIcon();
+  const renderMemberCard = (user: MemberUser) => {
     const joinedAgo = user.createdAt ? formatDistanceToNow(new Date(user.createdAt), { addSuffix: true }) : 'Unknown';
+    
+    // Role badge colors
+    const getRoleBadge = () => {
+      switch (user.role) {
+        case 'premium':
+          return <Badge className="bg-gradient-to-r from-yellow-500 to-amber-500 text-white border-0"><Sparkles className="w-3 h-3 mr-1" /> Premium</Badge>;
+        case 'seller':
+          return <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0"><Store className="w-3 h-3 mr-1" /> Seller</Badge>;
+        case 'verified':
+          return <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-0"><ShieldCheck className="w-3 h-3 mr-1" /> Verified</Badge>;
+        case 'moderator':
+          return <Badge className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0"><Shield className="w-3 h-3 mr-1" /> Moderator</Badge>;
+        case 'admin':
+          return <Badge className="bg-gradient-to-r from-red-500 to-rose-500 text-white border-0"><Shield className="w-3 h-3 mr-1" /> Admin</Badge>;
+        default:
+          return null;
+      }
+    };
 
     return (
-      <Link key={user.id} href={`/user/${user.username}`} data-testid={`link-user-${user.id}`}>
-        <Card className="group hover:border-primary/30 hover-elevate active-elevate-2 cursor-pointer transition-all duration-200 h-full">
-          <CardContent className="p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 relative">
-                <Badge 
-                  variant="outline" 
-                  className={`absolute -top-2 -left-2 w-6 h-6 rounded-full flex items-center justify-center p-0 z-10 ${color}`}
-                >
-                  {index < 3 ? <RankIcon className="w-3 h-3" /> : <span className="text-[10px] font-bold">{index + 1}</span>}
-                </Badge>
-                <Avatar className="w-12 h-12 border-2 border-border group-hover:border-primary/30 transition-colors">
-                  <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+      <Card key={user.id} className="group hover:border-primary/30 hover:shadow-lg transition-all duration-200 overflow-hidden" data-testid={`card-member-${user.id}`}>
+        <CardContent className="p-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <Avatar className="w-16 h-16 border-2 border-border group-hover:border-primary/30 transition-colors">
+                  <AvatarFallback className="bg-primary/10 text-primary font-semibold text-lg">
                     {(user.username?.substring(0, 2)?.toUpperCase() ?? 'XX')}
                   </AvatarFallback>
                 </Avatar>
+                {user.isOnline && (
+                  <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-950" />
+                )}
               </div>
               
-              <div className="flex-1 min-w-0 space-y-1.5">
-                <h3 
-                  className="font-semibold text-sm line-clamp-1 group-hover:text-primary transition-colors" 
-                  data-testid={`text-username-${user.id}`}
-                >
+              <div className="flex-1">
+                <h3 className="font-semibold text-lg group-hover:text-primary transition-colors" data-testid={`text-username-${user.id}`}>
                   {user.username}
                 </h3>
-                
-                <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-muted/50">
-                    #{index + 1}
-                  </Badge>
-                  <span className="truncate">
-                    Silver {user.rank || 22}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 text-xs">
-                  <div className="flex items-center gap-1">
-                    <StatIcon className="w-3 h-3 text-primary" />
-                    <span className="font-semibold" data-testid={`stat-value-${user.id}`}>
-                      {getStatValue()}
-                    </span>
-                  </div>
-                  <span className="text-border">•</span>
-                  <div className="flex items-center gap-1 text-muted-foreground truncate">
-                    <Calendar className="w-3 h-3" />
-                    <span suppressHydrationWarning className="text-[11px] truncate">{joinedAgo}</span>
-                  </div>
-                </div>
+                {getRoleBadge()}
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </Link>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="flex items-center gap-2 text-sm">
+              <Coins className="w-4 h-4 text-yellow-600" />
+              <span data-testid={`text-coins-${user.id}`}>
+                <span className="font-semibold">{(user.totalCoins || 0).toLocaleString()}</span> coins
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 text-sm">
+              <MessageSquare className="w-4 h-4 text-blue-600" />
+              <span data-testid={`text-posts-${user.id}`}>
+                <span className="font-semibold">{(user.contributionCount || 0).toLocaleString()}</span> posts
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 text-sm">
+              <Upload className="w-4 h-4 text-green-600" />
+              <span data-testid={`text-uploads-${user.id}`}>
+                <span className="font-semibold">{(user.uploadCount || 0).toLocaleString()}</span> publishers
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Calendar className="w-4 h-4" />
+              <span suppressHydrationWarning className="text-xs">{joinedAgo}</span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <Link href={`/user/${user.username}`} className="flex-1">
+              <Button variant="default" className="w-full" size="sm" data-testid={`button-view-profile-${user.id}`}>
+                <Eye className="w-4 h-4 mr-1" />
+                View Profile
+              </Button>
+            </Link>
+            <Button variant="outline" size="sm" className="px-3" data-testid={`button-follow-${user.id}`}>
+              <UserCheck className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     );
   };
 
@@ -259,6 +259,7 @@ export default function MembersClient({ initialData }: MembersClientProps) {
     <div className="min-h-screen bg-background">
       <Header />
       
+      {/* Hero Section */}
       <div className="border-b bg-gradient-to-br from-primary/5 to-background">
         <div className="max-w-[1600px] mx-auto px-4 py-8">
           <div className="flex items-start justify-between gap-4">
@@ -268,697 +269,344 @@ export default function MembersClient({ initialData }: MembersClientProps) {
                 Community Members
               </h1>
               <p className="text-muted-foreground">
-                Top contributors, traders, and developers in the YoForex community
+                Connect with traders, developers, and experts in the YoForex community
               </p>
             </div>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Users className="w-8 h-8 text-primary" />
+                  <div>
+                    <div className="text-2xl font-bold">{memberStats?.totalMembers || 0}</div>
+                    <div className="text-xs text-muted-foreground">Total Members</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Activity className="w-8 h-8 text-green-600" />
+                  <div>
+                    <div className="text-2xl font-bold">{memberStats?.onlineNow || 0}</div>
+                    <div className="text-xs text-muted-foreground">Online Now</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <TrendingUp className="w-8 h-8 text-blue-600" />
+                  <div>
+                    <div className="text-2xl font-bold">{memberStats?.newThisWeek || 0}</div>
+                    <div className="text-xs text-muted-foreground">New This Week</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <Coins className="w-8 h-8 text-yellow-600" />
+                  <div>
+                    <div className="text-2xl font-bold">{(memberStats?.totalCoinsEarned || 0).toLocaleString()}</div>
+                    <div className="text-xs text-muted-foreground">Total Coins Earned</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
 
+      {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-4 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* LEFT SIDEBAR - Now visible on mobile */}
-          <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
+          {/* LEFT SIDEBAR - Filters */}
+          <aside className="lg:col-span-3 space-y-6">
             
-            {/* Advanced Member Filters - Collapsible on mobile */}
-            <Card data-testid="card-advanced-filters" className="overflow-hidden">
-              <Collapsible defaultOpen={false} className="lg:hidden">
-                <CollapsibleTrigger asChild>
-                  <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
-                    <CardTitle className="text-lg flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Filter className="w-5 h-5" />
-                        Advanced Filters
-                      </span>
-                      <ChevronRight className="w-5 h-5 transition-transform data-[state=open]:rotate-90" />
-                    </CardTitle>
-                  </CardHeader>
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                  <CardContent className="space-y-6">
-                    {/* Filter by Role */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm">Filter by Role</h4>
-                      <div className="space-y-2">
-                        {[
-                          { key: 'regular', label: 'Regular Members', icon: Users },
-                          { key: 'premium', label: 'Premium Members', icon: Crown },
-                          { key: 'sellers', label: 'Sellers', icon: Store },
-                          { key: 'verified', label: 'Verified', icon: BadgeCheck },
-                          { key: 'moderators', label: 'Moderators', icon: Shield },
-                        ].map(({ key, label, icon: Icon }) => (
-                          <div key={key} className="flex items-center gap-2">
-                            <Checkbox 
-                              id={`role-${key}`}
-                              checked={roleFilters[key as keyof typeof roleFilters]}
-                              onCheckedChange={(checked) => 
-                                setRoleFilters(prev => ({ ...prev, [key]: checked as boolean }))
-                              }
-                              data-testid={`checkbox-role-${key}`}
-                            />
-                            <label htmlFor={`role-${key}`} className="text-sm flex items-center gap-2 cursor-pointer">
-                              <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                              {label}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+            {/* Search */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Search className="w-5 h-5" />
+                  Search Members
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  placeholder="Search by username..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full"
+                  data-testid="input-search"
+                />
+              </CardContent>
+            </Card>
 
-                    <Separator />
-
-                    {/* Filter by Activity */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm">Filter by Activity</h4>
-                      <div className="space-y-2">
-                        {[
-                          { key: 'onlineNow', label: 'Online Now', icon: Activity },
-                          { key: 'activeToday', label: 'Active Today', icon: Clock },
-                          { key: 'activeWeek', label: 'Active This Week', icon: Calendar },
-                          { key: 'inactive', label: 'Inactive', icon: Eye },
-                        ].map(({ key, label, icon: Icon }) => (
-                          <div key={key} className="flex items-center gap-2">
-                            <Checkbox 
-                              id={`activity-${key}`}
-                              checked={activityFilters[key as keyof typeof activityFilters]}
-                              onCheckedChange={(checked) => 
-                                setActivityFilters(prev => ({ ...prev, [key]: checked as boolean }))
-                              }
-                              data-testid={`checkbox-activity-${key}`}
-                            />
-                            <label htmlFor={`activity-${key}`} className="text-sm flex items-center gap-2 cursor-pointer">
-                              <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                              {label}
-                            </label>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Filter by Coins */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm flex items-center justify-between">
-                        <span>Filter by Coins</span>
-                        <span className="text-xs text-muted-foreground" data-testid="text-coins-range">
-                          {coinsRange[0]?.toLocaleString() || 0}+
-                        </span>
-                      </h4>
-                      <Slider
-                        min={0}
-                        max={5000}
-                        step={100}
-                        value={coinsRange}
-                        onValueChange={setCoinsRange}
-                        data-testid="slider-coins-range"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>0</span>
-                        <span>5,000</span>
-                      </div>
-                    </div>
-
-                    <Separator />
-
-                    {/* Filter by Join Date */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm">Filter by Join Date</h4>
-                      <Select value={joinDateFilter} onValueChange={setJoinDateFilter}>
-                        <SelectTrigger data-testid="select-join-date">
-                          <SelectValue placeholder="Select period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Time</SelectItem>
-                          <SelectItem value="7days">Last 7 Days</SelectItem>
-                          <SelectItem value="30days">Last 30 Days</SelectItem>
-                          <SelectItem value="3months">Last 3 Months</SelectItem>
-                          <SelectItem value="6months">Last 6 Months</SelectItem>
-                          <SelectItem value="year">This Year</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <Button 
-                      variant="outline" 
-                      className="w-full" 
-                      onClick={clearFilters}
-                      data-testid="button-clear-filters"
-                    >
-                      Clear Filters
-                    </Button>
-                  </CardContent>
-                </CollapsibleContent>
-              </Collapsible>
-
-              {/* Desktop version - always visible */}
-              <div className="hidden lg:block">
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Filter className="w-5 h-5" />
-                    Advanced Filters
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
+            {/* Filters */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Filter className="w-5 h-5" />
+                  Filters
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="absolute right-4 top-4"
+                  data-testid="button-clear-filters"
+                >
+                  Clear All
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 
-                {/* Filter by Role */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm">Filter by Role</h4>
-                  <div className="space-y-2">
-                    {[
-                      { key: 'regular', label: 'Regular Members', icon: Users },
-                      { key: 'premium', label: 'Premium Members', icon: Crown },
-                      { key: 'sellers', label: 'Sellers', icon: Store },
-                      { key: 'verified', label: 'Verified', icon: BadgeCheck },
-                      { key: 'moderators', label: 'Moderators', icon: Shield },
-                    ].map(({ key, label, icon: Icon }) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <Checkbox 
-                          id={`role-${key}`}
-                          checked={roleFilters[key as keyof typeof roleFilters]}
-                          onCheckedChange={(checked) => 
-                            setRoleFilters(prev => ({ ...prev, [key]: checked as boolean }))
-                          }
-                          data-testid={`checkbox-role-${key}`}
-                        />
-                        <label htmlFor={`role-${key}`} className="text-sm flex items-center gap-2 cursor-pointer">
-                          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                          {label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Filter by Activity */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm">Filter by Activity</h4>
-                  <div className="space-y-2">
-                    {[
-                      { key: 'onlineNow', label: 'Online Now', icon: Activity },
-                      { key: 'activeToday', label: 'Active Today', icon: Clock },
-                      { key: 'activeWeek', label: 'Active This Week', icon: Calendar },
-                      { key: 'inactive', label: 'Inactive', icon: Eye },
-                    ].map(({ key, label, icon: Icon }) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <Checkbox 
-                          id={`activity-${key}`}
-                          checked={activityFilters[key as keyof typeof activityFilters]}
-                          onCheckedChange={(checked) => 
-                            setActivityFilters(prev => ({ ...prev, [key]: checked as boolean }))
-                          }
-                          data-testid={`checkbox-activity-${key}`}
-                        />
-                        <label htmlFor={`activity-${key}`} className="text-sm flex items-center gap-2 cursor-pointer">
-                          <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-                          {label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Filter by Coins */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm flex items-center justify-between">
-                    <span>Filter by Coins</span>
-                    <span className="text-xs text-muted-foreground" data-testid="text-coins-range">
-                      {coinsRange[0]?.toLocaleString() || 0}+
-                    </span>
-                  </h4>
-                  <Slider
-                    min={0}
-                    max={5000}
-                    step={100}
-                    value={coinsRange}
-                    onValueChange={setCoinsRange}
-                    data-testid="slider-coins-range"
-                  />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>0</span>
-                    <span>5,000</span>
-                  </div>
-                </div>
-
-                <Separator />
-
-                {/* Filter by Join Date */}
-                <div className="space-y-3">
-                  <h4 className="font-semibold text-sm">Filter by Join Date</h4>
-                  <Select value={joinDateFilter} onValueChange={setJoinDateFilter}>
-                    <SelectTrigger data-testid="select-join-date">
-                      <SelectValue placeholder="Select period" />
+                {/* Sort By */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Sort By</label>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger data-testid="select-sort">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Time</SelectItem>
-                      <SelectItem value="7days">Last 7 Days</SelectItem>
-                      <SelectItem value="30days">Last 30 Days</SelectItem>
-                      <SelectItem value="3months">Last 3 Months</SelectItem>
-                      <SelectItem value="6months">Last 6 Months</SelectItem>
-                      <SelectItem value="year">This Year</SelectItem>
+                      <SelectItem value="coins">Most Coins</SelectItem>
+                      <SelectItem value="contributions">Most Active</SelectItem>
+                      <SelectItem value="uploads">Most Publishers</SelectItem>
+                      <SelectItem value="newest">Newest First</SelectItem>
+                      <SelectItem value="oldest">Oldest First</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
-                <Button 
-                  variant="outline" 
-                  className="w-full" 
-                  onClick={clearFilters}
-                  data-testid="button-clear-filters"
-                >
-                  Clear Filters
-                </Button>
-              </CardContent>
-              </div>
-            </Card>
+                <Separator />
 
-            {/* Leaderboard Categories */}
-            <Card data-testid="card-leaderboard-categories">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  Leaderboard Categories
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {[
-                  { label: 'Top by Coins', icon: Coins, href: '#', color: 'text-yellow-600 dark:text-yellow-400' },
-                  { label: 'Most Active', icon: TrendingUp, href: '#', color: 'text-blue-600 dark:text-blue-400' },
-                  { label: 'Top Publishers', icon: Upload, href: '#', color: 'text-green-600 dark:text-green-400' },
-                  { label: 'Top Sellers', icon: Store, href: '#', color: 'text-purple-600 dark:text-purple-400' },
-                  { label: 'Rising Stars', icon: Sparkles, href: '#', color: 'text-orange-600 dark:text-orange-400' },
-                  { label: 'Hall of Fame', icon: Trophy, href: '#', color: 'text-primary' },
-                ].map(({ label, icon: Icon, href, color }, idx) => (
-                  <Link 
-                    key={idx} 
-                    href={href}
-                    data-testid={`link-category-${label.toLowerCase().replace(/\s+/g, '-')}`}
-                  >
-                    <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                      <Icon className={`w-4 h-4 ${color}`} />
-                      <span className="text-sm flex-1 group-hover:text-primary transition-colors">{label}</span>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                    </div>
-                  </Link>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Community Stats */}
-            <Card data-testid="card-community-stats">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Community Stats
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {[
-                  { label: 'Total Members', value: memberStats?.totalMembers ?? 0, icon: Users, color: 'text-primary' },
-                  { label: 'Online Now', value: memberStats?.onlineNow ?? 0, icon: Activity, color: 'text-green-600 dark:text-green-400' },
-                  { label: 'New This Week', value: memberStats?.newThisWeek ?? 0, icon: UserPlus, color: 'text-blue-600 dark:text-blue-400' },
-                  { label: 'Total Coins Earned', value: (memberStats?.totalCoinsEarned ?? 0).toLocaleString(), icon: Coins, color: 'text-yellow-600 dark:text-yellow-400' },
-                ].map(({ label, value, icon: Icon, color }, idx) => (
-                  <div key={idx} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className={`w-4 h-4 ${color}`} />
-                      <span className="text-sm text-muted-foreground">{label}</span>
-                    </div>
-                    <span className="font-semibold" data-testid={`stat-${label.toLowerCase().replace(/\s+/g, '-')}`}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Top Achievements */}
-            <Card data-testid="card-top-achievements">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Award className="w-5 h-5" />
-                  Top Achievements
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(topByCoins?.slice(0, 3) ?? []).length > 0 ? (
-                  (topByCoins?.slice(0, 3) ?? []).map((user, idx) => (
-                    <div key={user.id} className="flex items-center gap-3 p-2 rounded-lg bg-muted/30">
-                      <Badge className="w-7 h-7 rounded-full flex items-center justify-center p-0 bg-gradient-to-br from-yellow-500 to-orange-500">
-                        <Trophy className="w-3.5 h-3.5" />
-                      </Badge>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate" data-testid={`achievement-user-${idx}`}>
-                          {user.username}
-                        </p>
-                        <p className="text-xs text-muted-foreground">Coin Master</p>
-                      </div>
-                      <Badge variant="outline" className="text-xs">
-                        {(user.totalCoins ?? 0).toLocaleString()}
-                      </Badge>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No achievements yet</p>
-                )}
-              </CardContent>
-            </Card>
-          </aside>
-
-          {/* MAIN CONTENT - Now properly ordered */}
-          <div className="lg:col-span-6 space-y-6 order-1 lg:order-2">
-            
-            {/* Search Bar */}
-            <Card>
-              <CardContent className="p-4">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search members..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                    data-testid="input-search-members"
-                  />
+                {/* Role Filter */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Member Role</label>
+                  <Select value={selectedRole} onValueChange={setSelectedRole}>
+                    <SelectTrigger data-testid="select-role">
+                      <SelectValue placeholder="All Roles" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      <SelectItem value="regular">Regular</SelectItem>
+                      <SelectItem value="premium">Premium</SelectItem>
+                      <SelectItem value="seller">Sellers</SelectItem>
+                      <SelectItem value="verified">Verified</SelectItem>
+                      <SelectItem value="moderator">Moderators</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Leaderboard Tabs */}
-            <Tabs defaultValue="coins" className="space-y-6">
-              <TabsList className="grid w-full grid-cols-3 gap-2">
-                <TabsTrigger value="coins" className="gap-2" data-testid="tab-coins">
-                  <Coins className="w-4 h-4" />
-                  <span className="hidden sm:inline">Coins</span>
-                </TabsTrigger>
-                <TabsTrigger value="contributions" className="gap-2" data-testid="tab-contributions">
-                  <TrendingUp className="w-4 h-4" />
-                  <span className="hidden sm:inline">Active</span>
-                </TabsTrigger>
-                <TabsTrigger value="uploads" className="gap-2" data-testid="tab-uploads">
-                  <Upload className="w-4 h-4" />
-                  <span className="hidden sm:inline">Publishers</span>
-                </TabsTrigger>
-              </TabsList>
+                <Separator />
 
-              {/* Coins Leaderboard */}
-              <TabsContent value="coins" data-testid="content-coins-leaderboard">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {coinsLoading ? (
-                    Array(12).fill(0).map((_, i) => <Skeleton key={i} className="h-32" />)
-                  ) : filterUsers(topByCoins || []).length > 0 ? (
-                    filterUsers(topByCoins || []).map((user, index) => 
-                      renderCompactMemberCard(user, index, 'coins')
-                    )
-                  ) : (
-                    <div className="col-span-full">
-                      <Card className="p-12 text-center">
-                        <Award className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-lg font-semibold mb-2">No members found</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {searchTerm ? 'Try adjusting your search' : 'Start earning coins to appear here!'}
-                        </p>
-                      </Card>
-                    </div>
-                  )}
+                {/* Activity Filter */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Activity Status</label>
+                  <Select value={selectedActivity} onValueChange={setSelectedActivity}>
+                    <SelectTrigger data-testid="select-activity">
+                      <SelectValue placeholder="All Activity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Activity</SelectItem>
+                      <SelectItem value="onlineNow">Online Now</SelectItem>
+                      <SelectItem value="activeToday">Active Today</SelectItem>
+                      <SelectItem value="activeWeek">Active This Week</SelectItem>
+                      <SelectItem value="inactive">Inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </TabsContent>
 
-              {/* Contributions Leaderboard */}
-              <TabsContent value="contributions" data-testid="content-contributions-leaderboard">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {contributionsLoading ? (
-                    Array(12).fill(0).map((_, i) => <Skeleton key={i} className="h-32" />)
-                  ) : filterUsers(topByContributions || []).length > 0 ? (
-                    filterUsers(topByContributions || []).map((user, index) => 
-                      renderCompactMemberCard(user, index, 'contributions')
-                    )
-                  ) : (
-                    <div className="col-span-full">
-                      <Card className="p-12 text-center">
-                        <TrendingUp className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-lg font-semibold mb-2">No activity yet</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {searchTerm ? 'Try adjusting your search' : 'Start contributing to appear here!'}
-                        </p>
-                      </Card>
+                <Separator />
+
+                {/* Coins Range */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">
+                    Coins Range: {coinsRange[0].toLocaleString()} - {coinsRange[1] === 100000 ? '∞' : coinsRange[1].toLocaleString()}
+                  </label>
+                  <div className="space-y-3">
+                    <Slider
+                      value={coinsRange}
+                      onValueChange={setCoinsRange}
+                      min={0}
+                      max={100000}
+                      step={1000}
+                      className="w-full"
+                      data-testid="slider-coins"
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        value={coinsRange[0]}
+                        onChange={(e) => setCoinsRange([Number(e.target.value), coinsRange[1]])}
+                        className="w-full"
+                        placeholder="Min"
+                        data-testid="input-coins-min"
+                      />
+                      <Input
+                        type="number"
+                        value={coinsRange[1]}
+                        onChange={(e) => setCoinsRange([coinsRange[0], Number(e.target.value)])}
+                        className="w-full"
+                        placeholder="Max"
+                        data-testid="input-coins-max"
+                      />
                     </div>
-                  )}
-                </div>
-              </TabsContent>
-
-              {/* Uploads Leaderboard */}
-              <TabsContent value="uploads" data-testid="content-uploads-leaderboard">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {uploadsLoading ? (
-                    Array(12).fill(0).map((_, i) => <Skeleton key={i} className="h-32" />)
-                  ) : filterUsers(topByUploads || []).length > 0 ? (
-                    filterUsers(topByUploads || []).map((user, index) => 
-                      renderCompactMemberCard(user, index, 'uploads')
-                    )
-                  ) : (
-                    <div className="col-span-full">
-                      <Card className="p-12 text-center">
-                        <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <h3 className="text-lg font-semibold mb-2">No uploads yet</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {searchTerm ? 'Try adjusting your search' : 'Publish your first EA to appear here!'}
-                        </p>
-                      </Card>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-
-            {/* Call to Action */}
-            <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-              <CardContent className="p-8">
-                <div className="text-center max-w-2xl mx-auto">
-                  <div className="flex items-center justify-center gap-4 mb-4">
-                    <Trophy className="w-10 h-10 text-primary" />
-                    <Flame className="w-10 h-10 text-orange-500" />
-                    <Zap className="w-10 h-10 text-yellow-500" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-2">Climb the Leaderboard</h3>
-                  <p className="text-muted-foreground mb-6">
-                    Earn coins, contribute to discussions, and publish quality content to rise through the ranks
-                  </p>
-                  <div className="flex gap-4 justify-center flex-wrap">
-                    <Link href="/publish">
-                      <Button size="lg" data-testid="button-publish-content">
-                        <Upload className="w-4 h-4 mr-2" />
-                        Publish Content
-                      </Button>
-                    </Link>
-                    <Link href="/earn-coins">
-                      <Button variant="outline" size="lg" data-testid="button-earn-coins">
-                        <Coins className="w-4 h-4 mr-2" />
-                        Ways to Earn
-                      </Button>
-                    </Link>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
 
-          {/* RIGHT SIDEBAR - Now visible on mobile */}
-          <aside className="lg:col-span-3 space-y-6 order-3 lg:order-3">
-            
-            {/* Member of the Month Spotlight */}
-            <Card className="overflow-hidden bg-gradient-to-br from-primary/10 via-purple-500/5 to-pink-500/5 border-primary/20" data-testid="card-member-of-month">
-              <CardHeader className="relative pb-0">
-                <div className="absolute top-4 right-4">
-                  <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 border-0">
-                    <Crown className="w-3 h-3 mr-1" />
-                    Member of the Month
-                  </Badge>
+                <Separator />
+
+                {/* Join Date Filter */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Joined</label>
+                  <Select value={joinDateFilter} onValueChange={setJoinDateFilter}>
+                    <SelectTrigger data-testid="select-join-date">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="week">This Week</SelectItem>
+                      <SelectItem value="month">This Month</SelectItem>
+                      <SelectItem value="year">This Year</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="flex flex-col items-center pt-6">
-                  <Avatar className="w-20 h-20 border-4 border-primary/20">
-                    <AvatarFallback className="bg-gradient-to-br from-primary to-purple-600 text-white text-xl font-bold">
-                      {(topByCoins?.[0]?.username?.substring(0, 2)?.toUpperCase() ?? 'XX')}
-                    </AvatarFallback>
-                  </Avatar>
-                  <h3 className="text-xl font-bold mt-4" data-testid="text-member-of-month">
-                    {topByCoins?.[0]?.username || 'No winner yet'}
-                  </h3>
-                  <Badge variant="outline" className="mt-2">
-                    <Crown className="w-3 h-3 mr-1" />
-                    Gold Rank 1
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-6 space-y-4">
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="p-2 rounded-lg bg-background/50">
-                    <p className="text-lg font-bold text-yellow-600 dark:text-yellow-400">
-                      {(topByCoins?.[0]?.totalCoins ?? 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Coins</p>
-                  </div>
-                  <div className="p-2 rounded-lg bg-background/50">
-                    <p className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                      {(topByCoins?.[0]?.contributionCount ?? 0).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Posts</p>
-                  </div>
-                  <div className="p-2 rounded-lg bg-background/50">
-                    <p className="text-lg font-bold text-pink-600 dark:text-pink-400">
-                      {Math.floor((topByCoins?.[0]?.totalCoins ?? 0) * 0.3).toLocaleString()}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Likes</p>
-                  </div>
-                </div>
-                <p className="text-sm text-center text-muted-foreground italic">
-                  "Dedicated trader sharing insights and helping others succeed in the community."
-                </p>
-                {topByCoins?.[0]?.username ? (
-                  <Link href={`/user/${topByCoins[0].username}`}>
-                    <Button className="w-full" data-testid="button-view-profile-spotlight">
-                      View Profile
-                    </Button>
-                  </Link>
-                ) : (
-                  <Button className="w-full" disabled data-testid="button-view-profile-spotlight">
-                    No winner yet
-                  </Button>
-                )}
               </CardContent>
             </Card>
 
             {/* Trending This Week */}
-            <Card data-testid="card-trending-week">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Flame className="w-5 h-5 text-orange-500" />
-                  Trending This Week
-                </CardTitle>
-                <CardDescription>Rising stars in the community</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(topByCoins?.slice(0, 5) ?? []).length > 0 ? (
-                  (topByCoins?.slice(0, 5) ?? []).map((user, idx) => (
-                    <Link key={user.id} href={`/user/${user.username}`} data-testid={`link-trending-${idx}`}>
-                      <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                        <Badge className="w-6 h-6 rounded-full flex items-center justify-center p-0 text-xs font-bold">
-                          {idx + 1}
-                        </Badge>
-                        <Avatar className="w-8 h-8">
-                          <AvatarFallback className="text-xs">
-                            {(user.username?.substring(0, 2)?.toUpperCase() ?? 'XX')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
-                            {user.username}
-                          </p>
+            {trendingMembers && trendingMembers.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5 text-green-600" />
+                    Trending This Week
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {trendingMembers.slice(0, 5).map((user, index) => (
+                      <Link key={user.id} href={`/user/${user.username}`}>
+                        <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer">
+                          <div className="text-sm font-bold text-muted-foreground w-6">#{index + 1}</div>
+                          <Avatar className="w-8 h-8">
+                            <AvatarFallback className="text-xs">
+                              {user.username?.substring(0, 2)?.toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-sm truncate">{user.username}</div>
+                            <div className="text-xs text-muted-foreground flex items-center gap-1">
+                              <Coins className="w-3 h-3" />
+                              {(user.totalCoins || 0).toLocaleString()}
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                          <ArrowUp className="w-3 h-3" />
-                          <span className="text-xs font-semibold">
-                            +{[350, 280, 200, 150, 100][idx] ?? 100}
-                          </span>
-                        </div>
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No trending members</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Recent Activity Feed */}
-            <Card data-testid="card-recent-activity">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Activity className="w-5 h-5" />
-                  Recent Activity
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { user: topByCoins?.[0]?.username || 'User1', action: 'earned badge', detail: 'Coin Master', icon: Award, color: 'text-yellow-600' },
-                  { user: topByContributions?.[0]?.username || 'User2', action: 'shared EA', detail: 'Gold Scalper Pro', icon: Upload, color: 'text-green-600' },
-                  { user: topByCoins?.[1]?.username || 'User3', action: 'reached rank', detail: 'Silver 50', icon: Trophy, color: 'text-blue-600' },
-                  { user: topByUploads?.[0]?.username || 'User4', action: 'made sale', detail: '2,500 coins', icon: Coins, color: 'text-orange-600' },
-                  { user: topByCoins?.[2]?.username || 'User5', action: 'joined', detail: 'YoForex', icon: UserPlus, color: 'text-purple-600' },
-                ].slice(0, 6).map((activity, idx) => (
-                  <div key={idx} className="flex items-start gap-3 text-sm" data-testid={`activity-item-${idx}`}>
-                    <Avatar className="w-8 h-8">
-                      <AvatarFallback className="text-xs">
-                        {(activity.user?.substring(0, 2)?.toUpperCase() ?? 'XX')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs">
-                        <span className="font-medium">{activity.user}</span>
-                        {' '}{activity.action}{' '}
-                        <span className="font-medium">{activity.detail}</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {['2m', '15m', '1h', '2h', '3h', '5h'][idx] ?? '1h'} ago
-                      </p>
-                    </div>
-                    <activity.icon className={`w-4 h-4 ${activity.color} flex-shrink-0`} />
+                      </Link>
+                    ))}
                   </div>
-                ))}
-                <Link href="/activity">
-                  <Button variant="ghost" className="w-full mt-2" size="sm" data-testid="button-view-all-activity">
-                    View All Activity
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-
-            {/* New Members */}
-            <Card data-testid="card-new-members">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <UserPlus className="w-5 h-5" />
-                  New Members
-                </CardTitle>
-                <CardDescription>Welcome to the community!</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(topByCoins?.slice(-4).reverse() ?? []).length > 0 ? (
-                  (topByCoins?.slice(-4).reverse() ?? []).map((user, idx) => (
-                    <Link key={user.id} href={`/user/${user.username}`} data-testid={`link-new-member-${idx}`}>
-                      <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group">
-                        <Avatar className="w-10 h-10 border-2 border-primary/20">
-                          <AvatarFallback className="bg-gradient-to-br from-green-500/10 to-blue-500/10">
-                            {(user.username?.substring(0, 2)?.toUpperCase() ?? 'XX')}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate group-hover:text-primary transition-colors">
-                            {user.username}
-                          </p>
-                          <p className="text-xs text-muted-foreground" suppressHydrationWarning>
-                            Joined {user.createdAt ? formatDistanceToNow(new Date(user.createdAt), { addSuffix: true }) : 'recently'}
-                          </p>
-                        </div>
-                        <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400">
-                          Welcome
-                        </Badge>
-                      </div>
-                    </Link>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No new members yet</p>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
           </aside>
 
+          {/* MAIN CONTENT - Members Grid */}
+          <div className="lg:col-span-9">
+            
+            {/* Results Header */}
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold">
+                {membersData ? `${membersData.total} Members Found` : 'Loading...'}
+              </h2>
+            </div>
+
+            {/* Members Grid */}
+            {isLoading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <Card key={i}>
+                    <CardContent className="p-6">
+                      <Skeleton className="h-16 w-16 rounded-full mb-4" />
+                      <Skeleton className="h-4 w-32 mb-2" />
+                      <Skeleton className="h-3 w-24 mb-4" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-full" />
+                        <Skeleton className="h-3 w-full" />
+                      </div>
+                      <Skeleton className="h-8 w-full mt-4" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : membersData?.users.length === 0 ? (
+              <Card>
+                <CardContent className="p-12 text-center">
+                  <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold mb-2">No Members Found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Try adjusting your filters or search term
+                  </p>
+                  <Button onClick={clearFilters} variant="outline">
+                    Clear Filters
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {membersData?.users.map(renderMemberCard)}
+                </div>
+
+                {/* Pagination */}
+                {membersData && membersData.totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-8">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1}
+                      data-testid="button-prev-page"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                      Previous
+                    </Button>
+                    
+                    <div className="flex items-center gap-2 px-4">
+                      <span className="text-sm">
+                        Page <span className="font-semibold">{currentPage}</span> of <span className="font-semibold">{membersData.totalPages}</span>
+                      </span>
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(Math.min(membersData.totalPages, currentPage + 1))}
+                      disabled={currentPage === membersData.totalPages}
+                      data-testid="button-next-page"
+                    >
+                      Next
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </main>
 

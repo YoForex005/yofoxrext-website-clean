@@ -6198,6 +6198,62 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
+  // GET /api/members - Comprehensive members endpoint with filtering
+  app.get("/api/members", async (req, res) => {
+    try {
+      // Parse query parameters
+      const search = req.query.search as string | undefined;
+      const role = req.query.role as string | undefined;
+      const activity = req.query.activity as string | undefined;
+      const coinsMin = req.query.coinsMin ? parseInt(req.query.coinsMin as string) : undefined;
+      const coinsMax = req.query.coinsMax ? parseInt(req.query.coinsMax as string) : undefined;
+      const joinDate = req.query.joinDate as string | undefined;
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string), 100) : 20;
+      const sort = req.query.sort as string || 'coins';
+
+      // Get members with filters
+      const result = await storage.getAllMembers({
+        search,
+        role,
+        activity,
+        coinsMin,
+        coinsMax,
+        joinDate,
+        page,
+        limit,
+        sort
+      });
+
+      // Get additional stats for each user
+      const usersWithStats = await Promise.all(
+        result.users.map(async (user) => {
+          // Get user stats for contributions and uploads if not already present
+          const stats = await storage.getUserStats(user.id);
+          
+          return {
+            ...user,
+            contributionCount: (user as any).contributionCount ?? (stats.threadsCreated + stats.repliesPosted),
+            uploadCount: (user as any).uploadCount ?? stats.uploadsCount,
+            followersCount: stats.followersCount,
+            isOnline: user.lastActive && (Date.now() - new Date(user.lastActive).getTime()) < 15 * 60 * 1000
+          };
+        })
+      );
+
+      res.json({
+        users: usersWithStats,
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit)
+      });
+    } catch (error) {
+      console.error('[API] Failed to get members:', error);
+      res.status(500).json({ error: 'Failed to fetch members' });
+    }
+  });
+
   // ===== USER FOLLOWS ENDPOINTS =====
   
   // Follow user
