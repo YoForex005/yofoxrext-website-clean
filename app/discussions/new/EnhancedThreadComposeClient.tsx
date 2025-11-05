@@ -1624,12 +1624,10 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                   Add {10 - titleLength} more characters to title
                                 </li>
                               )}
-                              {editor?.getText().length < 20 && (
-                                <li className="flex items-center gap-1">
-                                  <Circle className="h-2 w-2" />
-                                  Add {20 - (editor?.getText().length || 0)} more characters to content
-                                </li>
-                              )}
+                              <li className="flex items-center gap-1">
+                                <Circle className="h-2 w-2" />
+                                Add at least 20 characters to content
+                              </li>
                             </ul>
                           </div>
                         </div>
