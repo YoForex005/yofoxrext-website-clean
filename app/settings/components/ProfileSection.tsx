@@ -42,6 +42,7 @@ export default function ProfileSection({ initialUser }: ProfileSectionProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [profileImageUrl, setProfileImageUrl] = useState(initialUser?.profileImageUrl);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -116,22 +117,39 @@ export default function ProfileSection({ initialUser }: ProfileSectionProps) {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to upload photo");
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to upload photo");
       }
 
       const data = await response.json();
+      
+      // Update the local user data with the new photo URL immediately
+      if (data.photoUrl) {
+        // Update local state for immediate UI update
+        setProfileImageUrl(data.photoUrl);
+        
+        // Force a hard refresh of the user query to get the updated data
+        queryClient.setQueryData(["/api/me"], (oldData: any) => ({
+          ...oldData,
+          profileImageUrl: data.photoUrl,
+        }));
+      }
       
       toast({
         title: "Photo Updated",
         description: "Your profile photo has been updated successfully.",
       });
 
+      // Also invalidate the query to ensure consistency
       queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      
+      // Reset the input
+      event.target.value = '';
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Upload Failed",
-        description: "Failed to upload photo. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to upload photo. Please try again.",
       });
     } finally {
       setIsUploadingPhoto(false);
@@ -158,7 +176,7 @@ export default function ProfileSection({ initialUser }: ProfileSectionProps) {
         <div className="space-y-6">
           <div className="flex items-center gap-6">
             <Avatar className="w-24 h-24">
-              <AvatarImage src={initialUser?.profileImageUrl} alt={initialUser?.username} />
+              <AvatarImage src={profileImageUrl} alt={initialUser?.username} />
               <AvatarFallback className="text-2xl">{getInitials()}</AvatarFallback>
             </Avatar>
             <div className="flex-1">

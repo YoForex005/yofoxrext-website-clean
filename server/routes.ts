@@ -7669,7 +7669,7 @@ export async function registerRoutes(app: Express): Promise<Express> {
     }
   });
 
-  // Upload profile photo
+  // Upload profile photo - Use memory storage for cloud deployment
   app.post("/api/user/upload-photo", isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
@@ -7680,14 +7680,69 @@ export async function registerRoutes(app: Express): Promise<Express> {
       const imageExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
       const fileExt = path.extname(req.file.originalname).toLowerCase();
       if (!imageExtensions.includes(fileExt)) {
-        // Delete the uploaded file if it's not an image
-        const fs = await import('fs/promises');
-        await fs.unlink(req.file.path).catch(() => {});
         return res.status(400).json({ error: "Only image files are allowed for profile photos" });
       }
 
       const authenticatedUserId = getAuthenticatedUserId(req);
-      const photoUrl = `/uploads/${req.file.filename}`;
+      
+      // Generate unique filename for the profile photo
+      const timestamp = Date.now();
+      const randomString = crypto.randomBytes(8).toString('hex');
+      const filename = `profile_${authenticatedUserId.substring(0, 8)}_${timestamp}_${randomString}${fileExt}`;
+
+      // Process image with sharp for optimization (optional but recommended)
+      const sharp = (await import('sharp')).default;
+      let processedBuffer = req.file.buffer;
+      
+      try {
+        // Resize profile photo if too large (max 400x400 for profile pics)
+        const metadata = await sharp(req.file.buffer).metadata();
+        const maxDimension = 400;
+        
+        let sharpInstance = sharp(req.file.buffer);
+        
+        if ((metadata.width || 0) > maxDimension || (metadata.height || 0) > maxDimension) {
+          sharpInstance = sharpInstance.resize(maxDimension, maxDimension, {
+            fit: 'cover', // Crop to square for profile photos
+            position: 'center',
+          });
+        }
+        
+        // Optimize based on format
+        if (fileExt === '.png') {
+          processedBuffer = await sharpInstance
+            .png({ quality: 85, compressionLevel: 9 })
+            .toBuffer();
+        } else {
+          processedBuffer = await sharpInstance
+            .jpeg({ quality: 85, mozjpeg: true })
+            .toBuffer();
+        }
+      } catch (sharpError) {
+        console.error('Image processing error:', sharpError);
+        // Use original buffer if processing fails
+      }
+
+      // Store in global memory map
+      if (!global.uploadedImages) {
+        global.uploadedImages = new Map();
+      }
+      global.uploadedImages.set(filename, {
+        buffer: processedBuffer,
+        mimeType: req.file.mimetype,
+        originalName: req.file.originalname,
+        uploadedAt: new Date(),
+      });
+
+      // Clean up old images (keep only last 100)
+      if (global.uploadedImages.size > 100) {
+        const entries = Array.from(global.uploadedImages.entries());
+        const toDelete = entries.slice(0, entries.length - 100);
+        toDelete.forEach(([key]) => global.uploadedImages.delete(key));
+      }
+
+      // Generate the public URL for the image
+      const photoUrl = `/api/images/${filename}`;
       
       // Update user's profile image
       await storage.updateUserProfile(authenticatedUserId, {
@@ -7701,9 +7756,13 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Onboarding step failed:', error);
       }
 
+      // Return the updated user data to ensure the UI refreshes
+      const updatedUser = await storage.getUser(authenticatedUserId);
+
       res.json({ 
         success: true,
         photoUrl,
+        user: updatedUser, // Include updated user data
         message: "Profile photo updated successfully"
       });
     } catch (error: any) {
