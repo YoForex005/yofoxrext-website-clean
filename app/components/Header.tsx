@@ -239,7 +239,7 @@ export default function Header() {
           {isAuthenticated && (
             <>
               {/* Show "Create Thread" button for authenticated users */}
-              <Link href="/threads/create">
+              <Link href="/discussions/new">
                 <Button size="sm" className="hidden sm:flex bg-primary hover:bg-primary/90" data-testid="button-create-thread">
                   <Plus className="h-4 w-4 mr-1" />
                   Create Thread
@@ -391,7 +391,7 @@ export default function Header() {
                 <nav className="flex flex-col gap-2">
                   {/* Create Thread Button for Mobile */}
                   {isAuthenticated && (
-                    <Link href="/threads/create" onClick={() => setMobileMenuOpen(false)}>
+                    <Link href="/discussions/new" onClick={() => setMobileMenuOpen(false)}>
                       <Button 
                         className="w-full bg-primary hover:bg-primary/90 mb-2"
                         data-testid="mobile-button-create-thread"

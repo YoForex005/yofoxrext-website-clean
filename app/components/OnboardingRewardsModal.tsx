@@ -47,7 +47,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     icon: MessageSquare,
     checkField: "hasFirstThread",
     ctaText: "Create Thread",
-    ctaHref: "/threads/create",
+    ctaHref: "/discussions/new",
   },
   {
     id: "review",
