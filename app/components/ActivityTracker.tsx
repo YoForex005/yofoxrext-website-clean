@@ -8,10 +8,10 @@ export function ActivityTracker() {
   const { user } = useAuth();
   const { isActive, activeTime } = useActivityTracker(!!user);
 
-  // Log activity status for debugging (optional)
+  // Activity logging disabled - no console spam
   useEffect(() => {
     if (user && isActive) {
-      console.log(`[Activity Tracker] User active for ${activeTime} seconds`);
+      // console.log(`[Activity Tracker] User active for ${activeTime} seconds`);
     }
   }, [user, isActive, activeTime]);
 
