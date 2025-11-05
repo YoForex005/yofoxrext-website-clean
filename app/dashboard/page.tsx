@@ -1,6 +1,4 @@
 import { Metadata } from "next";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import DashboardClient from "./DashboardClient";
 
 export const metadata: Metadata = {
@@ -20,45 +18,8 @@ export const metadata: Metadata = {
   },
 };
 
-async function getUser() {
-  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.getAll()
-    .map(cookie => `${cookie.name}=${cookie.value}`)
-    .join('; ');
-
-  try {
-    const res = await fetch(`${EXPRESS_URL}/api/me`, {
-      headers: {
-        Cookie: cookieHeader,
-      },
-      credentials: 'include',
-      cache: 'no-store',
-    });
-
-    if (res.status === 401) {
-      return null;
-    }
-
-    if (!res.ok) {
-      throw new Error('Failed to fetch user');
-    }
-
-    return await res.json();
-  } catch (error) {
-    console.error('Error fetching user:', error);
-    return null;
-  }
-}
-
-export default async function DashboardPage() {
-  const user = await getUser();
-
-  if (!user) {
-    // Redirect to home page when not authenticated
-    // User can login from there using the AuthModal
-    redirect('/');
-  }
-
+export default function DashboardPage() {
+  // Let the client component handle authentication
+  // This allows the page to load and show login prompt if needed
   return <DashboardClient />;
 }

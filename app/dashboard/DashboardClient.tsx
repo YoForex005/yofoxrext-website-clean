@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAuthPrompt } from "@/hooks/useAuthPrompt";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -17,6 +19,8 @@ import {
   UserCog,
   Megaphone,
   TrendingUp,
+  Lock,
+  LogIn,
 } from "lucide-react";
 
 // Import all tab components
@@ -33,17 +37,8 @@ import { MarketingTab } from "./components/tabs/MarketingTab";
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState("journey");
-  const router = useRouter();
   const { user, isLoading, isAuthenticated } = useAuth();
-
-  // Handle authentication check on client side
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      // Redirect to home page if not authenticated
-      // User can login from there using the AuthModal
-      router.push("/");
-    }
-  }, [isLoading, isAuthenticated, router]);
+  const { requireAuth, AuthPrompt } = useAuthPrompt("access your dashboard");
 
   // Show loading state while checking authentication
   if (isLoading) {
@@ -57,9 +52,36 @@ export default function DashboardClient() {
     );
   }
 
-  // If not authenticated after loading, don't render dashboard content
+  // If not authenticated, show a prompt to login
   if (!isAuthenticated) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container max-w-7xl mx-auto px-4 py-8">
+          <Card className="max-w-md mx-auto">
+            <CardHeader className="text-center">
+              <Lock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <CardTitle className="text-2xl">Login Required</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center">
+              <p className="text-muted-foreground mb-6">
+                You need to be logged in to access your dashboard. Please login to continue.
+              </p>
+              <Button 
+                onClick={() => requireAuth(() => {})} 
+                className="w-full"
+                data-testid="button-dashboard-login"
+              >
+                <LogIn className="mr-2 h-4 w-4" />
+                Login to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <EnhancedFooter />
+        <AuthPrompt />
+      </div>
+    );
   }
 
   return (
