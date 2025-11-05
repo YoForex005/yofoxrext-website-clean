@@ -98,6 +98,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Fixed Messages Page Authentication Issue
+- **Critical Bug Fix**: Resolved server-side authentication redirect preventing messages page from loading for non-authenticated users
+- **Root Cause**: Messages page was redirecting non-authenticated users on the server-side, causing a full page redirect which prevented proper client-side handling
+- **Solution**: Changed from server-side redirect to client-side authentication check with login prompt card using useAuth and useAuthPrompt hooks
+- **Code Changes**: Modified `app/messages/MessagesClient.tsx` to add authentication check and render login prompt card for non-authenticated users
+- **Result**: Messages page now loads properly for all users and displays a "Login Required" card with login prompt instead of redirecting
+
 ### 2025-11-06 - Fixed Content Review Character Limit Issue
 - **Critical Bug Fix**: Resolved validation error preventing review submissions due to 100 character minimum requirement
 - **Root Cause**: Content review schema had overly restrictive validation requiring at least 100 characters for all reviews
