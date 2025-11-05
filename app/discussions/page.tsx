@@ -1,9 +1,11 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import Header from '../components/Header';
 import { Footer } from '../components/Footer';
 import DiscussionsClient from './DiscussionsClient';
 import { getMetadataWithOverrides } from '../lib/metadata-helper';
 import { getInternalApiUrl } from '../lib/api-config';
+import { Skeleton } from '../components/ui/skeleton';
 
 // Enable ISR with 60-second revalidation
 export const revalidate = 60;
@@ -50,6 +52,26 @@ async function getThreads() {
   }
 }
 
+// Loading fallback component for Suspense
+function DiscussionsLoadingFallback() {
+  return (
+    <main className="container max-w-7xl mx-auto px-4 py-8">
+      <div className="mb-8">
+        <Skeleton className="h-10 w-64 mb-2" />
+        <Skeleton className="h-4 w-96" />
+      </div>
+      <div className="mb-4">
+        <Skeleton className="h-12 w-full" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <Skeleton key={i} className="h-48" />
+        ))}
+      </div>
+    </main>
+  );
+}
+
 // Server Component
 export default async function DiscussionsPage() {
   const initialThreads = await getThreads();
@@ -57,7 +79,9 @@ export default async function DiscussionsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <DiscussionsClient initialThreads={initialThreads} />
+      <Suspense fallback={<DiscussionsLoadingFallback />}>
+        <DiscussionsClient initialThreads={initialThreads} />
+      </Suspense>
       <Footer />
     </div>
   );
