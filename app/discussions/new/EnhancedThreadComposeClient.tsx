@@ -1609,7 +1609,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                             {attachment.price} Sweets
                                           </>
                                         ) : (
-                                          "Free"
+                                          <>Free</>
                                         )}
                                       </Badge>
                                     </div>
