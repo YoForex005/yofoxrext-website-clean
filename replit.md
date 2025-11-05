@@ -98,6 +98,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-05 - Fixed Thread Creation Copy/Paste Error
+- **Critical Bug Fix**: Resolved "Cannot access 'editor' before initialization" error when copying/pasting in thread title field
+- **Root Cause**: TipTap editor initialization order issue - handleImageUpload function was referenced before declaration
+- **Solution**: Reorganized code to ensure proper initialization order, fixed all 18 TypeScript/LSP errors
+- **Code Changes**: Modified `app/discussions/new/EnhancedThreadComposeClient.tsx` - moved function declarations, fixed async handlers, corrected API calls
+- **Result**: Thread creation page loads successfully, copy/paste works in all form fields without errors
+
 ### 2025-11-05 - Fixed Dashboard Page Not Loading
 - **Dashboard Page Fix**: Changed from server-side authentication check to client-side check with login prompt
 - **User Experience Improvement**: Dashboard now shows a "Login Required" card with a login button instead of redirecting
