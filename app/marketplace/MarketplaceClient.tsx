@@ -410,7 +410,7 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                   Built by expert traders, tested by the community.
                 </p>
                 <div className="flex gap-4">
-                  <Link href="/publish-ea">
+                  <Link href="/publish-ea/new">
                     <Button 
                       size="lg" 
                       className="bg-white text-purple-700 hover:bg-gray-100 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 font-semibold"
@@ -651,7 +651,7 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                       >
                         Clear Filters
                       </Button>
-                      <Link href="/publish-ea">
+                      <Link href="/publish-ea/new">
                         <Button className="rounded-xl px-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
                           <Plus className="w-4 h-4 mr-2" />
                           Add Product

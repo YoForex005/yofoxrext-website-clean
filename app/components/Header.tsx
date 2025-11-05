@@ -198,7 +198,7 @@ export default function Header() {
                 Marketplace
               </Button>
             </Link>
-            <Link href="/publish-ea">
+            <Link href="/publish-ea/new">
               <Button 
                 variant={pathname === "/publish-ea" || pathname?.startsWith("/publish-ea/") || pathname?.startsWith("/ea/") ? "default" : "ghost"} 
                 size="sm" 
@@ -438,7 +438,7 @@ export default function Header() {
                       Marketplace
                     </Button>
                   </Link>
-                  <Link href="/publish-ea" onClick={() => setMobileMenuOpen(false)}>
+                  <Link href="/publish-ea/new" onClick={() => setMobileMenuOpen(false)}>
                     <Button 
                       variant={pathname === "/publish-ea" || pathname?.startsWith("/publish-ea/") || pathname?.startsWith("/ea/") ? "default" : "ghost"} 
                       className="w-full justify-start"

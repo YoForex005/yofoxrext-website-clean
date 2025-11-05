@@ -122,7 +122,7 @@ export default function BestForexEAPage() {
                     Browse All EAs <ArrowRight className="w-4 h-4" />
                   </Button>
                 </Link>
-                <Link href="/publish-ea">
+                <Link href="/publish-ea/new">
                   <Button size="lg" variant="outline">
                     Submit Your EA
                   </Button>

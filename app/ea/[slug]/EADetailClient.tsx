@@ -168,10 +168,10 @@ export default function EADetailClient({ ea, similarEAs }: EADetailClientProps) 
       <main className="min-h-screen bg-gradient-to-br from-background to-muted/20">
         <div className="container max-w-7xl mx-auto px-4 py-8">
           {/* Back Button */}
-          <Link href="/publish-ea">
+          <Link href="/marketplace">
             <Button variant="ghost" size="sm" className="mb-4" data-testid="button-back">
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to EA Listings
+              Back to Marketplace
             </Button>
           </Link>
 
