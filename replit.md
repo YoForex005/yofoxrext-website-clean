@@ -3,6 +3,24 @@
 ## Overview
 YoForex is a comprehensive trading community platform for forex traders, offering forums, an Expert Advisor (EA) marketplace, broker reviews, and a virtual coin economy ("Sweets"). Its primary purpose is to foster a self-sustaining ecosystem by rewarding user contributions and providing valuable trading tools and resources, aiming to become a leading hub for forex traders.
 
+## Recent Changes
+
+### 2025-11-05 - Fixed Profile Completion Coins and Photo Display
+- **Issue 1**: Profile completion coins (10 Sweets) not being awarded
+  - Added comprehensive `checkProfileCompletion()` function to storage classes
+  - Profile completion now validates: username, email, profile photo, and at least one social field
+  - Profile update endpoint triggers completion check and awards 10 Sweets via COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE
+  - Photo upload endpoint also checks for profile completion after upload
+  - Prevents duplicate rewards by tracking completion status
+  - Files modified: `server/storage.ts`, `server/routes.ts`
+  
+- **Issue 2**: Profile photos not displaying after upload
+  - Updated photo upload endpoint to return both `photoUrl` and `profileImageUrl` for backward compatibility
+  - Memory-based storage with automatic cleanup (keeps last 100 images)
+  - Added proper state management in ProfileSection.tsx for immediate UI updates
+  - Images served via `/api/images/:filename` endpoint with correct content types
+  - Fixes persist across page refreshes
+
 ## User Preferences
 ### Communication Style
 - Use simple, everyday language
