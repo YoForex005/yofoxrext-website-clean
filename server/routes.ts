@@ -6298,6 +6298,125 @@ export async function registerRoutes(app: Express): Promise<Express> {
       res.status(500).json({ error: error.message || "Failed to process download" });
     }
   });
+
+  // Get related threads based on category and tags
+  app.get("/api/threads/:id/related", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 5, 10);
+
+      // Get the current thread to find its category and tags
+      const currentThread = await storage.getForumThreadById(id);
+      if (!currentThread) {
+        return res.status(404).json({ error: "Thread not found" });
+      }
+
+      // Get threads from the same category, excluding current thread
+      const relatedThreads = await db.select({
+        id: forumThreads.id,
+        title: forumThreads.title,
+        slug: forumThreads.slug,
+        views: forumThreads.views,
+        replyCount: forumThreads.replyCount,
+        likeCount: forumThreads.likeCount,
+        createdAt: forumThreads.createdAt,
+        categoryId: forumThreads.categoryId,
+        author: {
+          id: users.id,
+          username: users.username,
+          firstName: users.firstName,
+        }
+      })
+      .from(forumThreads)
+      .leftJoin(users, eq(forumThreads.userId, users.id))
+      .where(and(
+        eq(forumThreads.categoryId, currentThread.categoryId),
+        ne(forumThreads.id, id)
+      ))
+      .orderBy(desc(forumThreads.views), desc(forumThreads.createdAt))
+      .limit(limit);
+
+      res.json(relatedThreads);
+    } catch (error) {
+      console.error("[API] Error fetching related threads:", error);
+      res.status(500).json({ error: "Failed to fetch related threads" });
+    }
+  });
+
+  // Get trending threads with engagement score
+  app.get("/api/threads/trending", async (req, res) => {
+    try {
+      const hours = parseInt(req.query.hours as string) || 168; // Default to 7 days
+      const limit = Math.min(parseInt(req.query.limit as string) || 5, 10);
+      const hoursAgo = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+      const trendingThreads = await db.select({
+        id: forumThreads.id,
+        title: forumThreads.title,
+        slug: forumThreads.slug,
+        views: forumThreads.views,
+        replyCount: forumThreads.replyCount,
+        likeCount: forumThreads.likeCount,
+        createdAt: forumThreads.createdAt,
+        categoryId: forumThreads.categoryId,
+        author: {
+          id: users.id,
+          username: users.username,
+          firstName: users.firstName,
+        }
+      })
+      .from(forumThreads)
+      .leftJoin(users, eq(forumThreads.userId, users.id))
+      .where(gte(forumThreads.createdAt, hoursAgo))
+      .orderBy(
+        desc(sql`${forumThreads.views} + ${forumThreads.replyCount} * 2 + ${forumThreads.likeCount} * 3`),
+        desc(forumThreads.createdAt)
+      )
+      .limit(limit);
+
+      res.json(trendingThreads);
+    } catch (error) {
+      console.error("[API] Error fetching trending threads:", error);
+      res.status(500).json({ error: "Failed to fetch trending threads" });
+    }
+  });
+
+  // Get top contributors for a category
+  app.get("/api/categories/:slug/contributors", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const limit = Math.min(parseInt(req.query.limit as string) || 5, 10);
+
+      // First get the category
+      const category = await storage.getCategoryBySlug(slug);
+      if (!category) {
+        return res.status(404).json({ error: "Category not found" });
+      }
+
+      // Get top contributors based on thread count and engagement
+      const topContributors = await db.select({
+        userId: forumThreads.userId,
+        username: users.username,
+        firstName: users.firstName,
+        avatarUrl: profiles.avatarUrl,
+        threadCount: count(forumThreads.id),
+        totalViews: sql<number>`sum(${forumThreads.views})`,
+        totalLikes: sql<number>`sum(${forumThreads.likeCount})`
+      })
+      .from(forumThreads)
+      .leftJoin(users, eq(forumThreads.userId, users.id))
+      .leftJoin(profiles, eq(forumThreads.userId, profiles.userId))
+      .where(eq(forumThreads.categoryId, category.id))
+      .groupBy(forumThreads.userId, users.username, users.firstName, profiles.avatarUrl)
+      .orderBy(desc(count(forumThreads.id)), desc(sql`sum(${forumThreads.views})`))
+      .limit(limit);
+
+      res.json(topContributors);
+    } catch (error) {
+      console.error("[API] Error fetching top contributors:", error);
+      res.status(500).json({ error: "Failed to fetch top contributors" });
+    }
+  });
   
   // Mark reply as accepted answer
   app.post("/api/replies/:replyId/accept", isAuthenticated, async (req, res) => {
