@@ -98,6 +98,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Fixed Thread Creation Infinite Loop
+- **Critical Bug Fix**: Resolved infinite update loop preventing thread creation page from loading
+- **Root Cause**: useEffect hook in EnhancedThreadComposeClient.tsx had unstable `form` dependency causing React's maximum update depth error
+- **Solution**: Extracted stable `setValue` reference from form object to avoid dependency changes on every render
+- **Code Changes**: Modified `app/discussions/new/EnhancedThreadComposeClient.tsx` to use stable setValue reference in useEffect and hashtag functions
+- **Result**: Thread creation page (/discussions/new) now loads successfully without errors, users can post threads again
+
 ### 2025-11-06 - Investigated Notification System Status
 - **Investigation**: User reported "Not working" text near notification bell icon
 - **Analysis**: Thoroughly checked notification API endpoints, WebSocket connections, and frontend components
