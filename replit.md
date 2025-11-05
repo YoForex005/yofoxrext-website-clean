@@ -98,6 +98,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Fixed Content Review Character Limit Issue
+- **Critical Bug Fix**: Resolved validation error preventing review submissions due to 100 character minimum requirement
+- **Root Cause**: Content review schema had overly restrictive validation requiring at least 100 characters for all reviews
+- **Solution**: Reduced minimum character requirement from 100 to 1 (only requires non-empty review) to allow shorter, more natural reviews
+- **Code Changes**: Modified `shared/schema.ts` line 2198 to update `insertContentReviewSchema` validation from `.min(100)` to `.min(1)`
+- **Result**: Users can now submit reviews of any length as long as they're not empty, improving user experience and reducing friction
+
 ### 2025-11-05 - Fixed Thread Creation Copy/Paste Error
 - **Critical Bug Fix**: Resolved "Cannot access 'editor' before initialization" error when copying/pasting in thread title field
 - **Root Cause**: TipTap editor initialization order issue - handleImageUpload function was referenced before declaration
@@ -112,10 +119,10 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Result**: Dashboard page loads properly and allows users to login directly from the page
 
 ### 2025-11-05 - Fixed Product Review System & Like Functionality
-- **Product Review Character Limit**: Removed minimum 100 character requirement for reviews - any length now allowed
+- **Product Review Character Limit**: Changed review minimum requirement from 100 characters to 1 character (only requires non-empty review)
 - **Product Like Button Fix**: Added local state management (likeCount, isLiked) with query invalidation for instant UI updates
 - **UI Enhancement**: Like button now visually indicates when liked (red color + filled heart icon)
-- **Code Changes**: Modified `app/content/[slug]/ContentDetailClient.tsx` for review validation and like state management
+- **Code Changes**: Modified `shared/schema.ts` to update `insertContentReviewSchema` validation, reducing minimum from 100 to 1 character
 
 ### 2025-11-05 - Fixed Like Functionality & Reply Authentication
 - **Like Button Fix**: Added proper query invalidation to `likeMutation` in ThreadDetailClient for instant UI updates
