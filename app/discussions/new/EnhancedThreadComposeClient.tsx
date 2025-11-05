@@ -276,7 +276,12 @@ function ChipSelector({
             className="gap-1 text-muted-foreground hover:text-foreground"
           >
             {isOpen ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            <span>{isOpen ? 'Hide' : 'Show'} available options ({filteredOptions.length})</span>
+            <span>
+              <span>{isOpen ? 'Hide' : 'Show'}</span>
+              <span> available options (</span>
+              <span>{filteredOptions.length}</span>
+              <span>)</span>
+            </span>
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2">
@@ -674,7 +679,9 @@ function FileAttachmentSection({
           {totalPotentialEarnings > 0 && (
             <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600 animate-pulse">
               <Coins className="h-3 w-3 mr-1" />
-              Potential: {totalPotentialEarnings} Sweets
+              <span>Potential: </span>
+              <span>{totalPotentialEarnings}</span>
+              <span> Sweets</span>
             </Badge>
           )}
         </CardTitle>
@@ -1435,7 +1442,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                   "transition-colors",
                                   editor.getText().length < 150 ? "text-red-500" : "text-green-500"
                                 )}>
-                                  {editor.getText().length} characters
+                                  <span>{editor.getText().length}</span>
+                                  <span> characters</span>
                                   {editor.getText().length >= 150 && (
                                     <CheckCircle className="inline h-3 w-3 ml-1" />
                                   )}
@@ -1592,7 +1600,11 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                               <>
                                 <Separator />
                                 <div className="space-y-3">
-                                  <Label>Attachments ({attachments.length})</Label>
+                                  <Label>
+                                    <span>Attachments (</span>
+                                    <span>{attachments.length}</span>
+                                    <span>)</span>
+                                  </Label>
                                   {attachments.map((attachment) => (
                                     <div 
                                       key={attachment.id} 
