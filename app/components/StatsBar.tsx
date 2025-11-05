@@ -67,14 +67,14 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
   if (isLoading && !data) {
     return (
       <div className="border-y bg-muted/30">
-        <div className="container max-w-7xl mx-auto px-4 py-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        <div className="container max-w-7xl mx-auto px-4 py-1">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 md:gap-2">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="bg-muted/50 rounded-md p-2 md:p-2.5 animate-pulse">
-                <div className="flex flex-col items-center justify-center space-y-1">
-                  <div className="bg-muted rounded-md h-8 w-8" />
-                  <div className="h-5 w-12 bg-muted rounded" />
-                  <div className="h-3 w-16 bg-muted rounded" />
+              <div key={i} className="bg-muted/50 rounded-sm px-2 py-1 animate-pulse">
+                <div className="flex flex-col items-center justify-center">
+                  <div className="bg-muted rounded-sm h-5 w-5" />
+                  <div className="h-3.5 w-10 bg-muted rounded mt-1" />
+                  <div className="h-2.5 w-14 bg-muted rounded mt-0.5" />
                 </div>
               </div>
             ))}
@@ -86,32 +86,32 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
 
   return (
     <div className="border-y bg-muted/30">
-      <div className="container max-w-7xl mx-auto px-4 py-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="text-xs text-muted-foreground">Platform Statistics</div>
+      <div className="container max-w-7xl mx-auto px-4 py-1">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] text-muted-foreground">Platform Statistics</div>
           <RefreshButton 
             onRefresh={async () => { await refetch(); }}
             size="icon"
             variant="ghost"
-            className="h-7 w-7"
+            className="h-5 w-5 -mr-1"
           />
         </div>
-        {/* Slimmer grid layout with tighter spacing */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        {/* Ultra-compact grid layout */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 md:gap-2">
           {stats.map((stat) => (
-            <div key={stat.key} className="bg-card/50 hover:bg-card/70 transition-colors rounded-md p-2 md:p-2.5">
-              {/* More compact content with inline icon and text */}
-              <div className="flex flex-col items-center justify-center text-center space-y-1">
-                {/* Smaller icon container */}
-                <div className="bg-primary/10 dark:bg-primary/20 rounded-md p-1.5 flex items-center justify-center">
-                  <stat.icon className="h-4 w-4 text-primary dark:text-primary" />
+            <div key={stat.key} className="bg-card/50 hover:bg-card/70 transition-colors rounded-sm px-2 py-1">
+              {/* Ultra-compact inline layout */}
+              <div className="flex flex-col items-center justify-center text-center">
+                {/* Tiny icon */}
+                <div className="bg-primary/10 dark:bg-primary/20 rounded-sm p-1 flex items-center justify-center">
+                  <stat.icon className="h-3 w-3 text-primary dark:text-primary" />
                 </div>
-                {/* Smaller value text */}
-                <div className="text-lg font-semibold leading-tight" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
+                {/* Compact value text */}
+                <div className="text-sm font-semibold leading-none mt-1" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
                   {stat.value}
                 </div>
-                {/* Smaller label text */}
-                <div className="text-xs text-muted-foreground font-medium leading-tight">{stat.label}</div>
+                {/* Tiny label text */}
+                <div className="text-[10px] text-muted-foreground font-medium leading-tight mt-0.5">{stat.label}</div>
               </div>
             </div>
           ))}
