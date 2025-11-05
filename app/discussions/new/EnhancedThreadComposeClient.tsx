@@ -176,7 +176,7 @@ interface FileAttachment {
 
 // Enhanced form validation schema
 const threadFormSchema = z.object({
-  threadType: z.string().min(1, "Please select a thread type"),
+  threadType: z.string().default("discussion"),
   title: z.string()
     .min(15, "Add 3-4 more words to help others understand")
     .max(90, "Keep it under 90 characters")
@@ -937,7 +937,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const form = useForm<ThreadFormData>({
     resolver: zodResolver(threadFormSchema),
     defaultValues: {
-      threadType: "",
+      threadType: "discussion",
       title: "",
       body: "", // Plain text content
       contentHtml: "", // Rich HTML content
@@ -952,7 +952,6 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   
   // Validation helpers
   const canProceedStep1 = 
-    form.watch("threadType") && 
     titleLength >= 15 && 
     form.watch("categorySlug") && 
     editor?.getText().length >= 150;
@@ -1282,70 +1281,6 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                   {/* STEP 1: Basic Information */}
                   {currentStep === 1 && (
                     <div className="space-y-6 animate-in fade-in-50 slide-in-from-bottom-2">
-                      {/* Thread Type Selection */}
-                      <Card className="border-2 shadow-lg">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2">
-                            <Layers className="h-5 w-5 text-primary" />
-                            Select Thread Type
-                          </CardTitle>
-                          <CardDescription>
-                            Choose the type that best describes your content
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          <FormField
-                            control={form.control}
-                            name="threadType"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormControl>
-                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {threadTypes.map((type) => {
-                                      const Icon = type.icon;
-                                      const isSelected = field.value === type.value;
-                                      
-                                      return (
-                                        <button
-                                          key={type.value}
-                                          type="button"
-                                          onClick={() => field.onChange(type.value)}
-                                          className={cn(
-                                            "relative p-6 rounded-xl border-2 transition-all duration-200 group text-left",
-                                            type.color,
-                                            isSelected && "ring-2 ring-primary ring-offset-2 scale-[1.02]",
-                                            !isSelected && "hover:scale-[1.01] hover:shadow-md"
-                                          )}
-                                        >
-                                          {isSelected && (
-                                            <CheckCircle className="absolute top-3 right-3 h-5 w-5 text-primary" />
-                                          )}
-                                          <div className="flex items-start gap-4">
-                                            <div className={cn(
-                                              "p-3 rounded-lg transition-transform",
-                                              isSelected && "scale-110"
-                                            )}>
-                                              <Icon className="h-6 w-6" />
-                                            </div>
-                                            <div>
-                                              <h3 className="font-semibold text-base">{type.title}</h3>
-                                              <p className="text-sm mt-1 opacity-90">
-                                                {type.description}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </CardContent>
-                      </Card>
-
                       {/* Basic Fields Card */}
                       <Card className="border-2 shadow-lg">
                         <CardHeader>
