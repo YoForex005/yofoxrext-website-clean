@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,7 +20,8 @@ import {
   CreditCard,
   Award,
   Target,
-  Gift
+  Gift,
+  LogIn
 } from "lucide-react";
 import type { RankTier, FeatureUnlock } from "@shared/schema";
 import { TopUpModal } from "./TopUpModal";
@@ -73,7 +75,8 @@ const RANK_ICONS: Record<string, typeof Trophy> = {
 };
 
 export default function SweetsDashboardClient() {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const { AuthPrompt } = useAuthPrompt();
   const queryClient = useQueryClient();
   const [topUpModalOpen, setTopUpModalOpen] = useState(false);
   const [earnModalOpen, setEarnModalOpen] = useState(false);
@@ -246,6 +249,26 @@ export default function SweetsDashboardClient() {
   const rankKey = currentRank?.name?.toLowerCase() || 'contributor';
   const currentRankColors = RANK_COLORS[rankKey] || RANK_COLORS.contributor;
   const RankIcon = RANK_ICONS[rankKey] || Target;
+
+  // Check if user is authenticated
+  if (!isAuthenticated) {
+    return (
+      <Card className="max-w-md mx-auto mt-16">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <LogIn className="h-5 w-5" />
+            Login Required
+          </CardTitle>
+          <CardDescription>
+            Please log in to access your Sweets dashboard and track your progress
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AuthPrompt />
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
