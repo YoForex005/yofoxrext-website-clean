@@ -950,8 +950,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     },
   });
 
-  const titleLength = form.watch("title").length;
-  const contentHtml = form.watch("contentHtml");
+  const titleLength = form.watch("title")?.length || 0;
+  const contentHtml = form.watch("contentHtml") || "";
 
   // Image upload handler - moved before useEditor to avoid initialization error
   const handleImageUpload = async (file: File, editorInstance?: any) => {
@@ -1120,9 +1120,10 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   });
   
   // Validation helpers - now that editor is defined
+  const categorySlug = form.watch("categorySlug");
   const canProceedStep1 = 
     titleLength >= 10 && 
-    form.watch("categorySlug") && 
+    categorySlug && 
     (editor?.getText()?.length ?? 0) >= 20;
 
   const isFormValid = canProceedStep1;
@@ -1165,14 +1166,16 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   // Hashtag management
   const addHashtag = () => {
     const tag = hashtagInput.trim().replace(/^#/, '');
-    if (tag && !form.watch("hashtags").includes(tag) && form.watch("hashtags").length < 10) {
-      setValue("hashtags", [...form.watch("hashtags"), tag]);
+    const currentHashtags = form.getValues("hashtags");
+    if (tag && !currentHashtags.includes(tag) && currentHashtags.length < 10) {
+      setValue("hashtags", [...currentHashtags, tag]);
       setHashtagInput("");
     }
   };
 
   const removeHashtag = (tag: string) => {
-    setValue("hashtags", form.watch("hashtags").filter(t => t !== tag));
+    const currentHashtags = form.getValues("hashtags");
+    setValue("hashtags", currentHashtags.filter(t => t !== tag));
   };
 
   // Create thread mutation
