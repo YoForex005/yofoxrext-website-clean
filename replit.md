@@ -96,6 +96,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 - **Trigger Field System:** 100% trigger coverage for all transactions, standardized dotted notation, and admin analytics dashboard for fraud detection.
 - **EA Publishing System:** Complete Expert Advisor marketplace with multi-step publishing form, file uploads (.ex4, .ex5, .mq4, .mq5), secure Object Storage, preview functionality, SEO optimization, and download management.
 
+## Recent Changes
+
+### 2025-11-05 - Fixed Like Functionality & Reply Authentication
+- **Like Button Fix**: Added proper query invalidation to `likeMutation` in ThreadDetailClient for instant UI updates
+- **Reply Authentication Fix**: Removed client-side userId from reply requests, letting server handle authentication via session
+- **Code Changes**: Modified `app/thread/[...slug]/ThreadDetailClient.tsx` to fix both issues
+
 ## External Dependencies
 
 ### Core Infrastructure
