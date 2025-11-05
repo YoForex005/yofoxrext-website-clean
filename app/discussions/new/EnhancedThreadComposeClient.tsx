@@ -906,6 +906,9 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   const [seoData, setSeoData] = useState<SEOData | null>(null);
   
+  // Ref to store editor instance after creation
+  const editorRef = useRef<any>(null);
+  
   // Pre-select category from URL param
   const categoryParam = searchParams?.get("category") || "";
   
@@ -958,6 +961,73 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
 
   const isFormValid = canProceedStep1;
 
+  // Image upload handler - moved before useEditor to avoid initialization error
+  const handleImageUpload = async (file: File, editorInstance?: any) => {
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select an image file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Images must be less than 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('files', file);
+
+    try {
+      setIsUploadingImage(true);
+      
+      const res = await fetch("/api/upload/simple", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const imageUrl = data.urls?.[0];
+        if (imageUrl && editorInstance) {
+          editorInstance.chain()
+            .focus()
+            .setImage({ 
+              src: imageUrl,
+              alt: file.name,
+              title: file.name,
+            })
+            .run();
+          toast({
+            title: "Image uploaded!",
+            description: "Image inserted at cursor position",
+          });
+        } else {
+          throw new Error("No image URL returned");
+        }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Upload failed with status ${res.status}`);
+      }
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Could not upload image. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
   // Initialize TipTap editor
   const editor = useEditor({
     immediatelyRender: false,
@@ -994,8 +1064,12 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
             event.preventDefault();
             setIsDragging(false);
             
+            // Use the editorRef after it's initialized
             imageFiles.forEach(async (file) => {
-              await handleImageUpload(file);
+              // Use editorRef to access the editor
+              if (editorRef.current) {
+                await handleImageUpload(file, editorRef.current);
+              }
             });
             
             return true;
@@ -1037,7 +1111,10 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                 event.preventDefault();
                 const file = item.getAsFile();
                 if (file) {
-                  await handleImageUpload(file);
+                  // Use editorRef to access the editor
+                  if (editorRef.current) {
+                    await handleImageUpload(file, editorRef.current);
+                  }
                 }
                 return true;
               }
@@ -1049,9 +1126,12 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     },
   });
 
-  // Update form when editor content changes
+  // Update form when editor content changes and set editorRef
   useEffect(() => {
     if (editor) {
+      // Store editor instance in ref
+      editorRef.current = editor;
+      
       const updateContent = () => {
         // Set both plain text and HTML content
         form.setValue("body", editor.getText()); // Plain text for backend
@@ -1064,73 +1144,6 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     }
   }, [editor, form]);
 
-  // Image upload handler
-  const handleImageUpload = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast({
-        title: "Invalid file type",
-        description: "Please select an image file",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast({
-        title: "File too large",
-        description: "Images must be less than 5MB",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const formData = new FormData();
-    formData.append('files', file);
-
-    try {
-      setIsUploadingImage(true);
-      
-      const res = await fetch("/api/upload/simple", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const imageUrl = data.urls?.[0];
-        if (imageUrl && editor) {
-          editor.chain()
-            .focus()
-            .setImage({ 
-              src: imageUrl,
-              alt: file.name,
-              title: file.name,
-            })
-            .run();
-          toast({
-            title: "Image uploaded!",
-            description: "Image inserted at cursor position",
-          });
-        } else {
-          throw new Error("No image URL returned");
-        }
-      } else {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Upload failed with status ${res.status}`);
-      }
-    } catch (error) {
-      console.error('Image upload failed:', error);
-      toast({
-        title: "Upload failed",
-        description: error instanceof Error ? error.message : "Could not upload image. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsUploadingImage(false);
-    }
-  };
-
   // Trigger file picker for image upload
   const triggerImageUpload = () => {
     const input = document.createElement('input');
@@ -1138,8 +1151,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
     input.accept = 'image/*';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        await handleImageUpload(file);
+      if (file && editor) {
+        await handleImageUpload(file, editor);
       }
     };
     input.click();
