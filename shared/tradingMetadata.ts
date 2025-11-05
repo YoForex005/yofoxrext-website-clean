@@ -165,19 +165,19 @@ export const THREAD_TYPES = [
 
 // Utility functions
 export function getInstrumentsByCategory(category: string) {
-  return INSTRUMENTS.filter((i) => i.category === category);
+  return INSTRUMENTS?.filter((i) => i.category === category) || [];
 }
 
 export function getTimeframesByCategory(category: string) {
-  return TIMEFRAMES.filter((t) => t.category === category);
+  return TIMEFRAMES?.filter((t) => t.category === category) || [];
 }
 
 export function getStrategyByValue(value: string) {
-  return STRATEGIES.find((s) => s.value === value);
+  return STRATEGIES?.find((s) => s.value === value);
 }
 
 export function getPlatformByValue(value: string) {
-  return PLATFORMS.find((p) => p.value === value);
+  return PLATFORMS?.find((p) => p.value === value);
 }
 
 // Tag extraction from text

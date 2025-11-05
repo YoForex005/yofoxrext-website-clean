@@ -12,10 +12,10 @@ export function useDashboardWebSocket(userId?: string) {
   useEffect(() => {
     if (!userId) return;
 
-    // Connect to the API server (port 3001) for WebSocket
+    // Connect to the same origin (Next.js serves everything on port 5000)
     const apiUrl = typeof window !== 'undefined' 
-      ? `${window.location.protocol}//${window.location.hostname}:3001`
-      : 'http://localhost:3001';
+      ? `${window.location.protocol}//${window.location.host}`
+      : 'http://localhost:5000';
       
     const socket: Socket = io(`${apiUrl}/ws/dashboard`, {
       autoConnect: true,

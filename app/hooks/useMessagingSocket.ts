@@ -49,9 +49,10 @@ export function useMessagingSocket(options: UseMessagingSocketOptions = {}) {
   useEffect(() => {
     if (!userId) return;
 
+    // Connect to the same origin (Next.js serves everything on port 5000)
     const apiUrl = typeof window !== 'undefined'
-      ? `${window.location.protocol}//${window.location.hostname}:3001`
-      : 'http://localhost:3001';
+      ? `${window.location.protocol}//${window.location.host}`
+      : 'http://localhost:5000';
 
     const socket: Socket = io(apiUrl, {
       path: '/ws/dashboard',
