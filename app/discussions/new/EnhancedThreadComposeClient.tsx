@@ -952,9 +952,9 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   
   // Validation helpers
   const canProceedStep1 = 
-    titleLength >= 15 && 
+    titleLength >= 10 && 
     form.watch("categorySlug") && 
-    editor?.getText().length >= 150;
+    editor?.getText().length >= 20;
 
   const isFormValid = canProceedStep1;
 
@@ -1603,32 +1603,65 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                   )}
 
                   {/* Navigation */}
-                  <div className="flex justify-between mt-8">
-                    {currentStep > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="lg"
-                        onClick={() => setCurrentStep(currentStep - 1)}
-                        className="gap-2"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                        Previous
-                      </Button>
+                  <div className="flex flex-col gap-4">
+                    {/* Requirements feedback for Step 1 */}
+                    {currentStep === 1 && !canProceedStep1 && (
+                      <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-3">
+                        <div className="flex items-start gap-2">
+                          <Info className="h-4 w-4 mt-0.5 text-orange-500" />
+                          <div className="space-y-1">
+                            <p className="font-medium text-orange-600">Complete these to continue:</p>
+                            <ul className="space-y-0.5">
+                              {!form.watch("categorySlug") && (
+                                <li className="flex items-center gap-1">
+                                  <Circle className="h-2 w-2" />
+                                  Select a category
+                                </li>
+                              )}
+                              {titleLength < 10 && (
+                                <li className="flex items-center gap-1">
+                                  <Circle className="h-2 w-2" />
+                                  Add {10 - titleLength} more characters to title
+                                </li>
+                              )}
+                              {editor?.getText().length < 20 && (
+                                <li className="flex items-center gap-1">
+                                  <Circle className="h-2 w-2" />
+                                  Add {20 - (editor?.getText().length || 0)} more characters to content
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
                     )}
-
-                    <div className="ml-auto flex gap-3">
-                      {currentStep < 3 ? (
+                    
+                    <div className="flex justify-between">
+                      {currentStep > 1 && (
                         <Button
                           type="button"
+                          variant="outline"
                           size="lg"
-                          onClick={() => setCurrentStep(currentStep + 1)}
-                          disabled={currentStep === 1 && !canProceedStep1}
-                          className="gap-2 min-w-[120px]"
+                          onClick={() => setCurrentStep(currentStep - 1)}
+                          className="gap-2"
                         >
-                          Next
-                          <ArrowRight className="w-4 h-4" />
+                          <ChevronLeft className="w-4 h-4" />
+                          Previous
                         </Button>
+                      )}
+
+                      <div className="ml-auto flex gap-3">
+                        {currentStep < 3 ? (
+                          <Button
+                            type="button"
+                            size="lg"
+                            onClick={() => setCurrentStep(currentStep + 1)}
+                            disabled={currentStep === 1 && !canProceedStep1}
+                            className="gap-2 min-w-[120px]"
+                          >
+                            Next
+                            <ArrowRight className="w-4 h-4" />
+                          </Button>
                       ) : (
                         <Button
                           type="submit"
@@ -1649,6 +1682,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                           )}
                         </Button>
                       )}
+                      </div>
                     </div>
                   </div>
                 </form>
