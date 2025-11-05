@@ -98,6 +98,14 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Removed Duplicate Thread Creation Route
+- **Issue Fixed**: Removed duplicate `/threads/create` route to maintain single source of truth
+- **Changes Made**:
+  - Deleted `/app/threads/create` folder and its page component
+  - Updated all navigation links in Header.tsx to use `/discussions/new` 
+  - Updated OnboardingRewardsModal.tsx to use `/discussions/new`
+- **Result**: Only one thread creation page exists at `/discussions/new`, eliminating confusion
+
 ### 2025-11-06 - Fixed Authentication Pattern for Protected Pages
 - **Systematic Fix**: Updated 3 pages (Sweets, Notifications, Transactions) to use client-side authentication pattern
 - **Root Cause**: Server-side redirects were preventing pages from loading for non-authenticated users
