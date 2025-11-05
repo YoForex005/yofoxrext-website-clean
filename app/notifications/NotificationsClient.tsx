@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,7 +19,8 @@ import {
   UserPlus,
   ShoppingBag,
   Trophy,
-  Info
+  Info,
+  LogIn
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -35,18 +38,15 @@ interface Notification {
   createdAt: string;
 }
 
-interface NotificationsClientProps {
-  initialNotifications?: Notification[];
-}
-
-export default function NotificationsClient({ initialNotifications = [] }: NotificationsClientProps) {
+export default function NotificationsClient() {
+  const { isAuthenticated } = useAuth();
+  const { AuthPrompt } = useAuthPrompt();
   const router = useRouter();
   const { toast } = useToast();
   const [filterType, setFilterType] = useState<string>("all");
 
   const { data: notifications, isLoading } = useQuery<Notification[]>({
     queryKey: ['/api/notifications', { limit: 100 }],
-    initialData: initialNotifications,
   });
 
   const markAsReadMutation = useMutation({
@@ -109,6 +109,34 @@ export default function NotificationsClient({ initialNotifications = [] }: Notif
   ) || [];
 
   const unreadCount = notifications?.filter(n => !n.isRead).length || 0;
+
+  // Check if user is authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        
+        <main className="container max-w-md mx-auto px-4 py-8 mt-16">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LogIn className="h-5 w-5" />
+                Login Required
+              </CardTitle>
+              <CardDescription>
+                Please log in to view your notifications and stay updated with platform activity
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AuthPrompt />
+            </CardContent>
+          </Card>
+        </main>
+
+        <EnhancedFooter />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
