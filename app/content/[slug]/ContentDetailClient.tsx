@@ -48,7 +48,7 @@ interface PurchaseResponse {
 // Review form schema
 const reviewFormSchema = z.object({
   rating: z.number().min(1).max(5),
-  review: z.string().min(100, "Review must be at least 100 characters").max(1000, "Review must be at most 1000 characters"),
+  review: z.string().min(1, "Review cannot be empty").max(1000, "Review must be at most 1000 characters"),
 });
 
 type ReviewFormValues = z.infer<typeof reviewFormSchema>;
@@ -607,7 +607,7 @@ export default function ContentDetailClient({
                               <FormControl>
                                 <Textarea
                                   {...field}
-                                  placeholder="Share your experience with this content... (minimum 50 characters)"
+                                  placeholder="Share your experience with this content..."
                                   className="min-h-32"
                                   data-testid="input-review"
                                 />
