@@ -98,10 +98,11 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
-### 2025-11-05 - Fixed Dashboard Authentication & Customize Dashboard Page
-- **Dashboard Authentication Fix**: Corrected server-side fetch URL from port 5000 to port 3001 in dashboard page
-- **Customize Dashboard Page**: Fixed page not loading issue - was caused by incorrect Express API URL for server-side fetches
-- **Code Changes**: Modified `app/dashboard/page.tsx` to use `process.env.EXPRESS_URL` instead of `NEXT_PUBLIC_EXPRESS_URL`
+### 2025-11-05 - Fixed Dashboard Page Not Loading
+- **Dashboard Page Fix**: Changed from server-side authentication check to client-side check with login prompt
+- **User Experience Improvement**: Dashboard now shows a "Login Required" card with a login button instead of redirecting
+- **Code Changes**: Modified `app/dashboard/page.tsx` to remove server-side auth check and updated `DashboardClient.tsx` to show login prompt when not authenticated
+- **Result**: Dashboard page loads properly and allows users to login directly from the page
 
 ### 2025-11-05 - Fixed Product Review System & Like Functionality
 - **Product Review Character Limit**: Removed minimum 100 character requirement for reviews - any length now allowed
