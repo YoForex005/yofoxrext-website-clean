@@ -398,6 +398,16 @@ const uploadMultiple = multer({
 const upload = uploadSingle;
 
 export async function registerRoutes(app: Express): Promise<Express> {
+  // Test if this code is being executed
+  try {
+    console.log('[REGISTER ROUTES] Starting route registration');
+    console.error('[REGISTER ROUTES ERROR] Testing error logging');
+    // Force an error to test if it appears
+    // throw new Error('[REGISTER ROUTES] Test error - route registration started');
+  } catch (e) {
+    console.error('[REGISTER ROUTES] Error during logging:', e);
+  }
+  
   // Authentication is now set up in server/index.ts before routes
   // This ensures session middleware runs before route handlers
 
@@ -412,6 +422,97 @@ export async function registerRoutes(app: Express): Promise<Express> {
   
   // Import passport for session management
   const passport = (await import('passport')).default;
+
+  // ===== CRITICAL: ONBOARDING PROGRESS ROUTE - MUST BE FIRST =====
+  console.log('[ROUTE REGISTRATION] About to register /api/user/onboarding-progress route');
+  
+  // This route MUST be before /api/user/:userId to avoid being intercepted
+  app.get("/api/user/onboarding-progress", async (req, res) => {
+    console.log('[ONBOARDING] Hit /api/user/onboarding-progress route');
+    try {
+      // Check if user is authenticated without throwing errors
+      if (!req.isAuthenticated()) {
+        console.log('[ONBOARDING] User not authenticated, returning empty progress');
+        // Return empty progress for unauthenticated users
+        // This prevents 401/403 errors in the console during initial page load
+        return res.json({
+          hasProfileImage: false,
+          threadCount: 0,
+          reviewCount: 0,
+          totalStepsCompleted: 0
+        });
+      }
+      
+      const user = req.user as any;
+      if (!user?.id) {
+        console.log('[ONBOARDING] User object malformed, returning empty progress');
+        // Return empty progress if user object is malformed
+        return res.json({
+          hasProfileImage: false,
+          threadCount: 0,
+          reviewCount: 0,
+          totalStepsCompleted: 0
+        });
+      }
+      
+      console.log('[ONBOARDING] Fetching progress for user:', user.id);
+      
+      // Fetch actual user data
+      const userData = await storage.getUser(user.id);
+      
+      // Return empty object if user not found instead of 404
+      // This prevents error tracking spam when the endpoint is called during initial load
+      if (!userData) {
+        console.log('[ONBOARDING] User data not found, returning empty progress');
+        return res.json({
+          hasProfileImage: false,
+          threadCount: 0,
+          reviewCount: 0,
+          totalStepsCompleted: 0
+        });
+      }
+      
+      // Calculate the actual onboarding progress
+      const hasProfileImage = !!userData.profileImageUrl;
+      
+      // Get user threads and count them
+      const userThreads = await storage.getUserThreads(user.id);
+      const threadCount = userThreads.length;
+      
+      // Get user review count
+      const reviewCount = await storage.getUserReviewCount(user.id);
+      
+      const totalStepsCompleted = 
+        (hasProfileImage ? 1 : 0) +
+        (threadCount > 0 ? 1 : 0) +
+        (reviewCount > 0 ? 1 : 0);
+      
+      console.log('[ONBOARDING] Returning progress:', {
+        hasProfileImage,
+        threadCount,
+        reviewCount,
+        totalStepsCompleted
+      });
+      
+      res.json({
+        hasProfileImage,
+        threadCount,
+        reviewCount,
+        totalStepsCompleted
+      });
+    } catch (error: any) {
+      console.error('[ONBOARDING] Error:', error);
+      // Return empty progress instead of error to prevent console spam
+      res.json({
+        hasProfileImage: false,
+        threadCount: 0,
+        reviewCount: 0,
+        totalStepsCompleted: 0
+      });
+    }
+  });
+  
+  console.log('[ROUTE REGISTRATION] Successfully registered /api/user/onboarding-progress route');
 
   // ===== AUTHENTICATION API ROUTES =====
   
@@ -1703,81 +1804,6 @@ export async function registerRoutes(app: Express): Promise<Express> {
     } catch (error: any) {
       console.error('[ADMIN SUPPORT] Error getting KPIs:', error);
       res.status(500).json({ error: error.message });
-    }
-  });
-  
-  // GET /api/user/onboarding-progress - Get user onboarding progress
-  // No authentication middleware - handles both authenticated and unauthenticated gracefully
-  // IMPORTANT: This must be defined BEFORE /api/user/:userId to avoid route conflict
-  app.get("/api/user/onboarding-progress", async (req, res) => {
-    try {
-      // Check if user is authenticated without throwing errors
-      if (!req.isAuthenticated()) {
-        // Return empty progress for unauthenticated users
-        // This prevents 401/403 errors in the console during initial page load
-        return res.json({
-          hasProfileImage: false,
-          threadCount: 0,
-          reviewCount: 0,
-          totalStepsCompleted: 0
-        });
-      }
-      
-      const user = req.user as any;
-      if (!user?.id) {
-        // Return empty progress if user object is malformed
-        return res.json({
-          hasProfileImage: false,
-          threadCount: 0,
-          reviewCount: 0,
-          totalStepsCompleted: 0
-        });
-      }
-      
-      // Fetch actual user data
-      const userData = await storage.getUser(user.id);
-      
-      // Return empty object if user not found instead of 404
-      // This prevents error tracking spam when the endpoint is called during initial load
-      if (!userData) {
-        return res.json({
-          hasProfileImage: false,
-          threadCount: 0,
-          reviewCount: 0,
-          totalStepsCompleted: 0
-        });
-      }
-      
-      // Calculate the actual onboarding progress
-      const hasProfileImage = !!userData.profileImageUrl;
-      
-      // Get user threads and count them
-      const userThreads = await storage.getUserThreads(user.id);
-      const threadCount = userThreads.length;
-      
-      // Get user review count
-      const reviewCount = await storage.getUserReviewCount(user.id);
-      
-      const totalStepsCompleted = 
-        (hasProfileImage ? 1 : 0) +
-        (threadCount > 0 ? 1 : 0) +
-        (reviewCount > 0 ? 1 : 0);
-      
-      res.json({
-        hasProfileImage,
-        threadCount,
-        reviewCount,
-        totalStepsCompleted
-      });
-    } catch (error: any) {
-      console.error('[GET /api/user/onboarding-progress] Error:', error);
-      // Return empty progress instead of error to prevent console spam
-      res.json({
-        hasProfileImage: false,
-        threadCount: 0,
-        reviewCount: 0,
-        totalStepsCompleted: 0
-      });
     }
   });
   
