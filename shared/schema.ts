@@ -2195,7 +2195,7 @@ export const insertContentReviewSchema = createInsertSchema(contentReviews).omit
   rewardGiven: true,
 }).extend({
   rating: z.number().min(1, "Rating must be between 1 and 5").max(5, "Rating must be between 1 and 5"),
-  review: z.string().min(100, "Review must be at least 100 characters").max(1000, "Review must be at most 1000 characters"),
+  review: z.string().min(1, "Review is required").max(1000, "Review must be at most 1000 characters"),
 });
 
 export const insertContentLikeSchema = createInsertSchema(contentLikes).omit({
