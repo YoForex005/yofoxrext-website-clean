@@ -3696,6 +3696,378 @@ export async function registerRoutes(app: Express): Promise<Express> {
     const content = await storage.getAllContent(filters);
     res.json(content);
   });
+
+  // ==================== FILE PURCHASE ENDPOINTS ====================
+
+  // Check if user has purchased a file asset
+  app.get("/api/file-assets/:assetId/purchase-status", isAuthenticated, async (req, res) => {
+    try {
+      const { assetId } = req.params;
+      const userId = getAuthenticatedUserId(req);
+      
+      if (!userId) {
+        return res.json({ hasPurchased: false });
+      }
+
+      const purchase = await storage.getFilePurchaseByBuyerAndAsset(userId, assetId);
+      
+      res.json({ 
+        hasPurchased: !!purchase,
+        purchaseId: purchase?.id
+      });
+    } catch (error) {
+      console.error('Error checking purchase status:', error);
+      res.json({ hasPurchased: false });
+    }
+  });
+
+  // Purchase a file asset
+  app.post("/api/file-assets/:assetId/purchase", isAuthenticated, async (req, res) => {
+    try {
+      const { assetId } = req.params;
+      const buyerId = getAuthenticatedUserId(req);
+      if (!buyerId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Check if asset exists
+      const asset = await storage.getFileAsset(assetId);
+      if (!asset) {
+        return res.status(404).json({ error: "File asset not found" });
+      }
+
+      // Check if already purchased
+      const existingPurchase = await storage.getFilePurchaseByBuyerAndAsset(buyerId, assetId);
+      if (existingPurchase) {
+        return res.json({ 
+          success: true,
+          message: "File already purchased",
+          purchaseId: existingPurchase.id,
+          downloadUrl: `/api/downloads/${existingPurchase.id}`
+        });
+      }
+
+      // Get seller information
+      let sellerId: string;
+      if (asset.contentId) {
+        const content = await storage.getContent(asset.contentId);
+        if (!content) {
+          return res.status(404).json({ error: "Associated content not found" });
+        }
+        sellerId = content.authorId;
+      } else if (asset.threadId) {
+        const thread = await storage.getForumThreadById(asset.threadId);
+        if (!thread) {
+          return res.status(404).json({ error: "Associated thread not found" });
+        }
+        sellerId = thread.authorId;
+      } else {
+        return res.status(400).json({ error: "Invalid file asset configuration" });
+      }
+
+      // Don't allow self-purchase
+      if (buyerId === sellerId) {
+        return res.status(400).json({ error: "You cannot purchase your own files" });
+      }
+
+      // Verify minimum price
+      if (asset.price < 20) {
+        return res.status(400).json({ error: "Invalid file price (minimum 20 coins)" });
+      }
+
+      // Check buyer's balance
+      const buyer = await storage.getUser(buyerId);
+      if (!buyer || buyer.totalCoins < asset.price) {
+        return res.status(400).json({ error: "Insufficient coins" });
+      }
+
+      // Calculate commission (8.5% rounded up, minimum 1 coin)
+      const commission = Math.max(1, Math.ceil(asset.price * 0.085));
+      const netAmount = asset.price - commission;
+
+      // Start transaction - create all records atomically
+      const purchaseId = randomUUID();
+      
+      try {
+        // Deduct coins from buyer
+        const buyerTransaction = await storage.createCoinTransaction({
+          userId: buyerId,
+          amount: -asset.price,
+          type: 'spend',
+          description: `Purchased file: ${asset.filename}`,
+          trigger: COIN_TRIGGERS.MARKETPLACE_PURCHASE_ITEM,
+          channel: COIN_CHANNELS.MARKETPLACE,
+          metadata: {
+            assetId,
+            filename: asset.filename,
+            sellerId,
+            price: asset.price
+          }
+        });
+
+        // Credit seller (net amount after commission)
+        const sellerTransaction = await storage.createCoinTransaction({
+          userId: sellerId,
+          amount: netAmount,
+          type: 'earn',
+          description: `Sale of file: ${asset.filename}`,
+          trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
+          channel: COIN_CHANNELS.MARKETPLACE,
+          metadata: {
+            assetId,
+            filename: asset.filename,
+            buyerId,
+            price: asset.price,
+            commission,
+            netAmount
+          }
+        });
+
+        // Credit platform treasury with commission
+        const commissionTransaction = await storage.createCoinTransaction({
+          userId: 'treasury',
+          amount: commission,
+          type: 'earn',
+          description: `Commission from file sale: ${asset.filename}`,
+          trigger: COIN_TRIGGERS.MARKETPLACE_SALE_ITEM,
+          channel: COIN_CHANNELS.MARKETPLACE,
+          metadata: {
+            assetId,
+            filename: asset.filename,
+            buyerId,
+            sellerId,
+            price: asset.price,
+            commission
+          }
+        });
+
+        // Create purchase record
+        const purchase = await storage.createFilePurchase({
+          assetId,
+          buyerId,
+          sellerId,
+          price: asset.price,
+          buyerTransactionId: buyerTransaction.id,
+          sellerTransactionId: sellerTransaction.id,
+          commissionTransactionId: commissionTransaction.id
+        });
+
+        // Update asset download count
+        await storage.updateFileAssetDownloads(assetId);
+
+        // Queue email notifications
+        const seller = await storage.getUser(sellerId);
+        
+        // Buyer email
+        if (buyer.email) {
+          await emailQueueService.queueEmail({
+            userId: buyerId,
+            templateKey: 'file_purchase_buyer',
+            recipientEmail: buyer.email,
+            subject: `Purchase Confirmation - ${asset.filename}`,
+            payload: {
+              recipientName: buyer.username,
+              filename: asset.filename,
+              price: asset.price,
+              downloadUrl: `/api/downloads/${purchase.id}`,
+              purchaseDate: new Date().toISOString()
+            },
+            priority: EmailPriority.HIGH
+          });
+        }
+
+        // Seller email
+        if (seller?.email) {
+          await emailQueueService.queueEmail({
+            userId: sellerId,
+            templateKey: 'file_purchase_seller',
+            recipientEmail: seller.email,
+            subject: `New Sale - ${asset.filename}`,
+            payload: {
+              recipientName: seller.username,
+              filename: asset.filename,
+              buyerUsername: buyer.username,
+              price: asset.price,
+              commission,
+              netAmount,
+              saleDate: new Date().toISOString()
+            },
+            priority: EmailPriority.MEDIUM
+          });
+        }
+
+        res.json({ 
+          success: true,
+          purchaseId: purchase.id,
+          downloadUrl: `/api/downloads/${purchase.id}`,
+          price: asset.price,
+          commission,
+          netAmount
+        });
+
+      } catch (transactionError) {
+        console.error('File purchase transaction failed:', transactionError);
+        return res.status(500).json({ error: "Transaction failed. Please try again." });
+      }
+
+    } catch (error) {
+      console.error('File purchase error:', error);
+      res.status(500).json({ error: "Failed to process file purchase" });
+    }
+  });
+
+  // Download purchased file
+  app.get("/api/downloads/:purchaseId", isAuthenticated, async (req, res) => {
+    try {
+      const { purchaseId } = req.params;
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Get purchase record
+      const purchase = await storage.getFilePurchase(purchaseId);
+      if (!purchase) {
+        return res.status(404).json({ error: "Purchase not found" });
+      }
+
+      // Verify buyer
+      if (purchase.buyerId !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Get file asset
+      const asset = await storage.getFileAsset(purchase.assetId);
+      if (!asset) {
+        return res.status(404).json({ error: "File not found" });
+      }
+
+      // Update download count
+      await storage.updateFilePurchaseDownloadCount(purchaseId);
+
+      // Get signed download URL from Object Storage
+      const signedUrl = await objectStorage.generateSignedUrl(
+        asset.storageKey,
+        'read',
+        3600 // 1 hour expiry
+      );
+
+      res.json({
+        success: true,
+        downloadUrl: signedUrl,
+        filename: asset.filename,
+        mimeType: asset.mimeType,
+        fileSize: asset.fileSize
+      });
+
+    } catch (error) {
+      console.error('Download error:', error);
+      res.status(500).json({ error: "Failed to generate download link" });
+    }
+  });
+
+  // Get user's file purchases
+  app.get("/api/user/file-purchases", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const purchases = await storage.getUserFilePurchases(userId);
+      res.json(purchases);
+    } catch (error) {
+      console.error('Error fetching purchases:', error);
+      res.status(500).json({ error: "Failed to fetch purchases" });
+    }
+  });
+
+  // Get user's purchases dashboard data
+  app.get("/api/user/purchases-dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const purchases = await storage.getUserFilePurchases(userId);
+      
+      // Calculate dashboard metrics
+      const totalPurchases = purchases.length;
+      const totalSpent = purchases.reduce((sum, p) => sum + p.price, 0);
+      const avgPurchasePrice = totalPurchases > 0 ? totalSpent / totalPurchases : 0;
+      
+      // Get unique sellers
+      const uniqueSellerIds = new Set(purchases.map(p => p.sellerId));
+      const uniqueSellers = uniqueSellerIds.size;
+      
+      // Get recent purchases with seller details
+      const recentPurchases = await Promise.all(
+        purchases.slice(0, 10).map(async (purchase) => {
+          const seller = await storage.getUser(purchase.sellerId);
+          const asset = await storage.getFileAsset(purchase.assetId);
+          return {
+            ...purchase,
+            asset,
+            sellerUsername: seller?.username || 'Unknown'
+          };
+        })
+      );
+
+      res.json({
+        totalPurchases,
+        totalSpent,
+        avgPurchasePrice,
+        uniqueSellers,
+        recentPurchases
+      });
+    } catch (error) {
+      console.error('Error fetching purchases dashboard:', error);
+      res.status(500).json({ error: "Failed to fetch dashboard data" });
+    }
+  });
+
+  // Get user's file sales
+  app.get("/api/user/file-sales", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      const sales = await storage.getUserFileSales(userId);
+      res.json(sales);
+    } catch (error) {
+      console.error('Error fetching sales:', error);
+      res.status(500).json({ error: "Failed to fetch sales" });
+    }
+  });
+
+  // Get file assets for content
+  app.get("/api/content/:contentId/file-assets", async (req, res) => {
+    try {
+      const { contentId } = req.params;
+      const assets = await storage.getFileAssetsByContent(contentId);
+      
+      // Check purchase status if user is authenticated
+      const userId = getAuthenticatedUserId(req);
+      const assetsWithPurchaseStatus = await Promise.all(
+        assets.map(async (asset) => {
+          let hasPurchased = false;
+          if (userId) {
+            const purchase = await storage.getFilePurchaseByBuyerAndAsset(userId, asset.id);
+            hasPurchased = !!purchase;
+          }
+          return { ...asset, hasPurchased };
+        })
+      );
+
+      res.json(assetsWithPurchaseStatus);
+    } catch (error) {
+      console.error('Error fetching file assets:', error);
+      res.status(500).json({ error: "Failed to fetch file assets" });
+    }
+  });
   
   // GET /api/content/top-sellers - Top selling EAs/Indicators
   // IMPORTANT: This must come BEFORE /api/content/:id to avoid route conflict

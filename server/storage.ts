@@ -18,6 +18,10 @@ import {
   type InsertContentLike,
   type ContentReply,
   type InsertContentReply,
+  type FileAsset,
+  type InsertFileAsset,
+  type FilePurchase,
+  type InsertFilePurchase,
   type Broker,
   type InsertBroker,
   type BrokerReview,
@@ -200,6 +204,8 @@ import {
   contentReviews,
   contentLikes,
   contentReplies,
+  fileAssets,
+  filePurchases,
   brokers,
   brokerReviews,
   forumThreads,
@@ -433,6 +439,20 @@ export interface IStorage {
   getUserFollowers(userId: string): Promise<User[]>;
   getUserFollowing(userId: string): Promise<User[]>;
   checkIfFollowing(followerId: string, followingId: string): Promise<boolean>;
+  
+  // File Assets & Purchases System
+  createFileAsset(asset: InsertFileAsset): Promise<FileAsset>;
+  getFileAsset(assetId: string): Promise<FileAsset | null>;
+  getFileAssetsByContent(contentId: string): Promise<FileAsset[]>;
+  getFileAssetsByThread(threadId: string): Promise<FileAsset[]>;
+  updateFileAssetDownloads(assetId: string): Promise<void>;
+  
+  createFilePurchase(purchase: InsertFilePurchase): Promise<FilePurchase>;
+  getFilePurchase(purchaseId: string): Promise<FilePurchase | null>;
+  getFilePurchaseByBuyerAndAsset(buyerId: string, assetId: string): Promise<FilePurchase | null>;
+  getUserFilePurchases(userId: string): Promise<Array<FilePurchase & { asset: FileAsset; seller: User }>>;
+  getUserFileSales(userId: string): Promise<Array<FilePurchase & { asset: FileAsset; buyer: User }>>;
+  updateFilePurchaseDownloadCount(purchaseId: string): Promise<void>;
   
   // Ledger System
   createUserWallet(userId: string): Promise<UserWallet>;
@@ -9569,6 +9589,108 @@ export class DrizzleStorage implements IStorage {
       .limit(1);
     
     return !!follow;
+  }
+
+  // File Assets & Purchases System Implementation
+  async createFileAsset(asset: InsertFileAsset): Promise<FileAsset> {
+    const [newAsset] = await db.insert(fileAssets).values(asset).returning();
+    return newAsset;
+  }
+
+  async getFileAsset(assetId: string): Promise<FileAsset | null> {
+    const [asset] = await db.select().from(fileAssets).where(eq(fileAssets.id, assetId));
+    return asset || null;
+  }
+
+  async getFileAssetsByContent(contentId: string): Promise<FileAsset[]> {
+    return await db.select().from(fileAssets).where(eq(fileAssets.contentId, contentId));
+  }
+
+  async getFileAssetsByThread(threadId: string): Promise<FileAsset[]> {
+    return await db.select().from(fileAssets).where(eq(fileAssets.threadId, threadId));
+  }
+
+  async updateFileAssetDownloads(assetId: string): Promise<void> {
+    await db
+      .update(fileAssets)
+      .set({ 
+        downloads: sql`${fileAssets.downloads} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(fileAssets.id, assetId));
+  }
+
+  async createFilePurchase(purchase: InsertFilePurchase): Promise<FilePurchase> {
+    const [newPurchase] = await db.insert(filePurchases).values(purchase).returning();
+    return newPurchase;
+  }
+
+  async getFilePurchase(purchaseId: string): Promise<FilePurchase | null> {
+    const [purchase] = await db.select().from(filePurchases).where(eq(filePurchases.id, purchaseId));
+    return purchase || null;
+  }
+
+  async getFilePurchaseByBuyerAndAsset(buyerId: string, assetId: string): Promise<FilePurchase | null> {
+    const [purchase] = await db
+      .select()
+      .from(filePurchases)
+      .where(
+        and(
+          eq(filePurchases.buyerId, buyerId),
+          eq(filePurchases.assetId, assetId)
+        )
+      );
+    return purchase || null;
+  }
+
+  async getUserFilePurchases(userId: string): Promise<Array<FilePurchase & { asset: FileAsset; seller: User }>> {
+    const purchases = await db
+      .select({
+        purchase: filePurchases,
+        asset: fileAssets,
+        seller: users,
+      })
+      .from(filePurchases)
+      .innerJoin(fileAssets, eq(filePurchases.assetId, fileAssets.id))
+      .innerJoin(users, eq(filePurchases.sellerId, users.id))
+      .where(eq(filePurchases.buyerId, userId))
+      .orderBy(desc(filePurchases.purchaseDate));
+
+    return purchases.map(row => ({
+      ...row.purchase,
+      asset: row.asset,
+      seller: row.seller,
+    }));
+  }
+
+  async getUserFileSales(userId: string): Promise<Array<FilePurchase & { asset: FileAsset; buyer: User }>> {
+    const sales = await db
+      .select({
+        purchase: filePurchases,
+        asset: fileAssets,
+        buyer: users,
+      })
+      .from(filePurchases)
+      .innerJoin(fileAssets, eq(filePurchases.assetId, fileAssets.id))
+      .innerJoin(users, eq(filePurchases.buyerId, users.id))
+      .where(eq(filePurchases.sellerId, userId))
+      .orderBy(desc(filePurchases.purchaseDate));
+
+    return sales.map(row => ({
+      ...row.purchase,
+      asset: row.asset,
+      buyer: row.buyer,
+    }));
+  }
+
+  async updateFilePurchaseDownloadCount(purchaseId: string): Promise<void> {
+    await db
+      .update(filePurchases)
+      .set({ 
+        downloadCount: sql`${filePurchases.downloadCount} + 1`,
+        lastDownloadAt: new Date()
+      })
+      .where(eq(filePurchases.id, purchaseId));
   }
 
   // Ledger System Implementation

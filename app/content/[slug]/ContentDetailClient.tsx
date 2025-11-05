@@ -35,8 +35,9 @@ import {
   Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import type { Content, User as UserType, ContentReview } from "@shared/schema";
+import type { Content, User as UserType, ContentReview, FileAsset } from "@shared/schema";
 import BreadcrumbSchema from "@/components/BreadcrumbSchema";
+import FileDownload from "@/components/FileDownload";
 
 // Purchase response type
 interface PurchaseResponse {
@@ -87,6 +88,22 @@ export default function ContentDetailClient({
       : [`/api/content/slug/${slug}`],
     initialData: initialContent,
     enabled: !!slug && !initialContent, // Only fetch if no initial data provided
+  });
+
+  // Fetch file assets for this content
+  const { data: fileAssets, isLoading: assetsLoading } = useQuery<(FileAsset & { hasPurchased: boolean })[]>({
+    queryKey: [`/api/content/${content?.id}/file-assets`, content?.id],
+    queryFn: async () => {
+      if (!content?.id) return [];
+      const response = await fetch(`/api/content/${content.id}/file-assets`, {
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        throw new Error("Failed to fetch file assets");
+      }
+      return response.json();
+    },
+    enabled: !!content?.id,
   });
 
   // Use initial data for author query
@@ -458,61 +475,24 @@ export default function ContentDetailClient({
                 </Card>
 
                 {/* File Download Block */}
-                {files.length > 0 && (
+                {fileAssets && fileAssets.length > 0 && (
                   <Card className="border-2 border-primary/20" data-testid="card-files">
                     <CardHeader className="flex flex-row items-center justify-between">
                       <CardTitle className="text-lg flex items-center gap-2">
                         <FileCheck className="w-5 h-5" />
                         Download Files
                       </CardTitle>
-                      {isPurchased && (
-                        <Badge variant="default" className="gap-1" data-testid="badge-purchased">
-                          <Check className="w-3 h-3" />
-                          Purchased
-                        </Badge>
-                      )}
                     </CardHeader>
-                    <CardContent className="space-y-3">
-                      {files.map((file, index) => (
-                        <div 
-                          key={index} 
-                          className="flex items-center justify-between p-4 bg-muted/50 rounded-lg"
-                          data-testid={`file-item-${index}`}
-                        >
-                          <div className="flex-1">
-                            <div className="font-medium">{file.name}</div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              Size: {(file.size / 1024).toFixed(2)} KB
-                            </div>
-                            {file.checksum && (
-                              <div className="text-xs text-muted-foreground mt-1 font-mono">
-                                SHA-256: {file.checksum.substring(0, 16)}...
-                              </div>
-                            )}
-                          </div>
-                          {isPurchased ? (
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              onClick={() => window.open(file.url, '_blank')}
-                              data-testid={`button-download-${index}`}
-                            >
-                              <Download className="w-4 h-4 mr-2" />
-                              Download
-                            </Button>
-                          ) : (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              disabled
-                              data-testid={`button-locked-${index}`}
-                            >
-                              <AlertCircle className="w-4 h-4 mr-2" />
-                              Locked
-                            </Button>
-                          )}
-                        </div>
-                      ))}
+                    <CardContent>
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-1">
+                        {fileAssets.map((asset) => (
+                          <FileDownload 
+                            key={asset.id} 
+                            asset={asset}
+                            contentId={content?.id}
+                          />
+                        ))}
+                      </div>
                     </CardContent>
                   </Card>
                 )}

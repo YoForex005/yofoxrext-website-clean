@@ -34,6 +34,7 @@ import { GoalsTab } from "./components/tabs/GoalsTab";
 import { NotificationsTab } from "./components/tabs/NotificationsTab";
 import { CRMTab } from "./components/tabs/CRMTab";
 import { MarketingTab } from "./components/tabs/MarketingTab";
+import { PurchasesTab } from "./components/tabs/PurchasesTab";
 
 export default function DashboardClient() {
   const [activeTab, setActiveTab] = useState("journey");
@@ -124,6 +125,15 @@ export default function DashboardClient() {
               <ShoppingCart className="w-4 h-4" />
               <span className="hidden sm:inline">Sales</span>
             </TabsTrigger>
+
+            <TabsTrigger 
+              value="purchases" 
+              className="flex items-center gap-2"
+              data-testid="tab-purchases"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span className="hidden sm:inline">Purchases</span>
+            </TabsTrigger>
             
             <TabsTrigger 
               value="referrals" 
@@ -199,6 +209,10 @@ export default function DashboardClient() {
 
           <TabsContent value="sales" data-testid="content-sales">
             <SalesTab />
+          </TabsContent>
+
+          <TabsContent value="purchases" data-testid="content-purchases">
+            <PurchasesTab />
           </TabsContent>
 
           <TabsContent value="referrals" data-testid="content-referrals">

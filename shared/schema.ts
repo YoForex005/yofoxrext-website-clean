@@ -561,6 +561,89 @@ export const contentReplies = pgTable("content_replies", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ==================== FILE ASSETS & PURCHASES SYSTEM ====================
+
+// File Assets - EA/Indicator downloadable files attached to content or threads
+export const fileAssets = pgTable("file_assets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Reference to parent (either content or thread)
+  contentId: varchar("content_id").references(() => content.id, { onDelete: "cascade" }),
+  threadId: varchar("thread_id").references(() => forumThreads.id, { onDelete: "cascade" }),
+  
+  // File metadata
+  filename: varchar("filename", { length: 255 }).notNull(),
+  fileType: varchar("file_type", { length: 50 }).notNull(), // "ex4", "ex5", "pdf", "zip", etc.
+  mimeType: varchar("mime_type", { length: 100 }).notNull(),
+  fileSize: integer("file_size").notNull(), // in bytes
+  
+  // Object Storage reference
+  storageKey: text("storage_key").notNull(), // Object Storage path/key
+  
+  // Pricing (minimum 20 coins)
+  price: integer("price").notNull().default(20),
+  
+  // Statistics
+  downloads: integer("downloads").notNull().default(0),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // Indexes for lookups
+  contentIdIdx: index("idx_file_assets_content_id").on(table.contentId),
+  threadIdIdx: index("idx_file_assets_thread_id").on(table.threadId),
+  fileTypeIdx: index("idx_file_assets_file_type").on(table.fileType),
+  priceIdx: index("idx_file_assets_price").on(table.price),
+  
+  // Constraints
+  minPriceCheck: check("file_assets_min_price", sql`price >= 20`),
+  parentCheck: check("file_assets_parent_check", sql`(content_id IS NOT NULL AND thread_id IS NULL) OR (content_id IS NULL AND thread_id IS NOT NULL)`),
+}));
+
+// File Purchases - Track individual file purchase transactions
+export const filePurchases = pgTable("file_purchases", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // References
+  assetId: varchar("asset_id").notNull().references(() => fileAssets.id, { onDelete: "cascade" }),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id),
+  sellerId: varchar("seller_id").notNull().references(() => users.id),
+  
+  // Financial details
+  price: integer("price").notNull(), // Total price in coins
+  commission: integer("commission").notNull(), // 8.5% platform commission
+  netAmount: integer("net_amount").notNull(), // Amount seller receives (price - commission)
+  
+  // Transaction references
+  buyerTransactionId: varchar("buyer_transaction_id").references(() => coinTransactions.id),
+  sellerTransactionId: varchar("seller_transaction_id").references(() => coinTransactions.id),
+  commissionTransactionId: varchar("commission_transaction_id").references(() => coinTransactions.id),
+  
+  // Tracking
+  purchaseDate: timestamp("purchase_date").notNull().defaultNow(),
+  downloadCount: integer("download_count").notNull().default(0),
+  lastDownloadAt: timestamp("last_download_at"),
+  
+  // Status
+  status: varchar("status", { length: 20 }).notNull().default("completed").$type<"completed" | "refunded">(),
+  refundedAt: timestamp("refunded_at"),
+  refundReason: text("refund_reason"),
+}, (table) => ({
+  // Indexes for queries
+  buyerIdIdx: index("idx_file_purchases_buyer_id").on(table.buyerId),
+  sellerIdIdx: index("idx_file_purchases_seller_id").on(table.sellerId),
+  assetIdIdx: index("idx_file_purchases_asset_id").on(table.assetId),
+  purchaseDateIdx: index("idx_file_purchases_purchase_date").on(table.purchaseDate),
+  statusIdx: index("idx_file_purchases_status").on(table.status),
+  
+  // Performance optimization: Revenue trend queries
+  purchasedAtPriceIdx: index("idx_file_purchases_date_price").on(table.purchaseDate, table.price),
+  
+  // Unique constraint: One purchase per buyer per asset
+  uniqueBuyerAsset: uniqueIndex("idx_file_purchases_unique_buyer_asset").on(table.buyerId, table.assetId),
+}));
+
 export const brokers = pgTable("brokers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -2214,6 +2297,34 @@ export const insertContentReplySchema = createInsertSchema(contentReplies).omit(
   rating: z.number().min(1).max(5).optional(),
 });
 
+// File Assets insert schema
+export const insertFileAssetSchema = createInsertSchema(fileAssets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  downloads: true,
+}).extend({
+  price: z.number().int().min(20, "Minimum price is 20 coins"),
+});
+
+// File Purchases insert schema
+export const insertFilePurchaseSchema = createInsertSchema(filePurchases).omit({
+  id: true,
+  purchaseDate: true,
+  downloadCount: true,
+  lastDownloadAt: true,
+  buyerTransactionId: true,
+  sellerTransactionId: true,
+  commissionTransactionId: true,
+  refundedAt: true,
+  refundReason: true,
+  status: true,
+  commission: true,
+  netAmount: true,
+}).extend({
+  price: z.number().int().min(20, "Minimum price is 20 coins"),
+});
+
 export const insertBrokerSchema = createInsertSchema(brokers).omit({
   id: true,
   createdAt: true,
@@ -2363,6 +2474,10 @@ export type ContentLike = typeof contentLikes.$inferSelect;
 export type InsertContentLike = z.infer<typeof insertContentLikeSchema>;
 export type ContentReply = typeof contentReplies.$inferSelect;
 export type InsertContentReply = z.infer<typeof insertContentReplySchema>;
+export type FileAsset = typeof fileAssets.$inferSelect;
+export type InsertFileAsset = z.infer<typeof insertFileAssetSchema>;
+export type FilePurchase = typeof filePurchases.$inferSelect;
+export type InsertFilePurchase = z.infer<typeof insertFilePurchaseSchema>;
 export type Broker = typeof brokers.$inferSelect;
 export type InsertBroker = z.infer<typeof insertBrokerSchema>;
 export type BrokerReview = typeof brokerReviews.$inferSelect;
