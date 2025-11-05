@@ -389,7 +389,7 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
 
     setUploadingImage(true);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);  // Changed from 'file' to 'files'
     formData.append('type', 'ea-inline-image');
 
     try {
@@ -402,8 +402,8 @@ function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
 
       const data = await response.json();
       
-      if (editor) {
-        editor.chain().focus().setImage({ src: data.url }).run();
+      if (editor && data.urls && data.urls[0]) {
+        editor.chain().focus().setImage({ src: data.urls[0] }).run();
         toast({
           title: "Image inserted",
           description: "Image added to description",
