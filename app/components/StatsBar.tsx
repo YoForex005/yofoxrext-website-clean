@@ -67,14 +67,14 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
   if (isLoading && !data) {
     return (
       <div className="border-y bg-muted/30">
-        <div className="container max-w-7xl mx-auto px-4 py-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="container max-w-7xl mx-auto px-4 py-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="bg-muted/50 rounded-lg p-4 animate-pulse">
-                <div className="flex flex-col items-center justify-center space-y-3">
-                  <div className="bg-muted rounded-lg h-12 w-12" />
-                  <div className="h-8 w-16 bg-muted rounded" />
-                  <div className="h-4 w-20 bg-muted rounded" />
+              <div key={i} className="bg-muted/50 rounded-md p-2 md:p-2.5 animate-pulse">
+                <div className="flex flex-col items-center justify-center space-y-1">
+                  <div className="bg-muted rounded-md h-8 w-8" />
+                  <div className="h-5 w-12 bg-muted rounded" />
+                  <div className="h-3 w-16 bg-muted rounded" />
                 </div>
               </div>
             ))}
@@ -86,31 +86,32 @@ export default function StatsBar({ initialStats }: StatsBarProps) {
 
   return (
     <div className="border-y bg-muted/30">
-      <div className="container max-w-7xl mx-auto px-4 py-4">
-        <div className="flex items-center justify-between mb-3">
+      <div className="container max-w-7xl mx-auto px-4 py-2">
+        <div className="flex items-center justify-between mb-1">
           <div className="text-xs text-muted-foreground">Platform Statistics</div>
           <RefreshButton 
             onRefresh={async () => { await refetch(); }}
             size="icon"
             variant="ghost"
+            className="h-7 w-7"
           />
         </div>
-        {/* Fixed: Using consistent grid layout with proper alignment */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Slimmer grid layout with tighter spacing */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
           {stats.map((stat) => (
-            <div key={stat.key} className="bg-card/50 hover:bg-card/70 transition-colors rounded-lg p-4">
-              {/* Fixed: Center-aligned content with consistent spacing */}
-              <div className="flex flex-col items-center justify-center text-center space-y-2">
-                {/* Icon container with consistent sizing */}
-                <div className="bg-primary/10 dark:bg-primary/20 rounded-lg p-3 flex items-center justify-center">
-                  <stat.icon className="h-6 w-6 text-primary dark:text-primary" />
+            <div key={stat.key} className="bg-card/50 hover:bg-card/70 transition-colors rounded-md p-2 md:p-2.5">
+              {/* More compact content with inline icon and text */}
+              <div className="flex flex-col items-center justify-center text-center space-y-1">
+                {/* Smaller icon container */}
+                <div className="bg-primary/10 dark:bg-primary/20 rounded-md p-1.5 flex items-center justify-center">
+                  <stat.icon className="h-4 w-4 text-primary dark:text-primary" />
                 </div>
-                {/* Value with consistent sizing */}
-                <div className="text-2xl font-bold leading-tight" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
+                {/* Smaller value text */}
+                <div className="text-lg font-semibold leading-tight" data-testid={`text-stat-${stat.key}`} suppressHydrationWarning>
                   {stat.value}
                 </div>
-                {/* Label with consistent styling */}
-                <div className="text-sm text-muted-foreground font-medium">{stat.label}</div>
+                {/* Smaller label text */}
+                <div className="text-xs text-muted-foreground font-medium leading-tight">{stat.label}</div>
               </div>
             </div>
           ))}
