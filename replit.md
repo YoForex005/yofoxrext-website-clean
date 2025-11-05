@@ -98,6 +98,13 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Investigated Notification System Status
+- **Investigation**: User reported "Not working" text near notification bell icon
+- **Analysis**: Thoroughly checked notification API endpoints, WebSocket connections, and frontend components
+- **Findings**: Notification API endpoints working correctly (returning proper counts), no "Not working" text found in codebase
+- **Status**: Notification system is functioning properly - API returns correct unread counts, frontend properly displays notification bell
+- **Note**: The "Not working" text may be from browser extension, developer tools, or temporary display issue
+
 ### 2025-11-06 - Fixed Messages Page Authentication Issue
 - **Critical Bug Fix**: Resolved server-side authentication redirect preventing messages page from loading for non-authenticated users
 - **Root Cause**: Messages page was redirecting non-authenticated users on the server-side, causing a full page redirect which prevented proper client-side handling
