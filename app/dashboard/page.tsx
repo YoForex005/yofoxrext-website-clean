@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 };
 
 async function getUser() {
-  const EXPRESS_URL = process.env.NEXT_PUBLIC_EXPRESS_URL || 'http://localhost:5000';
+  const EXPRESS_URL = process.env.EXPRESS_URL || 'http://127.0.0.1:3001';
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.getAll()
     .map(cookie => `${cookie.name}=${cookie.value}`)
