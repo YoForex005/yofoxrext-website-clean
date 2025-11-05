@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/AuthContext";
@@ -74,6 +74,8 @@ export default function ContentDetailClient({
   const { user, isAuthenticated } = useAuth();
   const { requireAuth, AuthPrompt } = useAuthPrompt("interact with this content");
   const [selectedRating, setSelectedRating] = useState(0);
+  const [likeCount, setLikeCount] = useState(initialContent?.likes || 0);
+  const [isLiked, setIsLiked] = useState(false);
 
   // Check if slug is UUID format
   const isUUID = slug?.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
@@ -146,6 +148,13 @@ export default function ContentDetailClient({
     enabled: !!content?.authorId,
   });
 
+  // Sync like count when content changes
+  useEffect(() => {
+    if (content?.likes !== undefined) {
+      setLikeCount(content.likes);
+    }
+  }, [content?.likes]);
+
   // Purchase content mutation
   const purchaseMutation = useMutation<PurchaseResponse>({
     mutationFn: async () => {
@@ -182,16 +191,26 @@ export default function ContentDetailClient({
         contentId: content.id,
         userId: user.id,
       });
-      return res.json();
+      return res;
     },
-    onSuccess: () => {
-      if (content?.id) {
-        queryClient.invalidateQueries({ queryKey: ["/api/content/slug", slug] });
-        queryClient.invalidateQueries({ queryKey: ["/api/content", slug] });
+    onSuccess: (data) => {
+      // Update local state immediately
+      if (data?.liked !== undefined) {
+        setIsLiked(data.liked);
+        setLikeCount(data.likeCount || (isLiked ? likeCount - 1 : likeCount + 1));
       }
+      
+      if (content?.id) {
+        // Invalidate all content queries to refresh the like count
+        queryClient.invalidateQueries({ queryKey: [`/api/content/${slug}`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/content/slug/${slug}`] });
+        queryClient.invalidateQueries({ queryKey: ["/api/content", { category: content?.category }] });
+        queryClient.invalidateQueries({ queryKey: ["/api/user", content?.authorId, "content"] });
+      }
+      
       toast({
-        title: "Liked!",
-        description: "Thank you for your feedback.",
+        title: isLiked ? "Like removed" : "Liked!",
+        description: isLiked ? undefined : "Thank you for your feedback.",
       });
     },
   });
@@ -534,10 +553,11 @@ export default function ContentDetailClient({
                     size="sm"
                     onClick={() => requireAuth(() => likeMutation.mutate())}
                     disabled={likeMutation.isPending}
+                    className={isLiked ? "text-red-500 border-red-500" : ""}
                     data-testid="button-like"
                   >
-                    <Heart className="w-4 h-4 mr-2" />
-                    Like ({content.likes})
+                    <Heart className={`w-4 h-4 mr-2 ${isLiked ? "fill-current" : ""}`} />
+                    Like ({likeCount})
                   </Button>
                   <Button
                     variant="outline"
