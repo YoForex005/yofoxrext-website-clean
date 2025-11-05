@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import Header from '@/components/Header';
 import EnhancedFooter from '@/components/EnhancedFooter';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ConversationList } from '@/components/messages/ConversationList';
 import { ChatWindow } from '@/components/messages/ChatWindow';
 import { NewConversationModal } from '@/components/messages/NewConversationModal';
@@ -13,9 +14,11 @@ import { MessageSearch } from '@/components/messages/MessageSearch';
 import { useMessagingSocket } from '@/hooks/useMessagingSocket';
 import { useConversations, useConversation } from '@/hooks/useMessaging';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Search, Settings } from 'lucide-react';
+import { Search, Settings, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import type { User } from '@shared/schema';
 import type { ConversationWithDetails, TypingEvent, UserOnlineEvent } from '@/types/messaging';
 
@@ -34,6 +37,8 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
   const isMobile = useIsMobile();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isAuthenticated } = useAuth();
+  const { requireAuth, AuthPrompt } = useAuthPrompt();
 
   // Fetch current user
   const { data: currentUser } = useQuery<User>({
@@ -176,6 +181,34 @@ export default function MessagesClient({ initialConversations = [] }: MessagesCl
   // Mobile view: show either conversation list or chat window
   const showConversationList = !isMobile || !selectedConversationId;
   const showChatWindow = !isMobile || selectedConversationId;
+
+  // Check if user is authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Header />
+        
+        <main className="flex-1 container mx-auto px-4 py-8">
+          <Card className="max-w-md mx-auto mt-16">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LogIn className="h-5 w-5" />
+                Login Required
+              </CardTitle>
+              <CardDescription>
+                Please log in to access your messages and connect with other traders
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AuthPrompt />
+            </CardContent>
+          </Card>
+        </main>
+
+        <EnhancedFooter />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

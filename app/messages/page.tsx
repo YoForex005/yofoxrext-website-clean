@@ -80,18 +80,7 @@ async function getConversations(cookieHeader: string) {
 }
 
 export default async function MessagesPage() {
-  const cookieStore = await cookies();
-  const cookieHeader = cookieStore.getAll()
-    .map(cookie => `${cookie.name}=${cookie.value}`)
-    .join('; ');
-
-  const user = await getUser();
-
-  if (!user) {
-    redirect('/');
-  }
-
-  const initialConversations = await getConversations(cookieHeader);
-
-  return <MessagesClient initialConversations={initialConversations} />;
+  // Don't do server-side authentication check - let the client handle it
+  // This prevents redirect loops and allows for better UX with login prompts
+  return <MessagesClient initialConversations={[]} />;
 }
