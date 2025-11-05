@@ -1177,7 +1177,7 @@ export default function PublishEAFormClient() {
     setUploadedFileSize(file.size);
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);  // Changed from 'file' to 'files'
     formData.append('type', 'ea-file');
 
     const xhr = new XMLHttpRequest();
@@ -1205,11 +1205,15 @@ export default function PublishEAFormClient() {
       if (xhr.status === 200) {
         try {
           const data = JSON.parse(xhr.responseText);
-          form.setValue("eaFileUrl", data.url);
-          toast({
-            title: "File uploaded successfully",
-            description: `${file.name} (${formatFileSize(file.size)})`,
-          });
+          if (data.urls && data.urls[0]) {
+            form.setValue("eaFileUrl", data.urls[0]);  // Changed from data.url to data.urls[0]
+            toast({
+              title: "File uploaded successfully",
+              description: `${file.name} (${formatFileSize(file.size)})`,
+            });
+          } else {
+            throw new Error("No URL in response");
+          }
         } catch (error) {
           toast({
             title: "Upload failed",
@@ -1297,7 +1301,7 @@ export default function PublishEAFormClient() {
     setImageUploadProgress(prev => ({ ...prev, [slotIndex]: 0 }));
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('files', file);  // Changed from 'file' to 'files'
     formData.append('type', 'ea-screenshot');
 
     const xhr = new XMLHttpRequest();
@@ -1313,14 +1317,18 @@ export default function PublishEAFormClient() {
       if (xhr.status === 200) {
         try {
           const data = JSON.parse(xhr.responseText);
-          const currentUrls = form.getValues("imageUrls");
-          const newUrls = [...currentUrls];
-          newUrls[slotIndex] = data.url;
-          form.setValue("imageUrls", newUrls);
-          toast({
-            title: "Screenshot uploaded",
-            description: `Slot ${slotIndex + 1} updated`,
-          });
+          if (data.urls && data.urls[0]) {
+            const currentUrls = form.getValues("imageUrls");
+            const newUrls = [...currentUrls];
+            newUrls[slotIndex] = data.urls[0];  // Changed from data.url to data.urls[0]
+            form.setValue("imageUrls", newUrls);
+            toast({
+              title: "Screenshot uploaded",
+              description: `Slot ${slotIndex + 1} updated`,
+            });
+          } else {
+            throw new Error("No URL in response");
+          }
         } catch (error) {
           toast({
             title: "Upload failed",
