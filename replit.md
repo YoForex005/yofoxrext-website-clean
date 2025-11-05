@@ -98,6 +98,12 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-05 - Fixed Product Review System & Like Functionality
+- **Product Review Character Limit**: Removed minimum 100 character requirement for reviews - any length now allowed
+- **Product Like Button Fix**: Added local state management (likeCount, isLiked) with query invalidation for instant UI updates
+- **UI Enhancement**: Like button now visually indicates when liked (red color + filled heart icon)
+- **Code Changes**: Modified `app/content/[slug]/ContentDetailClient.tsx` for review validation and like state management
+
 ### 2025-11-05 - Fixed Like Functionality & Reply Authentication
 - **Like Button Fix**: Added proper query invalidation to `likeMutation` in ThreadDetailClient for instant UI updates
 - **Reply Authentication Fix**: Removed client-side userId from reply requests, letting server handle authentication via session
