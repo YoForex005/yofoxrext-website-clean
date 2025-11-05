@@ -1,15 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useAuthPrompt } from '@/hooks/useAuthPrompt';
 import Header from "@/components/Header";
 import EnhancedFooter from "@/components/EnhancedFooter";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { 
   Coins, 
   TrendingUp, 
   TrendingDown, 
-  CreditCard
+  CreditCard,
+  LogIn
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -22,14 +25,12 @@ interface Transaction {
   status: "completed" | "pending" | "failed";
 }
 
-interface TransactionHistoryClientProps {
-  initialData?: any[];
-}
-
-export default function TransactionHistoryClient({ initialData = [] }: TransactionHistoryClientProps) {
-  const { data: ledgerData = initialData } = useQuery({
+export default function TransactionHistoryClient() {
+  const { isAuthenticated } = useAuth();
+  const { AuthPrompt } = useAuthPrompt();
+  
+  const { data: ledgerData = [] } = useQuery<any[]>({
     queryKey: ['/api/ledger/history'],
-    initialData,
   });
 
   // Transform ledger data to transaction format
@@ -59,6 +60,34 @@ export default function TransactionHistoryClient({ initialData = [] }: Transacti
     if (status === "pending") return <Badge variant="secondary" className="text-xs">Pending</Badge>;
     return <Badge variant="destructive" className="text-xs">Failed</Badge>;
   };
+
+  // Check if user is authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        
+        <div className="container max-w-md mx-auto px-4 py-8 mt-16">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LogIn className="h-5 w-5" />
+                Login Required
+              </CardTitle>
+              <CardDescription>
+                Please log in to view your transaction history and coin activity
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AuthPrompt />
+            </CardContent>
+          </Card>
+        </div>
+
+        <EnhancedFooter />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
