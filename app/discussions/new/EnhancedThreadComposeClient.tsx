@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -253,7 +253,7 @@ function ChipSelector({
               variant="secondary"
               className="gap-1 px-3 py-1 hover:bg-secondary/80 transition-colors animate-in fade-in-50 zoom-in-95 max-w-[200px]"
             >
-              {icon && <icon className="w-3 h-3 flex-shrink-0" />}
+              {icon && React.createElement(icon, { className: "w-3 h-3 flex-shrink-0" })}
               <span className="truncate">{item}</span>
               <button
                 type="button"
@@ -502,7 +502,7 @@ function FileAttachmentSection({
   onAttachmentsChange 
 }: { 
   attachments: FileAttachment[]; 
-  onAttachmentsChange: (attachments: FileAttachment[]) => void;
+  onAttachmentsChange: React.Dispatch<React.SetStateAction<FileAttachment[]>>;
 }) {
   const { toast } = useToast();
   const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
@@ -583,7 +583,7 @@ function FileAttachmentSection({
             throw new Error("Server did not return file URL");
           }
           
-          onAttachmentsChange(prev => prev.map(a => 
+          onAttachmentsChange((prev: FileAttachment[]) => prev.map((a: FileAttachment) => 
             a.id === attachment.id 
               ? { ...a, url, uploading: false }
               : a
@@ -626,7 +626,7 @@ function FileAttachmentSection({
         
         console.error(`[FileUpload] Error uploading ${attachment.file.name}:`, error);
         
-        onAttachmentsChange(prev => prev.map(a => 
+        onAttachmentsChange((prev: FileAttachment[]) => prev.map((a: FileAttachment) => 
           a.id === attachment.id 
             ? { ...a, uploading: false, error: errorMessage }
             : a
@@ -952,14 +952,6 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
 
   const titleLength = form.watch("title").length;
   const contentHtml = form.watch("contentHtml");
-  
-  // Validation helpers
-  const canProceedStep1 = 
-    titleLength >= 10 && 
-    form.watch("categorySlug") && 
-    editor?.getText().length >= 20;
-
-  const isFormValid = canProceedStep1;
 
   // Image upload handler - moved before useEditor to avoid initialization error
   const handleImageUpload = async (file: File, editorInstance?: any) => {
@@ -1103,7 +1095,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
           setIsDragging(false);
           return false;
         },
-        paste: async (view, event) => {
+        paste: (view, event) => {
           const items = event.clipboardData?.items;
           if (items) {
             for (const item of Array.from(items)) {
@@ -1113,7 +1105,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                 if (file) {
                   // Use editorRef to access the editor
                   if (editorRef.current) {
-                    await handleImageUpload(file, editorRef.current);
+                    // Handle the async upload without awaiting it
+                    handleImageUpload(file, editorRef.current);
                   }
                 }
                 return true;
@@ -1125,6 +1118,14 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
       },
     },
   });
+  
+  // Validation helpers - now that editor is defined
+  const canProceedStep1 = 
+    titleLength >= 10 && 
+    form.watch("categorySlug") && 
+    (editor?.getText()?.length ?? 0) >= 20;
+
+  const isFormValid = canProceedStep1;
 
   // Update form when editor content changes and set editorRef
   useEffect(() => {
@@ -1174,7 +1175,10 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   // Create thread mutation
   const createThreadMutation = useMutation({
     mutationFn: async (data: ThreadFormData) => {
-      await requireAuth();
+      // Wrap requireAuth in a promise to work with async/await
+      await new Promise<void>((resolve) => {
+        requireAuth(() => resolve());
+      });
       
       // Use the body field directly from the form data (already extracted by editor.getText())
       const threadData = {
@@ -1192,10 +1196,8 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
         }))
       };
 
-      return apiRequest("/api/threads", {
-        method: "POST",
-        body: JSON.stringify(threadData),
-      });
+      const response = await apiRequest("POST", "/api/threads", threadData);
+      return await response.json();
     },
     onSuccess: (data) => {
       toast({
