@@ -69,6 +69,12 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 
 ## Recent Changes
 
+### 2025-11-05 - Fixed Thread Creation React Error #418
+- **Issue**: React error #418 occurred when writing threads and clicking next button
+- **Root Cause**: Bare text string "Free" was being rendered without proper JSX wrapping in attachment pricing display
+- **Solution**: Wrapped the text in a React Fragment (<>Free</>) to properly render the text node
+- **Result**: Thread creation form now works properly without any text rendering errors
+
 ### 2025-11-05 - Production Deployment Completed
 - **Deployment Success**: Successfully deployed application to production mode
 - **Fixed Build Issues**: Resolved Next.js 16 production build errors by adding Suspense boundaries
