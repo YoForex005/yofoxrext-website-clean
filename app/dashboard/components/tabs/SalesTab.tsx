@@ -2,156 +2,346 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { KPICard } from "../shared/KPICard";
-import { ChartContainer } from "../shared/ChartContainer";
-import { DataTable } from "../shared/DataTable";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { FilterPanel } from "../shared/FilterPanel";
-import { DollarSign, ShoppingCart, TrendingUp, Percent } from "lucide-react";
-import { Line, LineChart, Bar, BarChart, Pie, PieChart, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { KPICard } from "../shared/KPICard";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { 
+  DollarSign, 
+  ShoppingCart, 
+  TrendingUp, 
+  Percent,
+  Coins,
+  FileText,
+  Download,
+  Calendar,
+  Users
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
+
+interface FileSale {
+  id: string;
+  filename: string;
+  buyerId: string;
+  buyerUsername: string;
+  price: number;
+  commission: number;
+  netEarnings: number;
+  createdAt: string;
+  downloadCount?: number;
+}
 
 interface SalesDashboardData {
-  totalRevenue: number;
   totalSales: number;
-  avgSale: number;
-  conversionRate: number;
+  totalGrossRevenue: number;
+  totalCommission: number;
+  totalNetEarnings: number;
+  avgSalePrice: number;
+  uniqueBuyers: number;
+  topSellingFile?: {
+    filename: string;
+    salesCount: number;
+    revenue: number;
+  };
+  recentSales: FileSale[];
+  salesByFile: Array<{
+    filename: string;
+    salesCount: number;
+    totalRevenue: number;
+    downloadCount: number;
+  }>;
 }
 
 export function SalesTab() {
   const [filters, setFilters] = useState({});
-  const { data: salesData, isLoading } = useQuery<SalesDashboardData>({
-    queryKey: ["/api/me/sales-dashboard", filters],
+
+  // Fetch sales dashboard data
+  const { data: dashboardData, isLoading } = useQuery<SalesDashboardData>({
+    queryKey: ["/api/user/file-sales", filters],
+    queryFn: async () => {
+      const response = await fetch("/api/user/file-sales", {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch sales data');
+      return response.json();
+    },
   });
 
-  const mockProductData = [
-    { name: "EA Pro", sales: 45, revenue: 2250 },
-    { name: "Indicator Pack", sales: 32, revenue: 960 },
-    { name: "Strategy Guide", sales: 28, revenue: 840 },
-    { name: "Trading Bot", sales: 18, revenue: 1440 },
-  ];
-
-  const mockPieData = [
-    { name: "Expert Advisors", value: 45, color: "hsl(var(--chart-1))" },
-    { name: "Indicators", value: 30, color: "hsl(var(--chart-2))" },
-    { name: "Articles", value: 15, color: "hsl(var(--chart-3))" },
-    { name: "Other", value: 10, color: "hsl(var(--chart-4))" },
-  ];
-
-  const recentSales = [
-    { product: "EA Pro v2", buyer: "trader123", price: "$50", date: "2 hours ago" },
-    { product: "Indicator Set", buyer: "forex_master", price: "$30", date: "5 hours ago" },
-    { product: "Strategy Guide", buyer: "newbie_trader", price: "$25", date: "1 day ago" },
-  ];
+  // Calculate commission percentage for display
+  const commissionRate = 8.5; // Platform takes 8.5%
 
   return (
     <div className="space-y-6">
+      {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <KPICard
-          title="Total Revenue"
-          value={`$${salesData?.totalRevenue || 0}`}
-          icon={DollarSign}
-          trend={15.3}
-          trendLabel="vs last month"
-          loading={isLoading}
-          color="text-green-500"
-          data-testid="kpi-total-revenue"
-        />
-        <KPICard
           title="Total Sales"
-          value={salesData?.totalSales || 0}
+          value={dashboardData?.totalSales || 0}
           icon={ShoppingCart}
-          trend={8.7}
+          trend={12.5}
+          trendLabel="vs last month"
           loading={isLoading}
           color="text-blue-500"
           data-testid="kpi-total-sales"
         />
         <KPICard
-          title="Avg Sale Value"
-          value={`$${salesData?.avgSale?.toFixed(2) || '0.00'}`}
-          icon={TrendingUp}
-          trend={-2.4}
+          title="Gross Revenue"
+          value={`${dashboardData?.totalGrossRevenue || 0} coins`}
+          icon={Coins}
+          trend={18.3}
           loading={isLoading}
-          color="text-purple-500"
-          data-testid="kpi-avg-sale-value"
+          color="text-yellow-500"
+          data-testid="kpi-gross-revenue"
         />
         <KPICard
-          title="Conversion Rate"
-          value={`${salesData?.conversionRate || 0}%`}
+          title="Platform Fee (8.5%)"
+          value={`${dashboardData?.totalCommission || 0} coins`}
           icon={Percent}
-          trend={4.1}
+          trend={0}
           loading={isLoading}
-          color="text-orange-500"
-          data-testid="kpi-conversion-rate"
+          color="text-red-500"
+          data-testid="kpi-commission"
+        />
+        <KPICard
+          title="Net Earnings"
+          value={`${dashboardData?.totalNetEarnings || 0} coins`}
+          icon={DollarSign}
+          trend={15.8}
+          loading={isLoading}
+          color="text-green-500"
+          data-testid="kpi-net-earnings"
         />
       </div>
 
+      {/* Secondary KPIs */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <KPICard
+          title="Avg Sale Price"
+          value={`${dashboardData?.avgSalePrice?.toFixed(0) || 0} coins`}
+          icon={TrendingUp}
+          loading={isLoading}
+          color="text-purple-500"
+          data-testid="kpi-avg-sale-price"
+        />
+        <KPICard
+          title="Unique Buyers"
+          value={dashboardData?.uniqueBuyers || 0}
+          icon={Users}
+          loading={isLoading}
+          color="text-indigo-500"
+          data-testid="kpi-unique-buyers"
+        />
+        {dashboardData?.topSellingFile && (
+          <KPICard
+            title="Top Selling File"
+            value={dashboardData.topSellingFile.filename}
+            icon={FileText}
+            loading={isLoading}
+            color="text-orange-500"
+            description={`${dashboardData.topSellingFile.salesCount} sales • ${dashboardData.topSellingFile.revenue} coins`}
+            data-testid="kpi-top-file"
+          />
+        )}
+      </div>
+
+      {/* Filters */}
       <FilterPanel
-        onFilterChange={setFilters}
-        showDateRange
-        showCategory
-        categories={["Expert Advisors", "Indicators", "Articles"]}
+        onFiltersChange={setFilters}
+        filterOptions={[
+          { 
+            id: "dateRange", 
+            label: "Date Range", 
+            type: "select",
+            options: [
+              { value: "all", label: "All Time" },
+              { value: "today", label: "Today" },
+              { value: "week", label: "This Week" },
+              { value: "month", label: "This Month" },
+              { value: "year", label: "This Year" },
+            ]
+          },
+          {
+            id: "sortBy",
+            label: "Sort By",
+            type: "select",
+            options: [
+              { value: "date_desc", label: "Newest First" },
+              { value: "date_asc", label: "Oldest First" },
+              { value: "price_high", label: "Price: High to Low" },
+              { value: "price_low", label: "Price: Low to High" },
+            ]
+          }
+        ]}
+        data-testid="filter-panel-sales"
       />
 
-      <ChartContainer title="Revenue Timeline (Last 30 Days)" loading={isLoading}>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={mockProductData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="revenue" stroke="hsl(var(--primary))" strokeWidth={2} />
-          </LineChart>
-        </ResponsiveContainer>
-      </ChartContainer>
+      {/* Sales by File Summary */}
+      {dashboardData?.salesByFile && dashboardData.salesByFile.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales by File</CardTitle>
+            <CardDescription>
+              Performance metrics for each of your files
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead data-testid="table-header-file">File</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-sales-count">Sales</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-downloads">Downloads</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-revenue">Total Revenue</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-net">Net Earnings</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dashboardData.salesByFile.map((file, index) => {
+                    const netEarnings = Math.floor(file.totalRevenue * (1 - commissionRate / 100));
+                    return (
+                      <TableRow key={index} data-testid={`row-file-${index}`}>
+                        <TableCell className="font-medium" data-testid={`text-filename-${index}`}>
+                          {file.filename}
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-sales-count-${index}`}>
+                          {file.salesCount}
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-downloads-${index}`}>
+                          <div className="flex items-center justify-end gap-1">
+                            <Download className="h-3 w-3" />
+                            {file.downloadCount}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-revenue-${index}`}>
+                          <Badge variant="outline">{file.totalRevenue} coins</Badge>
+                        </TableCell>
+                        <TableCell className="text-right" data-testid={`text-net-${index}`}>
+                          <span className="text-green-600 font-semibold">{netEarnings} coins</span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <ChartContainer title="Top 10 Products" loading={isLoading}>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={mockProductData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Bar dataKey="sales" fill="hsl(var(--primary))" />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartContainer>
+      {/* Recent Sales Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Sales</CardTitle>
+          <CardDescription>
+            Your latest file sales with detailed breakdown
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : dashboardData?.recentSales && dashboardData.recentSales.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead data-testid="table-header-date">Date</TableHead>
+                    <TableHead data-testid="table-header-file">File</TableHead>
+                    <TableHead data-testid="table-header-buyer">Buyer</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-price">Price</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-commission">Commission</TableHead>
+                    <TableHead className="text-right" data-testid="table-header-net-earnings">Net Earnings</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dashboardData.recentSales.map((sale) => (
+                    <TableRow key={sale.id} data-testid={`row-sale-${sale.id}`}>
+                      <TableCell data-testid={`text-date-${sale.id}`}>
+                        <div>
+                          <div className="font-medium">
+                            {format(new Date(sale.createdAt), 'MMM dd, yyyy')}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(new Date(sale.createdAt), { addSuffix: true })}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-medium" data-testid={`text-filename-${sale.id}`}>
+                        {sale.filename}
+                      </TableCell>
+                      <TableCell data-testid={`text-buyer-${sale.id}`}>
+                        {sale.buyerUsername}
+                      </TableCell>
+                      <TableCell className="text-right" data-testid={`text-price-${sale.id}`}>
+                        <Badge variant="outline">{sale.price} coins</Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-red-600" data-testid={`text-commission-${sale.id}`}>
+                        -{sale.commission} coins
+                      </TableCell>
+                      <TableCell className="text-right" data-testid={`text-net-${sale.id}`}>
+                        <span className="text-green-600 font-semibold">{sale.netEarnings} coins</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <FileText className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-semibold text-gray-900">No sales yet</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Start by publishing files to the marketplace
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-        <ChartContainer title="Sales by Product Type" loading={isLoading}>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={mockPieData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={({ name, percent }: { name: string; percent: number }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {mockPieData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartContainer>
-      </div>
-
-      <ChartContainer title="Recent Sales" loading={isLoading}>
-        <DataTable
-          columns={[
-            { key: "product", label: "Product" },
-            { key: "buyer", label: "Buyer" },
-            { key: "price", label: "Price" },
-            { key: "date", label: "Date" },
-          ]}
-          data={recentSales}
-          loading={isLoading}
-        />
-      </ChartContainer>
+      {/* Summary Stats */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Commission Summary</CardTitle>
+          <CardDescription>
+            Platform fee breakdown (8.5% per sale)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between py-2 border-b">
+              <span className="text-muted-foreground">Total Gross Revenue</span>
+              <span className="font-semibold" data-testid="text-summary-gross">
+                {dashboardData?.totalGrossRevenue || 0} coins
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b">
+              <span className="text-muted-foreground">Platform Commission (8.5%)</span>
+              <span className="font-semibold text-red-600" data-testid="text-summary-commission">
+                -{dashboardData?.totalCommission || 0} coins
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <span className="font-semibold">Your Net Earnings</span>
+              <span className="font-bold text-green-600 text-lg" data-testid="text-summary-net">
+                {dashboardData?.totalNetEarnings || 0} coins
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

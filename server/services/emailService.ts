@@ -148,6 +148,167 @@ async function getUserIdFromEmail(email: string): Promise<string | null> {
 }
 
 export const emailService = {
+  // FILE PURCHASE NOTIFICATIONS
+  async sendFilePurchaseConfirmation(
+    to: string, 
+    buyerUsername: string,
+    filename: string, 
+    price: number, 
+    downloadLink: string, 
+    transactionId: string
+  ): Promise<void> {
+    const safeBuyerUsername = escapeHtml(buyerUsername);
+    const safeFilename = escapeHtml(filename);
+    
+    const content = `
+      <h2 style="color: #111827; margin: 0 0 16px 0; font-size: 24px;">✅ Purchase Confirmation</h2>
+      <p style="color: #374151; font-size: 16px; line-height: 1.5; margin: 0 0 16px 0;">
+        Thank you for your purchase, <strong>${safeBuyerUsername}</strong>!
+      </p>
+      <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #111827; margin: 0 0 12px 0; font-size: 18px;">Order Details</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">File:</td>
+            <td style="padding: 8px 0; color: #111827; font-weight: 600;">${safeFilename}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Price:</td>
+            <td style="padding: 8px 0; color: #111827; font-weight: 600;">${price} coins</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Transaction ID:</td>
+            <td style="padding: 8px 0; color: #111827; font-family: monospace; font-size: 14px;">${transactionId}</td>
+          </tr>
+        </table>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${downloadLink}" style="display: inline-block; background: #2563eb; color: white; padding: 14px 32px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+          Download Your File
+        </a>
+      </div>
+      <p style="color: #6b7280; font-size: 14px; margin: 16px 0 0 0;">
+        💡 <strong>Tip:</strong> Your download link will remain active. You can also access your purchased files anytime from your <a href="${process.env.BASE_URL}/dashboard" style="color: #2563eb;">Dashboard</a> under the Purchases tab.
+      </p>
+    `;
+    
+    // Get user ID for tracking
+    const userId = await getUserIdFromEmail(to);
+    const subject = `Purchase Confirmation - ${truncate(filename, 50)}`;
+    
+    // Create template with tracking
+    const { html, trackingId } = await createEmailTemplate(content, {
+      recipientEmail: to,
+      userId: userId || undefined,
+      templateKey: 'file_purchase_confirmation',
+      subject
+    });
+    
+    // Send email
+    const info = await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || 'YoForex Marketplace'}" <${process.env.SMTP_FROM_EMAIL}>`,
+      to,
+      subject,
+      html
+    });
+    
+    // Update email status to sent
+    if (trackingId) {
+      await db.update(emailNotifications)
+        .set({ 
+          status: 'sent',
+          sentAt: new Date(),
+          providerMessageId: info.messageId
+        })
+        .where(eq(emailNotifications.id, trackingId));
+    }
+  },
+
+  async sendFileSaleNotification(
+    to: string,
+    sellerUsername: string,
+    buyerUsername: string,
+    filename: string,
+    salePrice: number,
+    commission: number,
+    netEarnings: number
+  ): Promise<void> {
+    const safeSellerUsername = escapeHtml(sellerUsername);
+    const safeBuyerUsername = escapeHtml(buyerUsername);
+    const safeFilename = escapeHtml(filename);
+    
+    const content = `
+      <h2 style="color: #111827; margin: 0 0 16px 0; font-size: 24px;">💰 New Sale!</h2>
+      <p style="color: #374151; font-size: 16px; line-height: 1.5; margin: 0 0 16px 0;">
+        Congratulations <strong>${safeSellerUsername}</strong>, you've made a new sale!
+      </p>
+      <div style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 20px; margin: 20px 0;">
+        <h3 style="color: #111827; margin: 0 0 12px 0; font-size: 18px;">Sale Details</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">File Sold:</td>
+            <td style="padding: 8px 0; color: #111827; font-weight: 600;">${safeFilename}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Buyer:</td>
+            <td style="padding: 8px 0; color: #111827; font-weight: 600;">${safeBuyerUsername}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Sale Price:</td>
+            <td style="padding: 8px 0; color: #111827; font-weight: 600;">${salePrice} coins</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #6b7280;">Platform Fee (8.5%):</td>
+            <td style="padding: 8px 0; color: #ef4444;">-${commission} coins</td>
+          </tr>
+          <tr style="border-top: 2px solid #e5e7eb;">
+            <td style="padding: 12px 0 8px 0; color: #111827; font-weight: 600;">Your Earnings:</td>
+            <td style="padding: 12px 0 8px 0; color: #16a34a; font-weight: 700; font-size: 18px;">${netEarnings} coins</td>
+          </tr>
+        </table>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="${process.env.BASE_URL}/dashboard" style="display: inline-block; background: #16a34a; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+          View Sales Dashboard
+        </a>
+      </div>
+      <p style="color: #6b7280; font-size: 14px; margin: 16px 0 0 0;">
+        📊 Track all your sales and earnings in your Dashboard under the Sales tab.
+      </p>
+    `;
+    
+    // Get user ID for tracking
+    const userId = await getUserIdFromEmail(to);
+    const subject = `New Sale - ${truncate(filename, 50)}`;
+    
+    // Create template with tracking
+    const { html, trackingId } = await createEmailTemplate(content, {
+      recipientEmail: to,
+      userId: userId || undefined,
+      templateKey: 'file_sale_notification',
+      subject
+    });
+    
+    // Send email
+    const info = await transporter.sendMail({
+      from: `"${process.env.SMTP_FROM_NAME || 'YoForex Marketplace'}" <${process.env.SMTP_FROM_EMAIL}>`,
+      to,
+      subject,
+      html
+    });
+    
+    // Update email status to sent
+    if (trackingId) {
+      await db.update(emailNotifications)
+        .set({ 
+          status: 'sent',
+          sentAt: new Date(),
+          providerMessageId: info.messageId
+        })
+        .where(eq(emailNotifications.id, trackingId));
+    }
+  },
+
   // 1. COMMENT NOTIFICATION
   async sendCommentNotification(to: string, commenterName: string, threadTitle: string, commentPreview: string, threadSlug: string): Promise<void> {
     const safeCommenterName = escapeHtml(commenterName);

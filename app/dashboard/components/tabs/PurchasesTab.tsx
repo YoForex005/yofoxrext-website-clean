@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FilterPanel } from "../FilterPanel";
-import { KPICard } from "../KPICard";
+import { FilterPanel } from "../shared/FilterPanel";
+import { KPICard } from "../shared/KPICard";
 import {
   Table,
   TableBody,

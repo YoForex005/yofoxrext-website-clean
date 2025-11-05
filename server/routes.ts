@@ -3855,45 +3855,44 @@ export async function registerRoutes(app: Express): Promise<Express> {
         // Update asset download count
         await storage.updateFileAssetDownloads(assetId);
 
-        // Queue email notifications
+        // Send email notifications
         const seller = await storage.getUser(sellerId);
         
-        // Buyer email
+        // Buyer email notification
         if (buyer.email) {
-          await emailQueueService.queueEmail({
-            userId: buyerId,
-            templateKey: 'file_purchase_buyer',
-            recipientEmail: buyer.email,
-            subject: `Purchase Confirmation - ${asset.filename}`,
-            payload: {
-              recipientName: buyer.username,
-              filename: asset.filename,
-              price: asset.price,
-              downloadUrl: `/api/downloads/${purchase.id}`,
-              purchaseDate: new Date().toISOString()
-            },
-            priority: EmailPriority.HIGH
-          });
+          try {
+            await emailService.sendFilePurchaseConfirmation(
+              buyer.email,
+              buyer.username,
+              asset.filename,
+              asset.price,
+              `${process.env.BASE_URL}/api/downloads/${purchase.id}`,
+              purchase.id
+            );
+            console.log(`[Email] Sent purchase confirmation to buyer ${buyer.email}`);
+          } catch (emailError) {
+            console.error('[Email] Failed to send purchase confirmation to buyer:', emailError);
+            // Continue even if email fails - don't block the purchase
+          }
         }
 
-        // Seller email
+        // Seller email notification
         if (seller?.email) {
-          await emailQueueService.queueEmail({
-            userId: sellerId,
-            templateKey: 'file_purchase_seller',
-            recipientEmail: seller.email,
-            subject: `New Sale - ${asset.filename}`,
-            payload: {
-              recipientName: seller.username,
-              filename: asset.filename,
-              buyerUsername: buyer.username,
-              price: asset.price,
+          try {
+            await emailService.sendFileSaleNotification(
+              seller.email,
+              seller.username,
+              buyer.username,
+              asset.filename,
+              asset.price,
               commission,
-              netAmount,
-              saleDate: new Date().toISOString()
-            },
-            priority: EmailPriority.MEDIUM
-          });
+              netAmount
+            );
+            console.log(`[Email] Sent sale notification to seller ${seller.email}`);
+          } catch (emailError) {
+            console.error('[Email] Failed to send sale notification to seller:', emailError);
+            // Continue even if email fails - don't block the purchase
+          }
         }
 
         res.json({ 
