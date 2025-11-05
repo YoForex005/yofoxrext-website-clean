@@ -5,6 +5,41 @@ YoForex is a comprehensive trading community platform for forex traders, offerin
 
 ## Recent Changes
 
+### 2025-11-05 - Fixed Coin Reward System for Onboarding Tasks
+- **Critical Issue**: Onboarding tasks were being tracked but NOT awarding coins
+  - Root cause: Code was using `trackOnboardingProgress` instead of `markOnboardingStep`
+  - Fixed forum reply tracking (line 5592): Now uses `markOnboardingStep` with proper coin triggers
+  - Removed invalid task tracking for "profileCreated" and "socialLinked" (lines 7702-7704)
+  - Verified existing tracking for profile picture, thread creation, and review submission
+  - Files modified: `server/routes.ts`
+  
+- **Retroactive Fix**: Awarded missing coins to affected users
+  - Created script `scripts/fix-onboarding-coins-minimal.ts` to find and fix missing rewards
+  - Identified 6 users with 7 missing coin awards out of 202 users checked
+  - Successfully awarded 60 total missing coins with proper transaction records
+  - All transactions include proper triggers and metadata for audit trail
+  - Database schema updated: Added missing `daily_transaction_limit` column to users table
+  
+- **Coin Triggers Now Working Correctly**:
+  - ONBOARDING_PROFILE_COMPLETE (10 coins) for profile picture
+  - ONBOARDING_FIRST_POST (5 coins) for first reply
+  - ONBOARDING_FIRST_REVIEW (6 coins) for two reviews
+  - ONBOARDING_FIRST_THREAD (10 coins) for first thread
+  - All future onboarding completions will award coins immediately
+
+### 2025-11-05 - Fixed Critical JavaScript Errors
+- **TypeError Fix**: Added optional chaining to prevent `.find()` on undefined
+  - Updated `shared/tradingMetadata.ts` functions: getStrategyByValue, getPlatformByValue, getInstrumentsByCategory, getTimeframesByCategory
+  - All now use safe patterns like `STRATEGIES?.find()` and `INSTRUMENTS?.filter() || []`
+  
+- **React Error #418 Fix**: Wrapped all text content in JSX elements
+  - Fixed `app/discussions/new/EnhancedThreadComposeClient.tsx` - no more bare text rendering
+  - All text now properly wrapped in `<span>` or Fragment elements
+  
+- **API Endpoint Fixes**: 
+  - Fixed `/api/user/onboarding-progress` - now returns proper JSON with HTTP 200
+  - WebSocket configuration already using current location (no hardcoded ports)
+
 ### 2025-11-05 - Fixed Profile Completion Coins and Photo Display
 - **Issue 1**: Profile completion coins (10 Sweets) not being awarded
   - Added comprehensive `checkProfileCompletion()` function to storage classes
