@@ -36,7 +36,16 @@ import {
   Award,
   Clock,
   ChevronRight,
-  Zap
+  Zap,
+  BarChart3,
+  Brain,
+  LineChart,
+  Settings2,
+  BookOpen,
+  Code2,
+  Rocket,
+  ArrowRight,
+  Info
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -64,27 +73,29 @@ interface MarketplaceClientProps {
   initialContent: Content[];
 }
 
-// Skeleton card component for loading state
+// Enhanced Skeleton card component with shimmer effect
 function ContentCardSkeleton({ viewMode }: { viewMode: "grid" | "list" }) {
   if (viewMode === "grid") {
     return (
-      <Card className="bg-white border-gray-100 shadow-sm animate-pulse">
+      <Card className="bg-white border-gray-200 shadow-lg overflow-hidden">
         <CardContent className="p-0">
-          <Skeleton className="aspect-video w-full rounded-t-lg bg-gray-200" />
-          <div className="p-5 space-y-3">
+          <div className="relative aspect-video w-full bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer-wave" />
+          </div>
+          <div className="p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <Skeleton className="h-5 w-20 bg-gray-200" />
-              <Skeleton className="h-5 w-16 bg-gray-200" />
+              <div className="h-6 w-24 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
+              <div className="h-6 w-20 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
             </div>
-            <Skeleton className="h-6 w-full bg-gray-200" />
-            <Skeleton className="h-4 w-full bg-gray-200" />
-            <Skeleton className="h-4 w-3/4 bg-gray-200" />
-            <div className="flex justify-between items-center pt-2">
+            <div className="h-7 w-full bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+            <div className="h-4 w-full bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+            <div className="h-4 w-3/4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+            <div className="flex justify-between items-center pt-4 border-t border-gray-100">
               <div className="flex gap-3">
-                <Skeleton className="h-4 w-16 bg-gray-200" />
-                <Skeleton className="h-4 w-16 bg-gray-200" />
+                <div className="h-5 w-16 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+                <div className="h-5 w-16 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
               </div>
-              <Skeleton className="h-6 w-16 bg-gray-200" />
+              <div className="h-8 w-24 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
             </div>
           </div>
         </CardContent>
@@ -93,23 +104,23 @@ function ContentCardSkeleton({ viewMode }: { viewMode: "grid" | "list" }) {
   }
 
   return (
-    <Card className="bg-white border-gray-100 shadow-sm animate-pulse">
-      <CardContent className="p-5 flex gap-4">
-        <Skeleton className="w-36 h-28 rounded-lg flex-shrink-0 bg-gray-200" />
+    <Card className="bg-white border-gray-200 shadow-lg overflow-hidden">
+      <CardContent className="p-6 flex gap-5">
+        <div className="w-40 h-32 rounded-xl flex-shrink-0 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 animate-shimmer" />
         <div className="flex-1 space-y-3">
           <div className="flex gap-2">
-            <Skeleton className="h-5 w-20 bg-gray-200" />
-            <Skeleton className="h-5 w-16 bg-gray-200" />
+            <div className="h-6 w-24 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
+            <div className="h-6 w-20 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
           </div>
-          <Skeleton className="h-6 w-3/4 bg-gray-200" />
-          <Skeleton className="h-4 w-full bg-gray-200" />
+          <div className="h-7 w-3/4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+          <div className="h-4 w-full bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
           <div className="flex justify-between items-center">
             <div className="flex gap-4">
-              <Skeleton className="h-4 w-24 bg-gray-200" />
-              <Skeleton className="h-4 w-16 bg-gray-200" />
-              <Skeleton className="h-4 w-16 bg-gray-200" />
+              <div className="h-5 w-28 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+              <div className="h-5 w-20 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
+              <div className="h-5 w-20 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded animate-shimmer" />
             </div>
-            <Skeleton className="h-6 w-20 bg-gray-200" />
+            <div className="h-8 w-28 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded-full animate-shimmer" />
           </div>
         </div>
       </CardContent>
@@ -117,25 +128,65 @@ function ContentCardSkeleton({ viewMode }: { viewMode: "grid" | "list" }) {
   );
 }
 
-// Star rating component
+// Enhanced Star rating component
 function StarRating({ rating }: { rating: number }) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1">
       {[...Array(5)].map((_, i) => (
         <Star
           key={i}
           className={cn(
-            "w-3.5 h-3.5",
+            "w-4 h-4 transition-all",
             i < Math.floor(rating)
-              ? "fill-yellow-400 text-yellow-400"
+              ? "fill-yellow-400 text-yellow-400 drop-shadow-sm"
               : "fill-gray-200 text-gray-200"
           )}
         />
       ))}
-      <span className="ml-1 text-sm text-gray-600">{rating.toFixed(1)}</span>
+      <span className="ml-1.5 text-sm font-medium text-gray-700">{rating.toFixed(1)}</span>
     </div>
   );
 }
+
+// Category configuration with colors and icons
+const categoryConfig = {
+  ea: { 
+    icon: Zap, 
+    color: "from-purple-500 to-purple-600",
+    bgColor: "bg-gradient-to-r from-purple-500 to-purple-600",
+    lightColor: "bg-purple-50 text-purple-700 border-purple-200" 
+  },
+  indicator: { 
+    icon: BarChart3, 
+    color: "from-blue-500 to-blue-600",
+    bgColor: "bg-gradient-to-r from-blue-500 to-blue-600",
+    lightColor: "bg-blue-50 text-blue-700 border-blue-200" 
+  },
+  article: { 
+    icon: BookOpen, 
+    color: "from-green-500 to-green-600",
+    bgColor: "bg-gradient-to-r from-green-500 to-green-600",
+    lightColor: "bg-green-50 text-green-700 border-green-200" 
+  },
+  source_code: { 
+    icon: Code2, 
+    color: "from-orange-500 to-orange-600",
+    bgColor: "bg-gradient-to-r from-orange-500 to-orange-600",
+    lightColor: "bg-orange-50 text-orange-700 border-orange-200" 
+  },
+  template: { 
+    icon: Award, 
+    color: "from-pink-500 to-pink-600",
+    bgColor: "bg-gradient-to-r from-pink-500 to-pink-600",
+    lightColor: "bg-pink-50 text-pink-700 border-pink-200" 
+  },
+  strategy: { 
+    icon: Brain, 
+    color: "from-indigo-500 to-indigo-600",
+    bgColor: "bg-gradient-to-r from-indigo-500 to-indigo-600",
+    lightColor: "bg-indigo-50 text-indigo-700 border-indigo-200" 
+  }
+};
 
 export default function MarketplaceClient({ initialContent }: MarketplaceClientProps) {
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -145,6 +196,7 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
   const [searchQuery, setSearchQuery] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [animateCards, setAnimateCards] = useState(false);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
   // Use initial content directly (page uses ISR for data freshness)
   const contentData = initialContent;
@@ -266,6 +318,11 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
     }
   };
 
+  // Helper function to get category config
+  const getCategoryConfig = (type: string) => {
+    return categoryConfig[type as keyof typeof categoryConfig] || categoryConfig.ea;
+  };
+
   // Helper function to get rating from likes
   const getRating = (likes: number = 0): number => {
     if (likes === 0) return 4.0;
@@ -285,72 +342,117 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
 
   const hasActiveFilters = contentType !== "all" || categoryTab !== "all" || searchQuery || sortBy !== "popular";
 
-  // Category tabs
+  // Category tabs with enhanced styling
   const categoryTabs = [
-    { id: "all", label: "All", icon: Package },
-    { id: "ea", label: "Expert Advisors", icon: Zap },
-    { id: "indicators", label: "Indicators", icon: TrendingUp },
-    { id: "templates", label: "Templates", icon: Award },
-    { id: "strategies", label: "Strategies", icon: ChevronRight }
+    { id: "all", label: "All Products", icon: Package, color: "from-gray-500 to-gray-600" },
+    { id: "ea", label: "Expert Advisors", icon: Zap, color: "from-purple-500 to-purple-600" },
+    { id: "indicators", label: "Indicators", icon: BarChart3, color: "from-blue-500 to-blue-600" },
+    { id: "templates", label: "Templates", icon: Award, color: "from-pink-500 to-pink-600" },
+    { id: "strategies", label: "Strategies", icon: Brain, color: "from-indigo-500 to-indigo-600" }
   ];
 
   return (
-    <div className="min-h-screen bg-gray-50/50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-50">
+      <style jsx global>{`
+        @keyframes shimmer {
+          0% {
+            background-position: -200% center;
+          }
+          100% {
+            background-position: 200% center;
+          }
+        }
+        @keyframes shimmer-wave {
+          0% {
+            transform: translateX(-100%);
+          }
+          100% {
+            transform: translateX(100%);
+          }
+        }
+        .animate-shimmer {
+          background-size: 200% 100%;
+          animation: shimmer 2s ease-in-out infinite;
+        }
+        .animate-shimmer-wave {
+          animation: shimmer-wave 2s ease-in-out infinite;
+        }
+      `}</style>
+      
       <Header />
       
       <main>
-        {/* Hero Section */}
-        <section className="relative bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 overflow-hidden">
-          {/* Background Pattern */}
-          <div className="absolute inset-0 opacity-10">
+        {/* Hero Section with Enhanced Gradient */}
+        <section className="relative bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 overflow-hidden">
+          {/* Animated Background Pattern */}
+          <div className="absolute inset-0 opacity-20">
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
             <div className="absolute inset-0" style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
           </div>
 
-          <div className="relative container max-w-7xl mx-auto px-4 py-16">
-            <div className="grid md:grid-cols-2 gap-8 items-center">
+          <div className="relative container max-w-7xl mx-auto px-4 py-20">
+            <div className="grid md:grid-cols-2 gap-12 items-center">
               <div className="text-white space-y-6">
-                <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-1.5 text-sm">
+                <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-full px-5 py-2 text-sm font-medium animate-pulse">
                   <Sparkles className="w-4 h-4" />
-                  <span>Premium Trading Tools Marketplace</span>
+                  <span>🔥 Premium Trading Tools Marketplace</span>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-bold leading-tight">
+                <h1 className="text-5xl md:text-6xl font-bold leading-tight">
                   Discover Professional
-                  <span className="block text-yellow-400">Trading Solutions</span>
+                  <span className="block bg-gradient-to-r from-yellow-300 to-orange-400 bg-clip-text text-transparent">
+                    Trading Solutions
+                  </span>
                 </h1>
-                <p className="text-lg text-blue-100 leading-relaxed">
+                <p className="text-lg text-white/90 leading-relaxed max-w-lg">
                   Browse our curated collection of Expert Advisors, Indicators, and Trading Resources. 
-                  Built by traders, for traders.
+                  Built by expert traders, tested by the community.
                 </p>
-                <Link href="/publish-ea">
+                <div className="flex gap-4">
+                  <Link href="/publish-ea">
+                    <Button 
+                      size="lg" 
+                      className="bg-white text-purple-700 hover:bg-gray-100 shadow-2xl hover:shadow-3xl transition-all duration-300 transform hover:scale-105 font-semibold"
+                      data-testid="button-publish-ea-hero"
+                    >
+                      <Plus className="h-5 w-5 mr-2" />
+                      Publish Your EA
+                    </Button>
+                  </Link>
                   <Button 
                     size="lg" 
-                    className="bg-white text-blue-700 hover:bg-gray-100 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-0.5"
-                    data-testid="button-publish-ea-hero"
+                    variant="outline"
+                    className="border-white/30 text-white bg-white/10 backdrop-blur-sm hover:bg-white/20 transition-all duration-300"
                   >
-                    <Plus className="h-5 w-5 mr-2" />
-                    Publish Your EA
+                    <Info className="h-5 w-5 mr-2" />
+                    Learn More
                   </Button>
-                </Link>
+                </div>
               </div>
 
-              {/* Stats Cards */}
+              {/* Enhanced Stats Cards with Glassmorphism */}
               <div className="grid grid-cols-3 gap-4">
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center text-white">
-                  <Package className="w-8 h-8 mx-auto mb-2 text-yellow-400" />
-                  <div className="text-2xl font-bold">{stats.totalEAs}+</div>
-                  <div className="text-sm text-blue-100">Total EAs</div>
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center text-white border border-white/20 transform hover:scale-105 transition-all duration-300">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <Package className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-3xl font-bold">{stats.totalEAs}+</div>
+                  <div className="text-sm text-white/80 mt-1">Expert Advisors</div>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center text-white">
-                  <Download className="w-8 h-8 mx-auto mb-2 text-green-400" />
-                  <div className="text-2xl font-bold">{stats.totalDownloads}</div>
-                  <div className="text-sm text-blue-100">Downloads</div>
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center text-white border border-white/20 transform hover:scale-105 transition-all duration-300">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-green-400 to-emerald-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <Download className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-3xl font-bold">{stats.totalDownloads}</div>
+                  <div className="text-sm text-white/80 mt-1">Total Downloads</div>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center text-white">
-                  <Users className="w-8 h-8 mx-auto mb-2 text-purple-400" />
-                  <div className="text-2xl font-bold">{stats.activeSellers}</div>
-                  <div className="text-sm text-blue-100">Active Sellers</div>
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-5 text-center text-white border border-white/20 transform hover:scale-105 transition-all duration-300">
+                  <div className="w-12 h-12 mx-auto mb-3 bg-gradient-to-br from-purple-400 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
+                    <Users className="w-6 h-6 text-white" />
+                  </div>
+                  <div className="text-3xl font-bold">{stats.activeSellers}</div>
+                  <div className="text-sm text-white/80 mt-1">Active Sellers</div>
                 </div>
               </div>
             </div>
@@ -359,41 +461,50 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
 
         {/* Main Content */}
         <div className="container max-w-7xl mx-auto px-4 py-8">
-          {/* Category Tabs */}
-          <div className="mb-8 -mt-6 relative z-10">
-            <div className="bg-white rounded-xl shadow-lg p-2 flex flex-wrap gap-2">
-              {categoryTabs.map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <Button
-                    key={tab.id}
-                    variant={categoryTab === tab.id ? "default" : "ghost"}
-                    onClick={() => setCategoryTab(tab.id)}
-                    className={cn(
-                      "flex items-center gap-2 transition-all duration-200",
-                      categoryTab === tab.id 
-                        ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md" 
-                        : "hover:bg-gray-100"
-                    )}
-                    data-testid={`tab-category-${tab.id}`}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {tab.label}
-                  </Button>
-                );
-              })}
+          {/* Enhanced Category Tabs */}
+          <div className="mb-10 -mt-8 relative z-10">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-3">
+              <div className="flex flex-wrap gap-2">
+                {categoryTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = categoryTab === tab.id;
+                  return (
+                    <Button
+                      key={tab.id}
+                      variant={isActive ? "default" : "ghost"}
+                      onClick={() => setCategoryTab(tab.id)}
+                      className={cn(
+                        "flex items-center gap-2.5 px-5 py-2.5 rounded-xl font-medium transition-all duration-300",
+                        isActive 
+                          ? `bg-gradient-to-r ${tab.color} text-white shadow-lg hover:shadow-xl transform hover:scale-105` 
+                          : "hover:bg-gray-100 text-gray-700"
+                      )}
+                      data-testid={`tab-category-${tab.id}`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {tab.label}
+                      {isActive && (
+                        <span className="ml-1 bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                          Active
+                        </span>
+                      )}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Search and Filter Bar */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-8">
+          {/* Enhanced Search and Filter Bar */}
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 mb-10">
             <div className="flex flex-col lg:flex-row gap-4">
               <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <div className="relative group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-400 to-pink-400 rounded-xl opacity-0 group-focus-within:opacity-10 transition-opacity duration-300" />
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-purple-600 transition-colors" />
                   <Input
                     placeholder="Search EAs, indicators, strategies..."
-                    className="pl-10 pr-4 h-11 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                    className="pl-12 pr-4 h-12 bg-gray-50 border-gray-200 rounded-xl focus:bg-white focus:border-purple-400 focus:ring-2 focus:ring-purple-100 transition-all duration-300"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     data-testid="input-marketplace-search"
@@ -401,13 +512,13 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 <Select value={contentType} onValueChange={setContentType}>
-                  <SelectTrigger className="w-[180px] h-11 bg-gray-50 border-gray-200" data-testid="select-content-type">
-                    <Filter className="w-4 h-4 mr-2" />
+                  <SelectTrigger className="w-[180px] h-12 bg-white border-gray-200 rounded-xl hover:border-purple-400 transition-colors" data-testid="select-content-type">
+                    <Filter className="w-4 h-4 mr-2 text-purple-600" />
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-xl">
                     <SelectItem value="all">All Types</SelectItem>
                     <SelectItem value="ea">Expert Advisors</SelectItem>
                     <SelectItem value="indicator">Indicators</SelectItem>
@@ -417,11 +528,11 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                 </Select>
 
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="w-[180px] h-11 bg-gray-50 border-gray-200" data-testid="select-sort-by">
-                    <TrendingUp className="w-4 h-4 mr-2" />
+                  <SelectTrigger className="w-[180px] h-12 bg-white border-gray-200 rounded-xl hover:border-purple-400 transition-colors" data-testid="select-sort-by">
+                    <TrendingUp className="w-4 h-4 mr-2 text-purple-600" />
                     <SelectValue placeholder="Sort By" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="rounded-xl">
                     <SelectItem value="popular">Most Popular</SelectItem>
                     <SelectItem value="newest">Newest First</SelectItem>
                     <SelectItem value="rating">Highest Rated</SelectItem>
@@ -431,15 +542,17 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                   </SelectContent>
                 </Select>
 
-                <div className="flex gap-2">
-                  <div className="bg-gray-50 rounded-lg border border-gray-200 p-1 flex">
+                <div className="flex gap-3">
+                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border border-purple-200 p-1.5 flex">
                     <Button
                       variant={viewMode === "grid" ? "default" : "ghost"}
                       size="sm"
                       onClick={() => setViewMode("grid")}
                       className={cn(
-                        "h-9 px-3",
-                        viewMode === "grid" ? "bg-blue-600 text-white" : ""
+                        "h-9 px-4 rounded-lg transition-all duration-300",
+                        viewMode === "grid" 
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md" 
+                          : "text-gray-600 hover:text-purple-600"
                       )}
                       data-testid="button-view-grid"
                     >
@@ -450,8 +563,10 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                       size="sm"
                       onClick={() => setViewMode("list")}
                       className={cn(
-                        "h-9 px-3",
-                        viewMode === "list" ? "bg-blue-600 text-white" : ""
+                        "h-9 px-4 rounded-lg transition-all duration-300",
+                        viewMode === "list" 
+                          ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-md" 
+                          : "text-gray-600 hover:text-purple-600"
                       )}
                       data-testid="button-view-list"
                     >
@@ -464,11 +579,11 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
                       variant="outline"
                       size="sm"
                       onClick={clearFilters}
-                      className="h-11 border-gray-200"
+                      className="h-12 px-5 border-red-200 text-red-600 hover:bg-red-50 rounded-xl transition-all duration-300"
                       data-testid="button-clear-filters"
                     >
                       <X className="w-4 h-4 mr-2" />
-                      Clear Filters
+                      Clear All
                     </Button>
                   )}
                 </div>
@@ -478,18 +593,23 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
 
           {/* Error State */}
           {error && (
-            <Card className="p-12 bg-white shadow-sm border-gray-100">
-              <div className="flex flex-col items-center justify-center gap-4 text-center">
-                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center">
-                  <AlertCircle className="w-8 h-8 text-red-500" />
+            <Card className="p-16 bg-white shadow-xl border-0 rounded-2xl">
+              <div className="flex flex-col items-center justify-center gap-6 text-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-red-100 to-red-50 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-10 h-10 text-red-500" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-semibold mb-2 text-gray-900">Unable to load marketplace</h3>
+                  <h3 className="text-2xl font-bold mb-3 text-gray-900">Unable to load marketplace</h3>
                   <p className="text-gray-600 max-w-md">
                     We're having trouble loading the marketplace content. Please check your connection and try again.
                   </p>
                 </div>
-                <Button variant="outline" className="mt-2" onClick={() => window.location.reload()}>
+                <Button 
+                  variant="outline" 
+                  className="mt-2 rounded-xl" 
+                  onClick={() => window.location.reload()}
+                >
+                  <ArrowRight className="w-4 h-4 mr-2" />
                   Try Again
                 </Button>
               </div>
@@ -500,7 +620,7 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
           {isLoading && (
             <div className={viewMode === "grid" 
               ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
-              : "space-y-4"
+              : "space-y-6"
             }>
               {[...Array(6)].map((_, i) => (
                 <ContentCardSkeleton key={i} viewMode={viewMode} />
@@ -508,27 +628,31 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
             </div>
           )}
 
-          {/* Content Grid/List */}
+          {/* Enhanced Content Grid/List */}
           {!isLoading && !error && (
             <>
               {filteredAndSortedContent.length === 0 ? (
-                <Card className="p-16 bg-white shadow-sm border-gray-100">
+                <Card className="p-20 bg-white shadow-xl border-0 rounded-2xl">
                   <div className="flex flex-col items-center justify-center gap-6 text-center">
-                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center">
-                      <Search className="w-10 h-10 text-gray-400" />
+                    <div className="w-24 h-24 bg-gradient-to-br from-gray-100 to-gray-50 rounded-full flex items-center justify-center">
+                      <Search className="w-12 h-12 text-gray-400" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-semibold mb-3 text-gray-900">No products found</h3>
-                      <p className="text-gray-600 max-w-md">
+                      <h3 className="text-3xl font-bold mb-3 text-gray-900">No products found</h3>
+                      <p className="text-gray-600 max-w-md text-lg">
                         We couldn't find any products matching your criteria. Try adjusting your filters or search terms.
                       </p>
                     </div>
-                    <div className="flex gap-3">
-                      <Button variant="outline" onClick={clearFilters}>
+                    <div className="flex gap-4">
+                      <Button 
+                        variant="outline" 
+                        onClick={clearFilters}
+                        className="rounded-xl px-6"
+                      >
                         Clear Filters
                       </Button>
                       <Link href="/publish-ea">
-                        <Button>
+                        <Button className="rounded-xl px-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
                           <Plus className="w-4 h-4 mr-2" />
                           Add Product
                         </Button>
@@ -539,159 +663,238 @@ export default function MarketplaceClient({ initialContent }: MarketplaceClientP
               ) : (
                 <div className={viewMode === "grid" 
                   ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
-                  : "space-y-4"
+                  : "space-y-6"
                 }>
-                  {filteredAndSortedContent.map((item, index) => (
-                    <Link 
-                      key={item.id} 
-                      href={item.fullUrl || `/content/${item.slug}`} 
-                      data-testid={`link-content-${item.id}`}
-                      className={cn(
-                        "block transition-all duration-500",
-                        animateCards ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
-                      )}
-                      style={{ transitionDelay: `${index * 50}ms` }}
-                    >
-                      <Card 
-                        className="group h-full bg-white border-gray-100 hover:border-blue-200 shadow-sm hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1" 
-                        data-testid={`card-content-${item.id}`}
+                  {filteredAndSortedContent.map((item, index) => {
+                    const config = getCategoryConfig(item.type);
+                    const Icon = config.icon;
+                    
+                    return (
+                      <div
+                        key={item.id}
+                        className={cn(
+                          "relative transition-all duration-700",
+                          animateCards ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
+                        )}
+                        style={{ transitionDelay: `${index * 50}ms` }}
+                        onMouseEnter={() => setHoveredCard(item.id)}
+                        onMouseLeave={() => setHoveredCard(null)}
                       >
-                        <CardContent className="p-0">
-                          {viewMode === "grid" ? (
-                            <div className="h-full flex flex-col">
-                              <div className="relative aspect-video overflow-hidden rounded-t-lg bg-gradient-to-br from-gray-100 to-gray-50">
-                                <img 
-                                  src={getImageUrl(item)} 
-                                  alt={item.title}
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                />
-                                {/* Overlay gradient */}
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                                
-                                {/* Price Badge */}
-                                <Badge 
-                                  className={cn(
-                                    "absolute top-3 right-3 shadow-lg",
-                                    item.isFree 
-                                      ? "bg-green-500 text-white border-green-600" 
-                                      : "bg-gradient-to-r from-yellow-500 to-yellow-600 text-white border-yellow-600"
-                                  )}
-                                >
-                                  {item.isFree ? (
-                                    <span className="flex items-center gap-1">
-                                      <Sparkles className="w-3 h-3" />
-                                      FREE
-                                    </span>
-                                  ) : (
-                                    <span className="flex items-center gap-1">
-                                      <Coins className="w-3 h-3" />
-                                      {item.priceCoins}
-                                    </span>
-                                  )}
-                                </Badge>
-
-                                {/* Category Badge */}
-                                <Badge 
-                                  variant="secondary"
-                                  className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm text-gray-700 border-0 shadow-md"
-                                >
-                                  {getTypeLabel(item.type)}
-                                </Badge>
-                              </div>
-                              
-                              <div className="p-5 flex-1 flex flex-col">
-                                <div className="space-y-3 flex-1">
-                                  <h3 className="font-semibold text-gray-900 line-clamp-2 group-hover:text-blue-600 transition-colors" data-testid={`text-content-title-${item.id}`}>
-                                    {item.title}
-                                  </h3>
-                                  <p className="text-sm text-gray-600 line-clamp-2">
-                                    {item.description}
-                                  </p>
+                        <Card 
+                          className="group h-full bg-white border-gray-200 shadow-lg hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-2 overflow-hidden rounded-2xl" 
+                          data-testid={`card-content-${item.id}`}
+                        >
+                          <CardContent className="p-0 h-full">
+                            {viewMode === "grid" ? (
+                              <div className="h-full flex flex-col">
+                                {/* Image Container with Overlay Effects */}
+                                <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-br from-gray-100 to-gray-50">
+                                  <img 
+                                    src={getImageUrl(item)} 
+                                    alt={item.title}
+                                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                                  />
                                   
-                                  {/* Rating */}
-                                  <StarRating rating={getRating(item.likes)} />
-                                </div>
-
-                                <div className="flex items-center justify-between text-sm pt-4 mt-4 border-t border-gray-100">
-                                  <div className="flex items-center gap-3 text-gray-500">
-                                    <div className="flex items-center gap-1">
-                                      <Download className="w-4 h-4" />
-                                      <span>{item.downloads || 0}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <Eye className="w-4 h-4" />
-                                      <span>{item.views || 0}</span>
-                                    </div>
-                                    <div className="flex items-center gap-1">
+                                  {/* Gradient Overlay on Hover */}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                                  
+                                  {/* Quick Action Buttons (appear on hover) */}
+                                  <div className={cn(
+                                    "absolute bottom-4 left-4 right-4 flex gap-2 transition-all duration-500",
+                                    hoveredCard === item.id 
+                                      ? "opacity-100 translate-y-0" 
+                                      : "opacity-0 translate-y-4"
+                                  )}>
+                                    <Button 
+                                      size="sm" 
+                                      className="flex-1 bg-white/90 backdrop-blur-sm text-gray-900 hover:bg-white shadow-lg rounded-xl"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        console.log("Quick view", item.id);
+                                      }}
+                                    >
+                                      <Eye className="w-4 h-4 mr-1" />
+                                      Quick View
+                                    </Button>
+                                    <Button 
+                                      size="sm" 
+                                      variant="ghost"
+                                      className="bg-white/90 backdrop-blur-sm text-gray-900 hover:bg-white shadow-lg rounded-xl px-3"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        console.log("Add to wishlist", item.id);
+                                      }}
+                                    >
                                       <Heart className="w-4 h-4" />
-                                      <span>{item.likes || 0}</span>
-                                    </div>
+                                    </Button>
+                                  </div>
+                                  
+                                  {/* Price Badge with Enhanced Styling */}
+                                  <div className="absolute top-4 right-4">
+                                    {item.isFree ? (
+                                      <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0 px-4 py-1.5 text-sm font-semibold shadow-lg">
+                                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                                        FREE
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white border-0 px-4 py-1.5 text-sm font-semibold shadow-lg">
+                                        <Coins className="w-3.5 h-3.5 mr-1.5" />
+                                        {item.priceCoins}
+                                      </Badge>
+                                    )}
+                                  </div>
+
+                                  {/* Category Badge with Icon */}
+                                  <div className="absolute top-4 left-4">
+                                    <Badge 
+                                      variant="secondary"
+                                      className={cn(
+                                        "backdrop-blur-sm border shadow-lg px-3 py-1.5 font-medium",
+                                        config.lightColor
+                                      )}
+                                    >
+                                      <Icon className="w-3.5 h-3.5 mr-1.5" />
+                                      {getTypeLabel(item.type)}
+                                    </Badge>
                                   </div>
                                 </div>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex gap-5 p-5">
-                              <div className="flex-shrink-0 relative">
-                                <img 
-                                  src={getImageUrl(item)} 
-                                  alt={item.title}
-                                  className="w-36 h-28 object-cover rounded-lg group-hover:scale-105 transition-transform duration-300"
-                                />
-                                <Badge 
-                                  variant="secondary"
-                                  className="absolute -top-2 -left-2 bg-white shadow-md border-gray-200 text-gray-700"
-                                >
-                                  {getTypeLabel(item.type)}
-                                </Badge>
-                              </div>
-                              
-                              <div className="flex-1 space-y-3">
-                                <div className="flex items-start justify-between gap-4">
-                                  <div className="space-y-2 flex-1">
-                                    <h3 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                                
+                                {/* Content Section */}
+                                <div className="p-6 flex-1 flex flex-col">
+                                  <div className="space-y-3 flex-1">
+                                    <h3 className="font-bold text-lg text-gray-900 line-clamp-2 group-hover:text-purple-600 transition-colors duration-300" data-testid={`text-content-title-${item.id}`}>
                                       {item.title}
                                     </h3>
                                     <p className="text-sm text-gray-600 line-clamp-2">
                                       {item.description}
                                     </p>
+                                    
+                                    {/* Enhanced Rating */}
                                     <StarRating rating={getRating(item.likes)} />
                                   </div>
-                                  <div className="text-right">
-                                    {item.isFree ? (
-                                      <Badge className="bg-green-500 text-white">
-                                        FREE
-                                      </Badge>
-                                    ) : (
-                                      <div className="flex items-center gap-1 text-yellow-600 font-semibold">
-                                        <Coins className="w-4 h-4" />
-                                        <span>{item.priceCoins}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
 
-                                <div className="flex items-center gap-4 text-sm text-gray-500 pt-2">
-                                  <div className="flex items-center gap-1">
-                                    <Download className="w-4 h-4" />
-                                    <span>{item.downloads || 0} downloads</span>
+                                  {/* Stats Section with Better Styling */}
+                                  <div className="flex items-center justify-between text-sm pt-4 mt-4 border-t border-gray-100">
+                                    <div className="flex items-center gap-4 text-gray-600">
+                                      <div className="flex items-center gap-1.5 hover:text-purple-600 transition-colors">
+                                        <Download className="w-4 h-4" />
+                                        <span className="font-medium">{item.downloads || 0}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 hover:text-purple-600 transition-colors">
+                                        <Eye className="w-4 h-4" />
+                                        <span className="font-medium">{item.views || 0}</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5 hover:text-purple-600 transition-colors">
+                                        <Heart className="w-4 h-4" />
+                                        <span className="font-medium">{item.likes || 0}</span>
+                                      </div>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <Eye className="w-4 h-4" />
-                                    <span>{item.views || 0} views</span>
+
+                                  {/* View Details Button */}
+                                  <Link href={item.fullUrl || `/content/${item.slug}`} className="mt-4">
+                                    <Button 
+                                      variant="outline" 
+                                      className="w-full rounded-xl border-purple-200 text-purple-600 hover:bg-purple-50 hover:border-purple-300 transition-all duration-300"
+                                    >
+                                      View Details
+                                      <ChevronRight className="w-4 h-4 ml-2" />
+                                    </Button>
+                                  </Link>
+                                </div>
+                              </div>
+                            ) : (
+                              /* List View */
+                              <div className="flex gap-6 p-6">
+                                <div className="flex-shrink-0 relative">
+                                  <img 
+                                    src={getImageUrl(item)} 
+                                    alt={item.title}
+                                    className="w-44 h-32 object-cover rounded-xl group-hover:scale-105 transition-transform duration-500 shadow-lg"
+                                  />
+                                  <Badge 
+                                    variant="secondary"
+                                    className={cn(
+                                      "absolute -top-2 -left-2 shadow-lg border",
+                                      config.lightColor
+                                    )}
+                                  >
+                                    <Icon className="w-3.5 h-3.5 mr-1.5" />
+                                    {getTypeLabel(item.type)}
+                                  </Badge>
+                                </div>
+                                
+                                <div className="flex-1 space-y-3">
+                                  <div className="flex items-start justify-between gap-4">
+                                    <div className="space-y-2 flex-1">
+                                      <h3 className="font-bold text-lg text-gray-900 group-hover:text-purple-600 transition-colors">
+                                        {item.title}
+                                      </h3>
+                                      <p className="text-sm text-gray-600 line-clamp-2">
+                                        {item.description}
+                                      </p>
+                                      <StarRating rating={getRating(item.likes)} />
+                                    </div>
+                                    <div className="text-right">
+                                      {item.isFree ? (
+                                        <Badge className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 text-lg font-bold shadow-lg">
+                                          FREE
+                                        </Badge>
+                                      ) : (
+                                        <div className="flex items-center gap-2 text-orange-600">
+                                          <Coins className="w-5 h-5" />
+                                          <span className="text-2xl font-bold">{item.priceCoins}</span>
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1">
-                                    <Clock className="w-4 h-4" />
-                                    <span>Updated recently</span>
+
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-5 text-sm text-gray-600">
+                                      <div className="flex items-center gap-1.5">
+                                        <Download className="w-4 h-4 text-purple-500" />
+                                        <span className="font-medium">{item.downloads || 0} downloads</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <Eye className="w-4 h-4 text-blue-500" />
+                                        <span className="font-medium">{item.views || 0} views</span>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        <Clock className="w-4 h-4 text-green-500" />
+                                        <span className="font-medium">Updated recently</span>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <Link href={item.fullUrl || `/content/${item.slug}`}>
+                                        <Button 
+                                          size="sm"
+                                          className="rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+                                        >
+                                          View Details
+                                          <ChevronRight className="w-4 h-4 ml-1" />
+                                        </Button>
+                                      </Link>
+                                      <Button 
+                                        size="sm"
+                                        variant="outline"
+                                        className="rounded-xl border-gray-200 hover:border-purple-300"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          console.log("Add to wishlist", item.id);
+                                        }}
+                                      >
+                                        <Heart className="w-4 h-4" />
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </>
