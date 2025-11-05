@@ -861,12 +861,12 @@ function LiveStatsCard({ formData }: LiveStatsCardProps) {
 
 // Top Performing EAs Card Component
 function TopPerformingEAsCard() {
-  const { data: topSellers, isLoading } = useQuery({
+  const { data: topSellersData, isLoading } = useQuery({
     queryKey: ['/api/content/top-sellers'],
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
   
-  const topEAs = (topSellers as any)?.slice(0, 2) || [];
+  const topEAs = (topSellersData as any)?.topSellers?.slice(0, 2) || [];
   
   return (
     <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 animate-in fade-in slide-in-from-right duration-1000">
