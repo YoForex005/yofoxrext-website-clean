@@ -1,7 +1,10 @@
 import { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { Suspense } from "react";
 import MessagesClient from "./MessagesClient";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export const metadata: Metadata = {
   title: "Messages | YoForex",
@@ -79,8 +82,67 @@ async function getConversations(cookieHeader: string) {
   }
 }
 
+// Loading fallback component for Suspense boundary
+function MessagesLoadingFallback() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-6">
+        <Skeleton className="h-8 w-40 mb-2" />
+        <Skeleton className="h-4 w-80" />
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 h-[calc(100vh-250px)]">
+        {/* Left Column: Conversation List Skeleton */}
+        <div className="md:col-span-1 space-y-3">
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-10 w-full" />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="flex items-center space-x-3">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+        
+        {/* Right Column: Chat Window Skeleton */}
+        <div className="md:col-span-2">
+          <Card className="h-full">
+            <CardHeader className="border-b">
+              <div className="flex items-center space-x-3">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <Skeleton className="h-4 w-40" />
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : 'justify-start'}`}>
+                    <Skeleton className="h-16 w-3/5 rounded-lg" />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default async function MessagesPage() {
   // Don't do server-side authentication check - let the client handle it
   // This prevents redirect loops and allows for better UX with login prompts
-  return <MessagesClient initialConversations={[]} />;
+  return (
+    <Suspense fallback={<MessagesLoadingFallback />}>
+      <MessagesClient initialConversations={[]} />
+    </Suspense>
+  );
 }
