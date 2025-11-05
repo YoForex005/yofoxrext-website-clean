@@ -253,7 +253,7 @@ function ChipSelector({
               variant="secondary"
               className="gap-1 px-3 py-1 hover:bg-secondary/80 transition-colors animate-in fade-in-50 zoom-in-95 max-w-[200px]"
             >
-              {icon && React.createElement(icon, { className: "w-3 h-3 flex-shrink-0" })}
+              {icon ? React.createElement(icon, { className: "w-3 h-3 flex-shrink-0" }) : null}
               <span className="truncate">{item}</span>
               <button
                 type="button"
@@ -276,7 +276,7 @@ function ChipSelector({
             className="gap-1 text-muted-foreground hover:text-foreground"
           >
             {isOpen ? <Minus className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {isOpen ? 'Hide' : 'Show'} available options ({filteredOptions.length})
+            <span>{isOpen ? 'Hide' : 'Show'} available options ({filteredOptions.length})</span>
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent className="mt-2">
@@ -1606,10 +1606,10 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                                         {attachment.price > 0 ? (
                                           <>
                                             <Coins className="h-3 w-3 mr-1" />
-                                            {attachment.price} Sweets
+                                            <span>{attachment.price} Sweets</span>
                                           </>
                                         ) : (
-                                          <>Free</>
+                                          <span>Free</span>
                                         )}
                                       </Badge>
                                     </div>
@@ -1636,18 +1636,18 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                               {!form.watch("categorySlug") && (
                                 <li className="flex items-center gap-1">
                                   <Circle className="h-2 w-2" />
-                                  Select a category
+                                  <span>Select a category</span>
                                 </li>
                               )}
                               {titleLength < 10 && (
                                 <li className="flex items-center gap-1">
                                   <Circle className="h-2 w-2" />
-                                  Add {10 - titleLength} more characters to title
+                                  <span>Add {10 - titleLength} more characters to title</span>
                                 </li>
                               )}
                               <li className="flex items-center gap-1">
                                 <Circle className="h-2 w-2" />
-                                Add at least 20 characters to content
+                                <span>Add at least 20 characters to content</span>
                               </li>
                             </ul>
                           </div>
@@ -1665,7 +1665,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                           className="gap-2"
                         >
                           <ChevronLeft className="w-4 h-4" />
-                          Previous
+                          <span>Previous</span>
                         </Button>
                       )}
 
@@ -1678,7 +1678,7 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                             disabled={currentStep === 1 && !canProceedStep1}
                             className="gap-2 min-w-[120px]"
                           >
-                            Next
+                            <span>Next</span>
                             <ArrowRight className="w-4 h-4" />
                           </Button>
                       ) : (
@@ -1691,12 +1691,12 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
                           {createThreadMutation.isPending ? (
                             <>
                               <Loader2 className="w-4 h-4 animate-spin" />
-                              Creating...
+                              <span>Creating...</span>
                             </>
                           ) : (
                             <>
                               <Rocket className="w-4 h-4" />
-                              Post Thread (+3 coins)
+                              <span>Post Thread (+3 coins)</span>
                             </>
                           )}
                         </Button>
