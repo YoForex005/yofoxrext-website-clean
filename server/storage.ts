@@ -314,6 +314,8 @@ export interface IStorage {
   updateUserCoins(userId: string, coins: number): Promise<User | undefined>;
   updateUserProfile(userId: string, data: Partial<User>): Promise<User | undefined>;
   trackOnboardingProgress(userId: string, task: string): Promise<{ completed: boolean; coinsEarned: number }>;
+  checkProfileCompletion(userId: string): Promise<boolean>;
+  rewardProfileCompletionCoins(userId: string): Promise<{ rewarded: boolean; coinsEarned: number }>;
   
   // Daily Earning system - Activity tracking
   recordActivity(userId: string, minutes: number): Promise<{coinsEarned: number, totalMinutes: number}>;
@@ -3583,6 +3585,79 @@ export class MemStorage implements IStorage {
     });
 
     return { completed: true, coinsEarned: taskInfo.reward };
+  }
+
+  // Check if user profile is complete
+  async checkProfileCompletion(userId: string): Promise<boolean> {
+    const user = this.users.get(userId);
+    if (!user) return false;
+
+    // Check required fields for profile completion
+    const hasBasicInfo = !!(
+      user.username &&
+      user.email
+    );
+
+    // Check if user has a profile photo
+    const hasProfilePhoto = !!(user.profileImageUrl);
+    
+    // Check if user has filled in additional profile information
+    const hasAdditionalInfo = !!(
+      user.location ||
+      user.youtubeUrl ||
+      user.instagramHandle ||
+      user.telegramHandle ||
+      user.myfxbookLink
+    );
+
+    // For MemStorage, we don't have a separate profiles table, so check for bio in user object
+    // In real implementation, bio might be stored differently
+    const hasBio = false; // MemStorage doesn't track bio separately
+
+    // Profile is considered complete if:
+    // 1. Has basic info (username and email)
+    // 2. Has profile photo
+    // 3. Has at least one additional info field (bio check skipped for MemStorage)
+    return hasBasicInfo && hasProfilePhoto && hasAdditionalInfo;
+  }
+
+  // Reward coins for profile completion
+  async rewardProfileCompletionCoins(userId: string): Promise<{ rewarded: boolean; coinsEarned: number }> {
+    const user = this.users.get(userId);
+    if (!user) throw new Error("User not found");
+
+    // Check if profile is complete
+    const isProfileComplete = await this.checkProfileCompletion(userId);
+    if (!isProfileComplete) {
+      return { rewarded: false, coinsEarned: 0 };
+    }
+
+    // Check if user has already been rewarded for profile completion
+    const existingReward = Array.from(this.transactions.values()).find(t =>
+      t.userId === userId &&
+      t.trigger === COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE &&
+      t.type === "earn"
+    );
+
+    if (existingReward) {
+      // Already rewarded
+      return { rewarded: false, coinsEarned: 0 };
+    }
+
+    // Award the profile completion bonus
+    const PROFILE_COMPLETION_REWARD = 10;
+    
+    await this.createCoinTransaction({
+      userId,
+      type: "earn",
+      amount: PROFILE_COMPLETION_REWARD,
+      description: "Profile completion bonus - all required fields filled",
+      status: "completed",
+      channel: COIN_CHANNELS.ONBOARDING,
+      trigger: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
+    });
+
+    return { rewarded: true, coinsEarned: PROFILE_COMPLETION_REWARD };
   }
 
   // Daily Earning system - Activity tracking
@@ -7906,6 +7981,84 @@ export class DrizzleStorage implements IStorage {
     });
 
     return { completed: true, coinsEarned: taskInfo.reward };
+  }
+
+  // Check if user profile is complete
+  async checkProfileCompletion(userId: string): Promise<boolean> {
+    const user = await this.getUser(userId);
+    if (!user) return false;
+
+    // Check required fields for profile completion
+    const hasBasicInfo = !!(
+      user.username &&
+      user.email
+    );
+
+    // Check if user has a profile photo
+    const hasProfilePhoto = !!(user.profileImageUrl);
+    
+    // Check if user has filled in additional profile information
+    const hasAdditionalInfo = !!(
+      user.location ||
+      user.youtubeUrl ||
+      user.instagramHandle ||
+      user.telegramHandle ||
+      user.myfxbookLink
+    );
+
+    // Get profile table data if exists
+    const [profileData] = await db.select().from(profiles).where(eq(profiles.userId, userId));
+    const hasBio = !!(profileData?.bio && profileData.bio.trim().length > 0);
+
+    // Profile is considered complete if:
+    // 1. Has basic info (username and email)
+    // 2. Has profile photo
+    // 3. Has bio
+    // 4. Has at least one additional info field
+    return hasBasicInfo && hasProfilePhoto && hasBio && hasAdditionalInfo;
+  }
+
+  // Reward coins for profile completion
+  async rewardProfileCompletionCoins(userId: string): Promise<{ rewarded: boolean; coinsEarned: number }> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error("User not found");
+
+    // Check if profile is complete
+    const isProfileComplete = await this.checkProfileCompletion(userId);
+    if (!isProfileComplete) {
+      return { rewarded: false, coinsEarned: 0 };
+    }
+
+    // Check if user has already been rewarded for profile completion
+    // We'll check if there's a transaction with the specific trigger
+    const existingReward = await db.select()
+      .from(coinTransactions)
+      .where(and(
+        eq(coinTransactions.userId, userId),
+        eq(coinTransactions.trigger, COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE),
+        eq(coinTransactions.type, "earn")
+      ))
+      .limit(1);
+
+    if (existingReward.length > 0) {
+      // Already rewarded
+      return { rewarded: false, coinsEarned: 0 };
+    }
+
+    // Award the profile completion bonus
+    const PROFILE_COMPLETION_REWARD = 10;
+    
+    await this.createCoinTransaction({
+      userId,
+      type: "earn",
+      amount: PROFILE_COMPLETION_REWARD,
+      description: "Profile completion bonus - all required fields filled",
+      status: "completed",
+      channel: COIN_CHANNELS.ONBOARDING,
+      trigger: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
+    });
+
+    return { rewarded: true, coinsEarned: PROFILE_COMPLETION_REWARD };
   }
 
   // Daily Earning system - Activity tracking

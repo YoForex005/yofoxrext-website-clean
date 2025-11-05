@@ -7619,7 +7619,19 @@ export async function registerRoutes(app: Express): Promise<Express> {
       let totalCoinsEarned = 0;
       const completedTasks: string[] = [];
 
-      // Track onboarding progress for profile completion
+      // Check and reward profile completion
+      try {
+        const profileCompletionResult = await storage.rewardProfileCompletionCoins(authenticatedUserId);
+        if (profileCompletionResult.rewarded && profileCompletionResult.coinsEarned > 0) {
+          totalCoinsEarned += profileCompletionResult.coinsEarned;
+          completedTasks.push("profileCompletion");
+          console.log(`Profile completion rewarded for user ${authenticatedUserId}: ${profileCompletionResult.coinsEarned} coins`);
+        }
+      } catch (error) {
+        console.error('Profile completion reward check failed:', error);
+      }
+
+      // Also track legacy onboarding progress for backward compatibility
       const hasProfileData = 
         (validated.youtubeUrl && validated.youtubeUrl.length > 0) ||
         (validated.instagramHandle && validated.instagramHandle.length > 0) ||
@@ -7649,10 +7661,13 @@ export async function registerRoutes(app: Express): Promise<Express> {
         }
       }
       
+      // Get updated user to include new coin balance
+      const finalUser = await storage.getUser(authenticatedUserId);
+      
       // Return consistent response with onboarding reward info
       res.json({ 
         success: true, 
-        user: updatedUser, 
+        user: finalUser || updatedUser, 
         ...(totalCoinsEarned > 0 && {
           onboardingReward: {
             tasks: completedTasks,
@@ -7756,14 +7771,33 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Onboarding step failed:', error);
       }
 
+      // Check and reward profile completion after photo upload
+      // Photo upload might be the final step for profile completion
+      let coinsEarned = 0;
+      try {
+        const profileCompletionResult = await storage.rewardProfileCompletionCoins(authenticatedUserId);
+        if (profileCompletionResult.rewarded && profileCompletionResult.coinsEarned > 0) {
+          coinsEarned = profileCompletionResult.coinsEarned;
+          console.log(`Profile completion rewarded after photo upload for user ${authenticatedUserId}: ${coinsEarned} coins`);
+        }
+      } catch (error) {
+        console.error('Profile completion check after photo upload failed:', error);
+      }
+
       // Return the updated user data to ensure the UI refreshes
       const updatedUser = await storage.getUser(authenticatedUserId);
 
       res.json({ 
         success: true,
         photoUrl,
+        profileImageUrl: photoUrl, // Also include as profileImageUrl for backward compatibility
         user: updatedUser, // Include updated user data
-        message: "Profile photo updated successfully"
+        message: "Profile photo updated successfully",
+        ...(coinsEarned > 0 && {
+          profileCompletionReward: {
+            coinsEarned
+          }
+        })
       });
     } catch (error: any) {
       console.error('Profile photo upload error:', error);
