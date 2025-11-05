@@ -98,6 +98,16 @@ YoForex employs a hybrid frontend and a robust backend for scalability and perfo
 
 ## Recent Changes
 
+### 2025-11-06 - Fixed Authentication Pattern for Protected Pages
+- **Systematic Fix**: Updated 3 pages (Sweets, Notifications, Transactions) to use client-side authentication pattern
+- **Root Cause**: Server-side redirects were preventing pages from loading for non-authenticated users
+- **Solution**: Removed server-side auth checks from page.tsx files and added client-side auth checks in client components using useAuth and useAuthPrompt hooks
+- **Code Changes**: 
+  - Modified `app/sweets/page.tsx`, `app/sweets/SweetsDashboardClient.tsx`
+  - Modified `app/notifications/page.tsx`, `app/notifications/NotificationsClient.tsx`
+  - Modified `app/transactions/page.tsx`, `app/transactions/TransactionHistoryClient.tsx`
+- **Result**: All protected pages now display "Login Required" cards instead of redirecting, improving user experience
+
 ### 2025-11-06 - Fixed Thread Creation Infinite Loop
 - **Critical Bug Fix**: Resolved infinite update loop preventing thread creation page from loading
 - **Root Cause**: useEffect hook in EnhancedThreadComposeClient.tsx had unstable `form` dependency causing React's maximum update depth error
