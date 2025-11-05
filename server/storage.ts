@@ -5086,11 +5086,42 @@ export class MemStorage implements IStorage {
     const allComplete = allSteps.every(s => newProgress[s]);
     (user as any).onboardingCompleted = allComplete;
 
-    // Award coins
+    // Award coins using coinTransactionService for proper tracking
     if (coinsToAward > 0) {
-      const newTotalCoins = (user.totalCoins || 0) + coinsToAward;
-      user.totalCoins = newTotalCoins;
-      user.level = calculateUserLevel(newTotalCoins);
+      try {
+        // Map step to the correct trigger
+        const triggerMap: Record<string, string> = {
+          profilePicture: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
+          firstReply: COIN_TRIGGERS.ONBOARDING_FIRST_POST,
+          twoReviews: COIN_TRIGGERS.ONBOARDING_FIRST_REVIEW, // Now using the correct review trigger
+          firstThread: COIN_TRIGGERS.ONBOARDING_FIRST_THREAD,
+          firstPublish: COIN_TRIGGERS.ONBOARDING_FIRST_PUBLISH,
+          fiftyFollowers: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE, // Using profile complete for followers milestone
+        };
+
+        const trigger = triggerMap[step] || COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE;
+
+        const result = await coinTransactionService.executeTransaction({
+          userId,
+          amount: coinsToAward,
+          trigger,
+          channel: COIN_CHANNELS.ONBOARDING,
+          description: `Completed onboarding task: ${step}`,
+          metadata: { step, reward: coinsToAward },
+          idempotencyKey: `onboarding-${step}-${userId}`, // Prevent duplicate rewards
+        });
+
+        if (result.success) {
+          // Update the in-memory user object with the new balance from coinTransactionService
+          user.totalCoins = result.newBalance || user.totalCoins;
+          user.level = calculateUserLevel(user.totalCoins);
+          console.log(`Awarded ${coinsToAward} coins for onboarding step: ${step} to user ${userId}`);
+        } else {
+          console.error('Failed to award onboarding coins:', result.error);
+        }
+      } catch (error) {
+        console.error('Failed to award onboarding coins:', error);
+      }
     }
   }
 
@@ -9854,28 +9885,36 @@ export class DrizzleStorage implements IStorage {
       })
       .where(eq(users.id, userId));
 
-    // Award coins if applicable
+    // Award coins using coinTransactionService for proper tracking
     if (coinsToAward > 0) {
       try {
-        await this.beginLedgerTransaction(
-          'earn',
+        // Map step to the correct trigger
+        const triggerMap: Record<string, string> = {
+          profilePicture: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
+          firstReply: COIN_TRIGGERS.ONBOARDING_FIRST_POST,
+          twoReviews: COIN_TRIGGERS.ONBOARDING_FIRST_REVIEW, // Now using the correct review trigger
+          firstThread: COIN_TRIGGERS.ONBOARDING_FIRST_THREAD,
+          firstPublish: COIN_TRIGGERS.ONBOARDING_FIRST_PUBLISH,
+          fiftyFollowers: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE, // Using profile complete for followers milestone
+        };
+
+        const trigger = triggerMap[step] || COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE;
+
+        const result = await coinTransactionService.executeTransaction({
           userId,
-          [
-            {
-              userId,
-              direction: 'credit',
-              amount: coinsToAward,
-              memo: `Onboarding: ${step} (+${coinsToAward} coins)`,
-            },
-            {
-              userId: 'system',
-              direction: 'debit',
-              amount: coinsToAward,
-              memo: 'Platform onboarding reward',
-            },
-          ],
-          { onboardingStep: step }
-        );
+          amount: coinsToAward,
+          trigger,
+          channel: COIN_CHANNELS.ONBOARDING,
+          description: `Completed onboarding task: ${step}`,
+          metadata: { step, reward: coinsToAward },
+          idempotencyKey: `onboarding-${step}-${userId}`, // Prevent duplicate rewards
+        });
+
+        if (!result.success) {
+          console.error('Failed to award onboarding coins:', result.error);
+        } else {
+          console.log(`Awarded ${coinsToAward} coins for onboarding step: ${step} to user ${userId}`);
+        }
       } catch (error) {
         console.error('Failed to award onboarding coins:', error);
       }

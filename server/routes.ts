@@ -2190,10 +2190,16 @@ export async function registerRoutes(app: Express): Promise<Express> {
         return res.status(400).json({ error: "Step already completed" });
       }
       
-      // Mark step as complete in database
+      // Mark step as complete in database - this will also award the coins via coinTransactionService
       await storage.markOnboardingStep(userId, stepId);
       
-      // Award coins using Phase 3 CoinTransactionService
+      // Get the updated user balance
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Get the reward amount for response
       const stepRewards = {
         profilePicture: 10,
         firstReply: 5,
@@ -2203,28 +2209,13 @@ export async function registerRoutes(app: Express): Promise<Express> {
         fiftyFollowers: 200
       };
       
-      const coinsToAward = stepRewards[stepId as keyof typeof stepRewards] || 10;
-      
-      const coinResult = await coinTransactionService.executeTransaction({
-        userId,
-        amount: coinsToAward,
-        trigger: COIN_TRIGGERS.ONBOARDING_PROFILE_COMPLETE,
-        channel: COIN_CHANNELS.ONBOARDING,
-        description: `Completed onboarding step: ${stepId}`,
-        metadata: { stepId, reward: coinsToAward },
-        idempotencyKey: `onboarding-${stepId}-${userId}`
-      });
-      
-      if (!coinResult.success) {
-        console.error('Failed to award onboarding coins:', coinResult.error);
-        return res.status(400).json({ error: coinResult.error });
-      }
+      const coinsAwarded = stepRewards[stepId as keyof typeof stepRewards] || 0;
       
       res.json({ 
         success: true, 
-        coins: coinResult.newBalance,
+        coins: user.totalCoins,
         stepCompleted: stepId,
-        reward: coinsToAward
+        reward: coinsAwarded
       });
     } catch (error: any) {
       console.error('Onboarding step completion failed:', error);
@@ -5595,9 +5586,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
       
       // Track onboarding progress for first reply
       try {
-        const onboardingResult = await storage.trackOnboardingProgress(authenticatedUserId, 'firstReply');
+        const onboardingResult = await storage.markOnboardingStep(authenticatedUserId, 'firstReply');
         if (onboardingResult.completed && onboardingResult.coinsEarned > 0) {
-          console.log('Onboarding step completed: firstReply');
+          console.log('Onboarding step completed: firstReply, coins awarded:', onboardingResult.coinsEarned);
         }
       } catch (error) {
         console.error('Onboarding tracking failed:', error);
@@ -7705,35 +7696,9 @@ export async function registerRoutes(app: Express): Promise<Express> {
         console.error('Profile completion reward check failed:', error);
       }
 
-      // Also track legacy onboarding progress for backward compatibility
-      const hasProfileData = 
-        (validated.youtubeUrl && validated.youtubeUrl.length > 0) ||
-        (validated.instagramHandle && validated.instagramHandle.length > 0) ||
-        (validated.telegramHandle && validated.telegramHandle.length > 0) ||
-        (validated.myfxbookLink && validated.myfxbookLink.length > 0) ||
-        (validated.bio && validated.bio.length > 0);
-
-      if (hasProfileData) {
-        const profileResult = await storage.trackOnboardingProgress(authenticatedUserId, "profileCreated");
-        if (profileResult.completed && profileResult.coinsEarned > 0) {
-          totalCoinsEarned += profileResult.coinsEarned;
-          completedTasks.push("profileCreated");
-        }
-      }
-
-      // Track social account linking if user added social links
-      const hasSocialLinks =
-        (validated.youtubeUrl && validated.youtubeUrl.length > 0) ||
-        (validated.instagramHandle && validated.instagramHandle.length > 0) ||
-        (validated.telegramHandle && validated.telegramHandle.length > 0);
-
-      if (hasSocialLinks) {
-        const socialResult = await storage.trackOnboardingProgress(authenticatedUserId, "socialLinked");
-        if (socialResult.completed && socialResult.coinsEarned > 0) {
-          totalCoinsEarned += socialResult.coinsEarned;
-          completedTasks.push("socialLinked");
-        }
-      }
+      // Note: Profile creation and social linking onboarding tasks have been removed
+      // These are not part of the actual onboarding tasks defined in the system
+      // The only valid onboarding tasks are: profilePicture, firstReply, twoReviews, firstThread, firstPublish, fiftyFollowers
       
       // Get updated user to include new coin balance
       const finalUser = await storage.getUser(authenticatedUserId);

@@ -24,6 +24,7 @@ export const COIN_TRIGGERS = {
   ONBOARDING_PROFILE_COMPLETE: 'onboarding.profile.complete',
   ONBOARDING_EMAIL_VERIFIED: 'onboarding.email.verified',
   ONBOARDING_FIRST_POST: 'onboarding.first.post',
+  ONBOARDING_FIRST_REVIEW: 'onboarding.first.review',
   ONBOARDING_PROFILE_PICTURE: 'onboarding.profile_picture',
   ONBOARDING_WELCOME: 'onboarding.welcome',
   ONBOARDING_FIRST_THREAD: 'onboarding.first_thread',
