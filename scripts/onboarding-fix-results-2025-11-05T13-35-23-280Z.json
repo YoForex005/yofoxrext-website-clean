@@ -1,0 +1,11 @@
+{
+  "timestamp": "2025-11-05T13:35:23.280Z",
+  "dryRun": true,
+  "totalUsersChecked": 202,
+  "totalUsersProcessed": 0,
+  "totalCoinsAwarded": 0,
+  "totalTransactions": 0,
+  "usersSummary": [],
+  "successfulAwards": [],
+  "errors": []
+}

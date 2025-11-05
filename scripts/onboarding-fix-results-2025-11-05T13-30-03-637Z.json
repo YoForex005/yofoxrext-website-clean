@@ -1,0 +1,57 @@
+{
+  "totalUsersProcessed": 6,
+  "totalCoinsAwarded": 60,
+  "totalTransactions": 7,
+  "usersSummary": [
+    {
+      "userId": "917cd98b-4980-403d-8299-9f6a825ee301",
+      "username": "2snews_off",
+      "tasksRewarded": [
+        "profilePicture",
+        "firstReply"
+      ],
+      "coinsAwarded": 15
+    },
+    {
+      "userId": "49196253",
+      "username": "desaznoruyko@gmail.com",
+      "tasksRewarded": [
+        "firstThread"
+      ],
+      "coinsAwarded": 10
+    },
+    {
+      "userId": "4f964df1-0a4f-4b10-8872-04dbe23dffd6",
+      "username": "sonofsatya93_1761936837690",
+      "tasksRewarded": [
+        "firstThread"
+      ],
+      "coinsAwarded": 10
+    },
+    {
+      "userId": "0c184bb4-c9b6-4446-a09c-8ee9945b3e88",
+      "username": "Epic1st",
+      "tasksRewarded": [
+        "firstThread"
+      ],
+      "coinsAwarded": 10
+    },
+    {
+      "userId": "d06ef5c4-d5c0-4477-a14b-452d9ca1113f",
+      "username": "2snews99_5269",
+      "tasksRewarded": [
+        "profilePicture"
+      ],
+      "coinsAwarded": 10
+    },
+    {
+      "userId": "a48e1f69-97c6-422c-8d5f-169ddda0ee78",
+      "username": "yoforexpremium_1761934906356",
+      "tasksRewarded": [
+        "firstReply"
+      ],
+      "coinsAwarded": 5
+    }
+  ],
+  "errors": []
+}
