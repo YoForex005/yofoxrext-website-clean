@@ -378,6 +378,15 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
     onSuccess: (data) => {
       setIsLiked(data.liked);
       setLikeCount(data.likeCount);
+      
+      // Invalidate queries to refresh thread data
+      queryClient.invalidateQueries({
+        queryKey: ["/api/threads", thread!.id, "like"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/threads/slug", slugPath],
+      });
+      
       if (data.liked) {
         toast({ 
           title: "Thread liked!",
