@@ -318,13 +318,8 @@ export default function ThreadDetailClient({ initialThread, initialReplies }: Th
 
   const createReplyMutation = useMutation({
     mutationFn: (data: { body: string; parentId?: string }) => {
-      if (!user?.id) {
-        return Promise.reject(new Error("You must be logged in to reply"));
-      }
-      return apiRequest("POST", `/api/threads/${thread!.id}/replies`, {
-        ...data,
-        userId: user.id,
-      });
+      // Don't include userId in the request body - let the server get it from session
+      return apiRequest("POST", `/api/threads/${thread!.id}/replies`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
