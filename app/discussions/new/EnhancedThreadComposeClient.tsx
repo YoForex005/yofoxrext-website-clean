@@ -1127,6 +1127,9 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
 
   const isFormValid = canProceedStep1;
 
+  // Store setValue function stable reference
+  const { setValue } = form;
+  
   // Update form when editor content changes and set editorRef
   useEffect(() => {
     if (editor) {
@@ -1135,15 +1138,15 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
       
       const updateContent = () => {
         // Set both plain text and HTML content
-        form.setValue("body", editor.getText()); // Plain text for backend
-        form.setValue("contentHtml", editor.getHTML()); // Rich HTML for display
+        setValue("body", editor.getText()); // Plain text for backend
+        setValue("contentHtml", editor.getHTML()); // Rich HTML for display
       };
       editor.on('update', updateContent);
       return () => {
         editor.off('update', updateContent);
       };
     }
-  }, [editor, form]);
+  }, [editor, setValue]);
 
   // Trigger file picker for image upload
   const triggerImageUpload = () => {
@@ -1163,13 +1166,13 @@ export default function EnhancedThreadComposeClient({ categories }: EnhancedThre
   const addHashtag = () => {
     const tag = hashtagInput.trim().replace(/^#/, '');
     if (tag && !form.watch("hashtags").includes(tag) && form.watch("hashtags").length < 10) {
-      form.setValue("hashtags", [...form.watch("hashtags"), tag]);
+      setValue("hashtags", [...form.watch("hashtags"), tag]);
       setHashtagInput("");
     }
   };
 
   const removeHashtag = (tag: string) => {
-    form.setValue("hashtags", form.watch("hashtags").filter(t => t !== tag));
+    setValue("hashtags", form.watch("hashtags").filter(t => t !== tag));
   };
 
   // Create thread mutation
